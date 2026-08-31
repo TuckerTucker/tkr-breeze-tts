@@ -1,0 +1,68 @@
+{
+  "id": "demo-ui-voice-loop",
+  "title": "Design a voice, keep it, direct a script",
+  "storyIds": [
+    "demo-ui/story/choose-a-voice-mode",
+    "demo-ui/story/compose-an-utterance",
+    "demo-ui/story/edit-one-line-without-redoing-the-rest",
+    "demo-ui/story/hear-it-as-it-generates",
+    "demo-ui/story/import-a-script",
+    "demo-ui/story/keep-a-clip",
+    "demo-ui/story/know-when-the-gpu-is-waking",
+    "demo-ui/story/name-a-voice-i-made",
+    "demo-ui/story/pick-a-saved-voice",
+    "demo-ui/story/promote-a-clip-to-a-voice",
+    "demo-ui/story/reconcile-timing-drift",
+    "demo-ui/story/reproduce-a-generation",
+    "demo-ui/story/revisit-what-i-made",
+    "demo-ui/story/supply-a-reference-file",
+    "demo-ui/story/switch-vocal-event-language"
+  ],
+  "steps": [
+    {
+      "id": "clone",
+      "title": "Switch to Clone or Direction and supply a reference voice",
+      "from": "compose",
+      "to": "wake"
+    },
+    {
+      "id": "compose",
+      "title": "Compose an utterance in Design mode",
+      "from": null,
+      "to": "clone"
+    },
+    {
+      "id": "generate",
+      "title": "Audio streams while it is still being generated",
+      "from": "wake",
+      "to": "keep"
+    },
+    {
+      "id": "keep",
+      "title": "Replay, save, or promote the clip to a reusable voice",
+      "from": "generate",
+      "to": "library"
+    },
+    {
+      "id": "library",
+      "title": "Pick that voice again from the library, by name",
+      "from": "keep",
+      "to": "script"
+    },
+    {
+      "id": "script",
+      "title": "Cast those voices across an imported script and voice it cue by cue",
+      "from": "library",
+      "to": null
+    },
+    {
+      "id": "wake",
+      "title": "A cold container wakes before the first clip",
+      "from": "clone",
+      "to": "generate"
+    }
+  ],
+  "schemaVersion": 1,
+  "contentHash": "b3b15fad335586bf69331c84e76b7f6ab6266fc2d9c79b1b781ef146a7034214",
+  "registeredAt": "2026-08-31T22:36:13.536Z"
+}

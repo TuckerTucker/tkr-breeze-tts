@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-04-generating",
+  "title": "Streaming playback — first audio",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/hear-it-as-it-generates"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/04-generating.svg",
+  "specPath": null,
+  "artifactHash": "3526265cbb337766879735a06cc5785dba41fa01de3a768ccf4a311c20edf931",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:11:18.883Z",
+  "validatedAt": "2026-08-31T22:11:18.883Z"
+}

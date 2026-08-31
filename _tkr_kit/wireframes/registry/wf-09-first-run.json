@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-09-first-run",
+  "title": "First run — nothing generated yet",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/compose-an-utterance"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/09-first-run.svg",
+  "specPath": null,
+  "artifactHash": "b7695ed426382b869771e13a4ea08aef86a55e86af3c0d74f103c819ecfc2db5",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:40:16.430Z",
+  "validatedAt": "2026-08-31T22:40:16.430Z"
+}

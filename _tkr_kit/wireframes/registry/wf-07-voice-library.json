@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-07-voice-library",
+  "title": "Voice library — saved voices as a reference source",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/name-a-voice-i-made",
+    "demo-ui/story/pick-a-saved-voice"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/07-voice-library.svg",
+  "specPath": null,
+  "artifactHash": "e384ba488ed7a364ae47ffc8b4bf443ce3ce5b5452fdaa5b7d441fabf148d000",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:29:06.765Z",
+  "validatedAt": "2026-08-31T22:29:06.765Z"
+}

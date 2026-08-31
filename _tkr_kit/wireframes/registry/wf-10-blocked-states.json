@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-10-blocked-states",
+  "title": "Blocked — busy, and a missing dependency",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/compose-an-utterance",
+    "demo-ui/story/supply-a-reference-file"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/10-blocked-states.svg",
+  "specPath": null,
+  "artifactHash": "9a74cb2abb970b3d99886f9c4a4e4f45b6ebb5f82e200178ddd7895e32bcfbbb",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:40:16.729Z",
+  "validatedAt": "2026-08-31T22:40:16.729Z"
+}

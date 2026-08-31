@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" role="img" aria-labelledby="t d">
+<title id="t">Script editor — cue list with per-cue voice and drift</title>
+<desc id="d">A WebVTT script as an editable cue list: a library voice per line, per-cue state, target-versus-actual timing with drift, and a run that regenerates only stale cues.</desc>
+<g class="atom-region" data-region="chrome">
+<rect x="0" y="0" width="1280" height="800" fill="#FFFFFF" />
+<text x="48" y="40" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="700" fill="#000000">Breeze TTS 2</text>
+<circle cx="1000" cy="34" r="4" fill="#000000" />
+<text x="1016" y="38" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">GPU WARM / RUNNING SCRIPT</text>
+<line x1="0" y1="64" x2="1280" y2="64" stroke="#000000" stroke-width="1" />
+</g>
+<g class="atom-region" data-region="head">
+<text x="48" y="96" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">SCRIPT / IMPORTED FROM WEBVTT</text>
+<text x="48" y="144" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700" fill="#000000">07</text>
+<text x="120" y="144" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">cues</text>
+<text x="248" y="144" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">rescue-scene.vtt</text>
+<text x="608" y="120" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">PROGRESS</text>
+<text x="608" y="144" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700" fill="#000000">03</text>
+<text x="672" y="144" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">of 07 done</text>
+<text x="928" y="120" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">ONLY STALE CUES RERUN</text>
+<text x="928" y="144" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">EDITING ONE LINE COSTS ONE REQUEST</text>
+</g>
+<g class="atom-region" data-region="table">
+<line x1="48" y1="184" x2="1232" y2="184" stroke="#000000" stroke-width="1" />
+<text x="48" y="204" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CUE</text>
+<text x="96" y="204" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">LINE</text>
+<text x="608" y="204" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">VOICE</text>
+<text x="816" y="204" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">TARGET</text>
+<text x="906" y="204" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">ACTUAL</text>
+<text x="996" y="204" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DRIFT</text>
+<text x="1096" y="204" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">STATE</text>
+<line x1="48" y1="216" x2="1232" y2="216" stroke="#E0E0E0" stroke-width="1" />
+<line x1="48" y1="272" x2="1232" y2="272" stroke="#E0E0E0" stroke-width="1" />
+<line x1="48" y1="328" x2="1232" y2="328" stroke="#E0E0E0" stroke-width="1" />
+<line x1="48" y1="384" x2="1232" y2="384" stroke="#E0E0E0" stroke-width="1" />
+<rect x="48" y="384" width="1184" height="56" fill="#F5F5F5" />
+<line x1="48" y1="440" x2="1232" y2="440" stroke="#E0E0E0" stroke-width="1" />
+<line x1="48" y1="496" x2="1232" y2="496" stroke="#E0E0E0" stroke-width="1" />
+<line x1="48" y1="552" x2="1232" y2="552" stroke="#E0E0E0" stroke-width="1" />
+<line x1="48" y1="608" x2="1232" y2="608" stroke="#E0E0E0" stroke-width="1" />
+<text x="48" y="250" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">01</text>
+<text x="96" y="254" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">It is good to hear your voice again.</text>
+<text x="608" y="254" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">NARRATOR — CALM</text>
+<text x="816" y="254" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">0:00.0</text>
+<text x="906" y="254" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">3.4S</text>
+<text x="996" y="254" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">—</text>
+<text x="1096" y="254" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DONE</text>
+<text x="48" y="306" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">02</text>
+<text x="96" y="310" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">After all this time.</text>
+<text x="608" y="310" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">NARRATOR — CALM</text>
+<text x="816" y="310" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">0:03.5</text>
+<text x="906" y="310" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">1.6S</text>
+<text x="996" y="310" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">—</text>
+<text x="1096" y="310" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DONE</text>
+<text x="48" y="362" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">03</text>
+<text x="96" y="366" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">We need to move. Now.</text>
+<text x="608" y="366" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">URGENT ANNOUNCER</text>
+<text x="816" y="366" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">0:05.1</text>
+<text x="906" y="366" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">2.3S</text>
+<text x="996" y="366" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">+0.7s</text>
+<text x="1096" y="366" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DRIFTED</text>
+<text x="48" y="418" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">04</text>
+<text x="96" y="422" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">There is no time to explain.</text>
+<text x="608" y="422" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">URGENT ANNOUNCER</text>
+<text x="816" y="422" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">0:07.0</text>
+<text x="906" y="422" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">—</text>
+<text x="996" y="422" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">—</text>
+<text x="1096" y="422" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">GENERATING</text>
+<circle cx="1080" cy="418" r="3" fill="#E3000B" />
+<text x="48" y="474" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">05</text>
+<text x="96" y="478" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Follow me, and stay close.</text>
+<text x="608" y="478" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">SAM — RECORDED</text>
+<text x="816" y="478" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">0:09.4</text>
+<text x="906" y="478" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">—</text>
+<text x="996" y="478" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">—</text>
+<text x="1096" y="478" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">STALE / EDITED</text>
+<text x="48" y="530" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">06</text>
+<text x="96" y="534" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">The door is at the end of the hall.</text>
+<text x="608" y="534" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">SAM — RECORDED</text>
+<text x="816" y="534" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">0:12.0</text>
+<text x="906" y="534" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">—</text>
+<text x="996" y="534" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">—</text>
+<text x="1096" y="534" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">QUEUED</text>
+<text x="48" y="586" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">07</text>
+<text x="96" y="590" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Go.</text>
+<text x="608" y="590" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">NARRATOR — CALM</text>
+<text x="816" y="590" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">0:14.8</text>
+<text x="906" y="590" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">—</text>
+<text x="996" y="590" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">—</text>
+<text x="1096" y="590" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">QUEUED</text>
+</g>
+<g class="atom-region" data-region="drift">
+<rect x="48" y="624" width="1184" height="72" fill="#F5F5F5" />
+<text x="72" y="656" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CUE 03 RUNS 0.7S LONGER THAN ITS SLOT</text>
+<text x="72" y="684" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Reroll the seed, shorten the line, or accept — the audio is never stretched to fit.</text>
+</g>
+<g class="atom-region" data-region="actions">
+<text x="48" y="744" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#E3000B">Run script →</text>
+<text x="208" y="744" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">3 CUES STALE / 4 SERVED FROM CACHE</text>
+<text x="448" y="744" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Export VTT</text>
+<text x="448" y="764" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">REAL GENERATED TIMINGS</text>
+<text x="648" y="744" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Export WAV</text>
+<text x="648" y="764" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">ONE CONTINUOUS TRACK</text>
+</g>
+</svg>

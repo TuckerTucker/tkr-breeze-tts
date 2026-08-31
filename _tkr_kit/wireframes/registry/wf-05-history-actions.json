@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-05-history-actions",
+  "title": "Clip history — replay, save, promote",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/keep-a-clip",
+    "demo-ui/story/promote-a-clip-to-a-voice",
+    "demo-ui/story/revisit-what-i-made"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/05-history-actions.svg",
+  "specPath": null,
+  "artifactHash": "4f58a4afcfb4ba24ea676872a37d8b65f9b2ae3cb4594ef39632948235a9bba5",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:11:19.204Z",
+  "validatedAt": "2026-08-31T22:11:19.204Z"
+}

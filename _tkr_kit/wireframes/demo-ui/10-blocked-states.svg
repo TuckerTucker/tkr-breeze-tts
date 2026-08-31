@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" role="img" aria-labelledby="t d">
+<title id="t">Blocked — busy, and a missing dependency</title>
+<desc id="d">Degraded behaviour shown in place rather than as toasts: the single-request lock disabling generate, a missing ffmpeg with its remedy, and an explicit account of what still works offline.</desc>
+<g class="atom-region" data-region="chrome">
+<rect x="0" y="0" width="1280" height="800" fill="#FFFFFF" />
+<rect x="880" y="64" width="400" height="736" fill="#F5F5F5" />
+<text x="48" y="40" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="700" fill="#000000">Breeze TTS 2</text>
+<circle cx="824" cy="34" r="4" fill="#E3000B" />
+<text x="840" y="38" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">GPU WARM / BUSY</text>
+<line x1="0" y1="64" x2="1280" y2="64" stroke="#000000" stroke-width="1" />
+<line x1="880" y1="64" x2="880" y2="800" stroke="#E0E0E0" stroke-width="1" />
+</g>
+<g class="atom-region" data-region="busy">
+<rect x="48" y="96" width="784" height="88" fill="#F5F5F5" />
+<line x1="48" y1="96" x2="832" y2="96" stroke="#000000" stroke-width="2" />
+<text x="72" y="128" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">AN INFERENCE IS ALREADY RUNNING</text>
+<text x="72" y="160" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">The model serves one request at a time. Generate re-enables when it finishes.</text>
+</g>
+<g class="atom-region" data-region="mode">
+<rect x="48" y="216" width="320" height="48" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<rect x="48" y="216" width="112" height="48" fill="#F5F5F5" stroke="#E0E0E0" stroke-width="1" />
+<line x1="160" y1="216" x2="160" y2="264" stroke="#E0E0E0" stroke-width="1" />
+<line x1="272" y1="216" x2="272" y2="264" stroke="#E0E0E0" stroke-width="1" />
+<text x="64" y="246" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Design</text>
+<text x="176" y="246" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Clone</text>
+<text x="288" y="246" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Direction</text>
+<text x="48" y="200" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">VOICE MODE</text>
+<text x="48" y="288" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CLONE AND DIRECTION ARE UNAVAILABLE — SEE BELOW.</text>
+</g>
+<g class="atom-region" data-region="dep">
+<text x="48" y="328" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">REFERENCE INTAKE UNAVAILABLE</text>
+<rect x="48" y="344" width="784" height="96" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<text x="64" y="376" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">ffmpeg is not installed, so recorded audio cannot be converted.</text>
+<text x="64" y="404" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">REMEDY:  BREW INSTALL FFMPEG  —  THEN RESTART THE GATEWAY</text>
+<text x="64" y="424" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">UPLOADS OF EXISTING WAV FILES STILL WORK</text>
+</g>
+<g class="atom-region" data-region="still">
+<text x="48" y="472" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">WHAT STILL WORKS</text>
+<text x="48" y="504" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Replay of anything already generated — served from local cache, no GPU.</text>
+<text x="48" y="528" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Saving clips as WAV, and browsing the voice library.</text>
+<text x="48" y="552" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Editing a script. Only running it needs the model.</text>
+<line x1="48" y1="584" x2="832" y2="584" stroke="#E0E0E0" stroke-width="1" />
+</g>
+<g class="atom-region" data-region="cta">
+<text x="48" y="624" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Generate →</text>
+<text x="208" y="624" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DISABLED WHILE A REQUEST IS RUNNING</text>
+</g>
+<g class="atom-region" data-region="note">
+<text x="48" y="680" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">EVERY MESSAGE ABOVE APPEARS IN PLACE, NEXT TO THE CONTROL IT CONCERNS.</text>
+<text x="48" y="700" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">NOTHING HERE IS A TOAST, AND NOTHING ASKS ARE YOU SURE.</text>
+</g>
+<g class="atom-region" data-region="panel">
+<text x="904" y="96" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CLIPS THIS SESSION</text>
+<text x="904" y="140" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700" fill="#000000">03</text>
+<line x1="904" y1="168" x2="1256" y2="168" stroke="#E0E0E0" stroke-width="1" />
+<text x="904" y="200" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">REPLAY IS UNAFFECTED</text>
+<text x="904" y="232" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">03 clips available offline</text>
+</g>
+</svg>

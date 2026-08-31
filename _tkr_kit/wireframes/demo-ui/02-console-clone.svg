@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" role="img" aria-labelledby="t d">
+<title id="t">Synthesis console — Clone mode with reference intake</title>
+<desc id="d">Clone mode. File upload and microphone capture as peer options, an accepted reference file, the required exact transcript, and CFG restricted to captured presets.</desc>
+<g class="atom-region" data-region="chrome">
+<rect x="0" y="0" width="1280" height="800" fill="#FFFFFF" />
+<rect x="880" y="64" width="400" height="736" fill="#F5F5F5" />
+<text x="48" y="40" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="700" fill="#000000">Breeze TTS 2</text>
+<circle cx="824" cy="34" r="4" fill="#000000" />
+<text x="840" y="38" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">GPU WARM / READY</text>
+<line x1="0" y1="64" x2="1280" y2="64" stroke="#000000" stroke-width="1" />
+<line x1="880" y1="64" x2="880" y2="800" stroke="#E0E0E0" stroke-width="1" />
+</g>
+<g class="atom-region" data-region="mode">
+<rect x="48" y="112" width="320" height="48" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<rect x="160" y="112" width="112" height="48" fill="#F5F5F5" stroke="#E0E0E0" stroke-width="1" />
+<line x1="160" y1="112" x2="160" y2="160" stroke="#E0E0E0" stroke-width="1" />
+<line x1="272" y1="112" x2="272" y2="160" stroke="#E0E0E0" stroke-width="1" />
+<text x="64" y="142" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Design</text>
+<text x="176" y="142" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Clone</text>
+<text x="288" y="142" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Direction</text>
+<text x="48" y="96" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">VOICE MODE</text>
+<text x="48" y="184" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CLONE FROM REFERENCE AUDIO. THE TRANSCRIPT MUST BE EXACT.</text>
+</g>
+<g class="atom-region" data-region="ref">
+<text x="48" y="216" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">REFERENCE VOICE / UPLOAD OR RECORD</text>
+<rect x="48" y="232" width="384" height="112" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<rect x="448" y="232" width="384" height="112" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<text x="64" y="272" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">narrator-sample.wav</text>
+<text x="64" y="296" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">0:12 / 24 KHZ MONO / ACCEPTED</text>
+<text x="64" y="328" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">REPLACE FILE</text>
+<text x="464" y="272" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">Record from microphone</text>
+<text x="464" y="296" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">MP3 / M4A / WAV / FLAC ALSO ACCEPTED</text>
+<text x="464" y="328" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">START RECORDING</text>
+</g>
+<g class="atom-region" data-region="tx">
+<text x="48" y="368" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">REFERENCE TRANSCRIPT / REQUIRED</text>
+<rect x="48" y="384" width="784" height="56" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<text x="64" y="416" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">This is the exact transcript of the reference audio.</text>
+</g>
+<g class="atom-region" data-region="text">
+<text x="48" y="496" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">TEXT TO SPEAK</text>
+<rect x="48" y="512" width="784" height="88" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<text x="64" y="544" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Welcome aboard. Your journey begins now.</text>
+</g>
+<g class="atom-region" data-region="cfg">
+<text x="48" y="632" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CFG SCALE / CAPTURED PRESETS ONLY</text>
+<rect x="48" y="648" width="96" height="32" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<rect x="144" y="648" width="96" height="32" fill="#F5F5F5" stroke="#E0E0E0" stroke-width="1" />
+<text x="72" y="670" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">1.0</text>
+<text x="168" y="670" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">4.0</text>
+<text x="256" y="670" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">2.5 LEAVES THE FAST PATH</text>
+<text x="48" y="724" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#E3000B">Generate →</text>
+<text x="208" y="724" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">WARM / EXPECTED 44MS TO FIRST AUDIO</text>
+</g>
+<g class="atom-region" data-region="hist">
+<text x="904" y="96" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CLIPS THIS SESSION</text>
+<text x="904" y="140" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700" fill="#000000">03</text>
+<line x1="904" y1="168" x2="1256" y2="168" stroke="#E0E0E0" stroke-width="1" />
+<line x1="904" y1="240" x2="1256" y2="240" stroke="#E0E0E0" stroke-width="1" />
+<line x1="904" y1="312" x2="1256" y2="312" stroke="#E0E0E0" stroke-width="1" />
+<text x="904" y="194" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">01</text>
+<text x="944" y="198" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">It is good to hear your voice</text>
+<text x="944" y="218" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DESIGN / CFG 1.0 / SEED 42 / 38MS</text>
+<text x="904" y="266" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">02</text>
+<text x="944" y="270" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Welcome aboard, traveller.</text>
+<text x="944" y="290" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DESIGN / CFG 1.0 / SEED 17 / 41MS</text>
+<text x="904" y="338" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">03</text>
+<text x="944" y="342" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">The journey begins now.</text>
+<text x="944" y="362" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CLONE / CFG 4.0 / SEED 42 / 44MS</text>
+<line x1="904" y1="384" x2="1256" y2="384" stroke="#E0E0E0" stroke-width="1" />
+</g>
+</svg>

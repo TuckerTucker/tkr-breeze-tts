@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800" role="img" aria-labelledby="t d">
+<title id="t">Streaming playback — first audio measured</title>
+<desc id="d">Generating with the streaming transport. Measured time-to-first-audio, real-time factor and playback position shown as display type while audio is still being produced.</desc>
+<g class="atom-region" data-region="chrome">
+<rect x="0" y="0" width="1280" height="800" fill="#FFFFFF" />
+<rect x="880" y="64" width="400" height="736" fill="#F5F5F5" />
+<text x="48" y="40" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="700" fill="#000000">Breeze TTS 2</text>
+<circle cx="824" cy="34" r="4" fill="#E3000B" />
+<text x="840" y="38" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">GPU WARM / GENERATING</text>
+<line x1="0" y1="64" x2="1280" y2="64" stroke="#000000" stroke-width="1" />
+<line x1="880" y1="64" x2="880" y2="800" stroke="#E0E0E0" stroke-width="1" />
+</g>
+<g class="atom-region" data-region="player">
+<rect x="48" y="96" width="784" height="200" fill="#F5F5F5" />
+<line x1="48" y1="96" x2="832" y2="96" stroke="#000000" stroke-width="2" />
+<text x="72" y="128" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">FIRST AUDIO</text>
+<text x="72" y="184" font-family="Inter, system-ui, sans-serif" font-size="40" font-weight="700" fill="#000000">38</text>
+<text x="144" y="184" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">ms</text>
+<text x="288" y="128" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">REAL-TIME FACTOR</text>
+<text x="288" y="184" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700" fill="#000000">0.32</text>
+<text x="496" y="128" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">PLAYING / STREAMING</text>
+<text x="496" y="184" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700" fill="#000000">2.4</text>
+<text x="560" y="184" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#666666">of 6.1s</text>
+<line x1="72" y1="232" x2="368" y2="232" stroke="#000000" stroke-width="2" />
+<line x1="368" y1="232" x2="808" y2="232" stroke="#E0E0E0" stroke-width="1" />
+<text x="72" y="264" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">AUDIO STARTED BEFORE GENERATION FINISHED / STREAMING TRANSPORT</text>
+</g>
+<g class="atom-region" data-region="text">
+<text x="48" y="336" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">TEXT TO SPEAK</text>
+<rect x="48" y="352" width="784" height="88" fill="#FFFFFF" stroke="#E0E0E0" stroke-width="1" />
+<text x="64" y="384" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">(sigh) It is good to hear your voice again after all this time.</text>
+</g>
+<g class="atom-region" data-region="meta">
+<text x="48" y="480" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">MODE</text>
+<text x="48" y="512" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Design</text>
+<text x="248" y="480" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CFG</text>
+<text x="248" y="512" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">1.0</text>
+<text x="368" y="480" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">SEED</text>
+<text x="368" y="512" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">42</text>
+<text x="488" y="480" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">SAMPLE RATE</text>
+<text x="488" y="512" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">24 kHz mono</text>
+<line x1="48" y1="544" x2="832" y2="544" stroke="#E0E0E0" stroke-width="1" />
+<text x="48" y="592" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#E3000B">Stop</text>
+<text x="208" y="592" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">GENERATION IN PROGRESS</text>
+</g>
+<g class="atom-region" data-region="hist">
+<text x="904" y="96" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CLIPS THIS SESSION</text>
+<text x="904" y="140" font-family="Inter, system-ui, sans-serif" font-size="32" font-weight="700" fill="#000000">03</text>
+<line x1="904" y1="168" x2="1256" y2="168" stroke="#E0E0E0" stroke-width="1" />
+<line x1="904" y1="240" x2="1256" y2="240" stroke="#E0E0E0" stroke-width="1" />
+<line x1="904" y1="312" x2="1256" y2="312" stroke="#E0E0E0" stroke-width="1" />
+<text x="904" y="194" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">01</text>
+<text x="944" y="198" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">It is good to hear your voice</text>
+<text x="944" y="218" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DESIGN / CFG 1.0 / SEED 42 / 38MS</text>
+<text x="904" y="266" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">02</text>
+<text x="944" y="270" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">Welcome aboard, traveller.</text>
+<text x="944" y="290" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">DESIGN / CFG 1.0 / SEED 17 / 41MS</text>
+<text x="904" y="338" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">03</text>
+<text x="944" y="342" font-family="Inter, system-ui, sans-serif" font-size="14" font-weight="400" fill="#000000">The journey begins now.</text>
+<text x="944" y="362" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#666666" letter-spacing="0.16em">CLONE / CFG 4.0 / SEED 42 / 44MS</text>
+<line x1="904" y1="384" x2="1256" y2="384" stroke="#E0E0E0" stroke-width="1" />
+</g>
+</svg>
