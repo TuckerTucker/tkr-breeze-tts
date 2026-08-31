@@ -145,8 +145,8 @@ stories:
     acceptance_criteria:
       - given: a saved voice made from a generated clip
         when: it is stored
-        then: the existing normalised WAV is reused — no re-encode and no second GPU
-          request
+        then: the clip's cached PCM is copied and framed as WAV from its sidecar — a
+          container write, not a re-encode, and no second GPU request
       - given: a saved voice whose source clip has since been evicted from the clip
           cache
         when: the voice is used

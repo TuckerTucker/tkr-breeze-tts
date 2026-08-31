@@ -4,6 +4,11 @@ slices:
       - gateway/src/proxy.ts
       - gateway/src/config.ts
       - gateway/src/index.ts
+      - gateway/package.json
+      - gateway/tsconfig.json
+      - gateway/vitest.config.ts
+      - .env.example
+      - gateway/test/proxy.test.ts
     depends_on: []
     story_ids:
       - keep-the-token-off-the-client
@@ -20,6 +25,14 @@ slices:
         the remedy named, not at the operator's first synthesis attempt.
       - Structured pino logging and strict TypeScript with named exports, per
         project convention.
+      - The capability's build, type and test configuration (package.json,
+        tsconfig.json, vitest.config.ts) and the repo-root .env.example naming
+        the Modal variables. The startup validation above has nothing to
+        validate against until those names are written down somewhere the
+        operator can copy. The template sits at the root rather than under
+        gateway/ because the measurement harness authenticates to the same
+        endpoint, and a second copy of a credential is a second thing to leak
+        and to rotate.
     title: Credential-holding proxy over the Modal endpoint
     number: 1
     layer: api
@@ -27,6 +40,7 @@ slices:
     status: draft
   - paths:
       - gateway/src/transport.ts
+      - gateway/test/transport.test.ts
     depends_on:
       - 1
     story_ids:
@@ -50,6 +64,7 @@ slices:
     status: draft
   - paths:
       - gateway/src/reference.ts
+      - gateway/test/reference.test.ts
     depends_on:
       - 1
     story_ids:
@@ -76,6 +91,7 @@ slices:
   - paths:
       - gateway/src/cache.ts
       - gateway/src/cache-index.ts
+      - gateway/test/cache.test.ts
     depends_on:
       - 2
     story_ids:
@@ -84,8 +100,13 @@ slices:
       - A tee to disk during streaming that never delays the bytes going to the
         browser — the cache must not cost the latency the stream exists to
         demonstrate.
-      - Replay served from disk as a buffered read in either transport, so
-        generation streams while replay is instant.
+      - "One on-disk format regardless of transport — raw PCM s16le beside a
+        sidecar holding the upstream rate, format and request provenance — with
+        WAV framing applied at read. Storing whatever the active transport
+        happened to produce would make a clip's readability depend on a setting
+        that was in force when it was generated."
+      - Replay served from disk as a buffered read framed as WAV in either
+        transport, so generation streams while replay is instant.
       - Request provenance stored beside each clip — text, instruction, mode,
         cfg_scale, seed — which is what makes A/B comparison in the UI possible
         at all.
@@ -100,6 +121,7 @@ slices:
   - paths:
       - gateway/src/voices.ts
       - gateway/src/voices-index.ts
+      - gateway/test/voices.test.ts
     depends_on:
       - 3
       - 4
@@ -114,8 +136,9 @@ slices:
       - "Voices own their audio rather than pointing at a clip, so a voice
         survives eviction of the clip it came from. Two lifetimes, deliberately
         separated: clips are exhaust, voices are kept."
-      - Saving from a generated clip reuses the WAV already normalised on disk —
-        no re-encode, no second GPU request.
+      - Saving from a generated clip copies that clip's cached PCM and frames it
+        as WAV from its sidecar — a container write, not a re-encode, and never
+        a second GPU request.
       - Reads that hand back both halves of the vendor's required
         audio+transcript pair together, so a request built from the library
         cannot be half-formed.
@@ -129,6 +152,7 @@ slices:
       - gateway/src/script.ts
       - gateway/src/vtt.ts
       - gateway/src/cue-queue.ts
+      - gateway/test/script.test.ts
     depends_on:
       - 4
       - 5

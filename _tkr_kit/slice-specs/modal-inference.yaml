@@ -70,16 +70,27 @@ slice_specs:
       the service.
     interface: "A settings object read by the serving class at decoration time: gpu,
       scaledown_window, min_containers, requires_proxy_auth, fast-path flags."
-    behavior: Default gpu to H100 (the part the published figures were measured on)
+    behavior: "Default gpu to H100 (the part the published figures were measured on)
       and treat it as swappable, since the multi-arch wheel removes any image
       dependency on architecture. Default scaledown_window to 300 seconds —
       session-warm. Leave min_containers unset so the service scales to zero.
       Enable requires_proxy_auth. Express the fast path as one setting rather
-      than five independent booleans.
+      than five independent booleans. Provision the proxy auth pair this flag
+      demands rather than assuming it: `modal workspace proxy-tokens create
+      --json` returns Modal-Key and Modal-Secret, `list` and `delete` are the
+      rotation path, and the operator writes the pair into the repo-root .env
+      the gateway and the bench both read. This is scripted, not a dashboard
+      errand — and until it is done, requires_proxy_auth closes the endpoint to
+      everyone including us."
     errors: An unrecognised GPU value → rejected at load with the allowed set named,
       rather than failing at deploy. scaledown_window outside Modal's 2s-20min
-      range → rejected with the bound named.
+      range → rejected with the bound named. A proxy pair carrying the ak-/as-
+      API-token prefixes rather than wk-/ws- → refused with the distinction
+      named, since an API token authenticates to nothing here and the failure
+      would otherwise surface as a 401 at first synthesis.
     tests: Defaults assert to H100, 300s, min_containers unset, proxy auth on.
       Changing the GPU value requires no image rebuild. An out-of-range
-      scaledown value is rejected with its bound.
+      scaledown value is rejected with its bound. A created proxy pair carries
+      the wk-/ws- prefixes and authenticates against /health; an ak-/as- pair is
+      refused with the reason named.
     slice: 4

@@ -140,9 +140,10 @@ slice_specs:
       the list rather than failing playback silently. Cache unreachable →
       history renders read-only with the reason shown, rather than disappearing.
       Loading an entry never overwrites unsaved console text without the
-      operator initiating it. A save of a clip cached as raw PCM → wrapped as
-      WAV before delivery, never handed over as bytes nothing outside the demo
-      can open. A promotion while in Design mode → switches to Clone rather than
+      operator initiating it. A save of any clip → framed as WAV before
+      delivery, since the cache holds raw PCM whatever the transport, and bytes
+      nothing outside the demo can open are not a saved file. A promotion while
+      in Design mode → switches to Clone rather than
       silently attaching a reference the current mode cannot send.
     tests: Every generation appears with its settings including seed. Replay reaches
       no upstream, asserted with upstream unreachable. Replay leaves console

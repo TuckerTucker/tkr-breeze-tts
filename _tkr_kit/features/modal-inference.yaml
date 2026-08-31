@@ -2,6 +2,10 @@ capability: modal-inference
 features:
   - name: runtime-image
     status: draft
+    wiring_assignment:
+      territory:
+        - infra/__init__.py
+        - infra/pyproject.toml
     user_story: As the operator, I want a Modal image that boots the vendor runtime
       correctly on the first try, so that a deploy fails at build time with a
       clear message rather than at inference time with a CUDA or ABI error.
@@ -23,6 +27,10 @@ features:
       - Runtime configuration such as GPU type or warm window (service-config).
   - name: weights-volume
     status: draft
+    wiring_assignment:
+      territory:
+        - infra/__init__.py
+        - infra/pyproject.toml
     user_story: As the operator, I want the 7.7GB checkpoint to live on a Modal
       Volume filled once, so that redeploying the service never re-downloads
       weights and image rebuilds stay fast.
@@ -42,6 +50,11 @@ features:
       - Image contents (runtime-image).
   - name: inference-service
     status: draft
+    wiring_assignment:
+      territory:
+        - infra/__init__.py
+        - infra/pyproject.toml
+        - infra/service.py
     user_story: As the operator, I want the model loaded and warmed before Modal
       routes any traffic to a container, so that a request never lands on a
       container that is still loading and reports itself unhealthy.
@@ -64,6 +77,11 @@ features:
       - Modifying vendor request handling or the 409 lock — used as shipped.
   - name: service-config
     status: draft
+    wiring_assignment:
+      territory:
+        - infra/__init__.py
+        - infra/pyproject.toml
+        - infra/service.py
     user_story: As the operator, I want GPU type, warm behaviour, and authentication
       to be configuration values in one place, so that I can retune the
       cost/latency trade-off without editing decorators scattered through the
@@ -76,6 +94,10 @@ features:
       - An always-on mode is available by setting min_containers, off by default.
       - requires_proxy_auth is enabled, so the endpoint is unreachable without a
         token pair.
+      - The proxy auth pair is created and rotated from the CLI, and the pair's
+        wk-/ws- prefixes are checked — an ak-/as- API token in those variables
+        authenticates to nothing and must fail before first synthesis, not
+        during it.
       - Fast-path flags are exposed but default to the vendor's --fast-all
         posture as one coherent setting.
     scope_in:
