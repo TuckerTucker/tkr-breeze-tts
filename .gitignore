@@ -7,3 +7,11 @@ CLAUDE.local.md
 
 # macOS
 .DS_Store
+
+# Secrets — operator-local, never committed
+.env
+.env.*
+!.env.example
+
+# Generated audio caches
+.cache/
