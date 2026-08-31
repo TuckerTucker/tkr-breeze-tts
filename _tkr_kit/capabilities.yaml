@@ -3,7 +3,7 @@ capabilities:
     layer: service
     status: draft
     paths:
-      - modal
+      - infra
     depends_on: []
     provides_to:
       - measurement
@@ -37,7 +37,6 @@ capabilities:
     depends_on:
       - modal-inference
     provides_to:
-      - local-gateway
       - demo-ui
     description: The instrumented client that turns the plan's two unmeasured
       quantities into recorded numbers. Warmup duration sets the scaledown
@@ -97,6 +96,7 @@ capabilities:
       - ui
     depends_on:
       - local-gateway
+      - measurement
     provides_to: []
     description: "The browser surface the operator actually plays with. It has one
       job beyond working: make the model's three control modes legible and make

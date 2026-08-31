@@ -3,6 +3,8 @@ slices:
   - paths:
       - bench/harness.py
       - bench/__init__.py
+      - bench/pyproject.toml
+      - bench/tests/test_harness.py
     depends_on: []
     story_ids:
       - measure-first-audio-latency
@@ -19,6 +21,10 @@ slices:
         decomposing cold start into container start, weight load, and graph
         capture rather than one opaque number.
       - Results written to a file the brief and plan can cite by path.
+      - The capability's own dependency and test manifest
+        (bench/pyproject.toml), so the harness can be installed and its own
+        checks run inside its territory rather than against a manifest no
+        slice owns.
     title: "Latency harness: first-audio, real-time factor, cold versus warm"
     number: 1
     layer: integration
@@ -27,6 +33,7 @@ slices:
   - paths:
       - bench/cfg_probe.py
       - bench/findings
+      - bench/tests/test_cfg_probe.py
     depends_on:
       - 1
     story_ids:

@@ -7,19 +7,29 @@ slice_specs:
     interface: "A CLI producing a results file: per-request time-to-first-audio,
       real-time factor, class (cold|warm), and warmup milliseconds on cold
       runs."
-    behavior: Issue authenticated requests to /v1/audio/speech. Record
-      time-to-first-audio as the interval from send to first received PCM byte.
-      Compute audio duration as bytes / 2 / 24000 exactly, and real-time factor
-      as wall time over that duration. Force a cold class by idling beyond
-      scaledown_window; classify subsequent immediate requests as warm. Scrape
-      the vendor's warmup log line to decompose cold start.
+    behavior: "Issue authenticated requests to /v1/audio/speech, carrying the
+      Modal-Key/Modal-Secret pair from the repo-root .env as request headers.
+      Never measure through `modal curl`: it authenticates via local API
+      credentials instead of proxy headers, and its own help states that
+      API-based authentication adds latency and that it is for experimentation
+      and debugging. It is a fine smoke test before the gateway exists and a
+      false instrument afterwards — using it here would report Modal's auth
+      round-trip as the model's time-to-first-audio. Record time-to-first-audio
+      as the interval from send to first received PCM byte. Compute audio
+      duration as bytes / 2 / 24000 exactly, and real-time factor as wall time
+      over that duration. Force a cold class by idling beyond scaledown_window,
+      or deterministically with `modal app stop`; classify subsequent immediate
+      requests as warm. Scrape the vendor's warmup log line — `modal app logs`
+      is where it surfaces — to decompose cold start."
     errors: A 409 → retried after a bounded wait rather than recorded as a latency
       sample, since it measures contention not speed. Auth failure → abort with
       the remedy named. A truncated stream → the sample is discarded rather than
       reported as a fast result.
     tests: Duration derivation is exact against a known byte count. Cold and warm
       samples are never merged. A forced 409 does not enter the sample set. The
-      results file is written at a stable path.
+      results file is written at a stable path. Requests carry Modal-Key and
+      Modal-Secret headers, and no code path in the harness shells out to `modal
+      curl`.
     slice: 1
   - title: CFG fall-off probe
     status: draft

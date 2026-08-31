@@ -2,9 +2,15 @@ capability: demo-ui
 slices:
   - paths:
       - ui/src/App.tsx
+      - ui/src/main.tsx
       - ui/src/components/Console.tsx
       - ui/src/state/draft.ts
+      - ui/src/api/client.ts
       - ui/index.html
+      - ui/package.json
+      - ui/tsconfig.json
+      - ui/vite.config.ts
+      - ui/test/console.test.tsx
     depends_on: []
     story_ids:
       - compose-an-utterance
@@ -28,6 +34,11 @@ slices:
       - Generate disabled with a stated reason whenever the request cannot
         succeed — never enabled into a failure.
       - Draft persistence across reload, so nothing typed is lost.
+      - The capability's build and test configuration (package.json,
+        tsconfig.json, vite.config.ts), the Vite entry point, and the gateway
+        client every later slice calls through. Without these the console
+        cannot be built, served, or tested inside its own territory, and the
+        'gateway unreachable' state above has nothing to reach through.
     title: Console shell and utterance entry
     number: 1
     layer: ui
@@ -37,6 +48,7 @@ slices:
       - ui/src/components/VoiceModes.tsx
       - ui/src/components/CfgControl.tsx
       - ui/src/state/mode.ts
+      - ui/test/voice-modes.test.tsx
     depends_on:
       - 1
     story_ids:
@@ -70,6 +82,7 @@ slices:
       - ui/src/audio/worklet.ts
       - ui/src/audio/player.ts
       - ui/src/audio/pcm-processor.js
+      - ui/test/playback.test.ts
     depends_on:
       - 1
     story_ids:
@@ -96,6 +109,7 @@ slices:
   - paths:
       - ui/src/components/WakeState.tsx
       - ui/src/state/readiness.ts
+      - ui/test/wake-state.test.tsx
     depends_on:
       - 3
     story_ids:
@@ -123,6 +137,7 @@ slices:
   - paths:
       - ui/src/components/History.tsx
       - ui/src/state/history.ts
+      - ui/test/history.test.tsx
     depends_on:
       - 2
       - 4
@@ -147,10 +162,10 @@ slices:
         designed clip to a reference is how a created voice actually persists,
         and it survives redeployment in a way an (instruction, seed) pair does
         not."
-      - Save-as-WAV for any clip, over the existing cache route. Clips cached in
-        streaming transport are raw PCM, which nothing outside the demo can
-        open, so the save path reuses the gateway's WAV wrapper rather than
-        handing over bytes the operator cannot use.
+      - Save-as-WAV for any clip, over the existing cache route. Every clip is
+        cached as raw PCM whatever transport produced it, and nothing outside
+        the demo can open that, so the save path reuses the gateway's read-time
+        WAV framing rather than handing over bytes the operator cannot use.
       - History surviving page reload.
     title: Clip history and re-audition
     number: 5
@@ -160,6 +175,7 @@ slices:
   - paths:
       - ui/src/components/VoiceLibrary.tsx
       - ui/src/state/voices.ts
+      - ui/test/voice-library.test.tsx
     depends_on:
       - 2
       - 5
@@ -192,6 +208,7 @@ slices:
       - ui/src/components/ScriptEditor.tsx
       - ui/src/components/CueRow.tsx
       - ui/src/state/script.ts
+      - ui/test/script-editor.test.tsx
     depends_on:
       - 1
       - 6

@@ -80,22 +80,32 @@ slice_specs:
       while the GPU is scaled to zero.
     interface: GET /api/clips and GET /api/clips/:id served from disk; writes happen
       as a side effect of synthesis.
-    behavior: Tee the upstream audio to disk while forwarding it, without delaying
-      bytes to the client. Store request provenance alongside each clip — text,
-      instruction, mode, cfg_scale, seed, transport, and measured first-byte
-      time. Serve replay as a buffered read regardless of the active transport.
-      Maintain an index for listing. Evict oldest-first once a configured size
-      limit is reached.
+    behavior: "Tee the upstream audio to disk while forwarding it, without delaying
+      bytes to the client. The cache holds exactly one on-disk format — raw PCM
+      s16le as Modal emits it — beside a sidecar record carrying the upstream
+      sample rate and format plus the request provenance: text, instruction,
+      mode, cfg_scale, seed, transport, and measured first-byte time. WAV
+      framing is applied at read, never at write, so the bytes on disk do not
+      depend on which transport produced them and a clip generated while
+      streaming is interchangeable with one generated buffered. Serve replay as
+      a buffered read framed as WAV from the sidecar values, regardless of the
+      active transport. Maintain an index for listing. Evict oldest-first once a
+      configured size limit is reached."
     errors: A disk write failure → logged and the stream to the client continues
       uninterrupted, because losing a cache entry must never cost the operator
       their audio. A missing or corrupt cached file → reported as absent and
-      removed from the index rather than served as a truncated clip. A full disk
-      → eviction runs, and if space cannot be reclaimed, caching disables itself
-      rather than failing synthesis.
+      removed from the index rather than served as a truncated clip. A sidecar
+      missing its sample rate → the clip is dropped from the index rather than
+      served at a guessed rate, since a wrong rate plays at the wrong speed
+      instead of failing. A full disk → eviction runs, and if space cannot be
+      reclaimed, caching disables itself rather than failing synthesis.
     tests: First-byte timing with caching on matches caching off within tolerance.
       Replay serves from disk with no upstream request, asserted with the
-      upstream unreachable. Eviction removes oldest-first at the limit. A
-      deliberately corrupted file is dropped from the index rather than served.
+      upstream unreachable, and decodes as a valid WAV whose header matches the
+      sidecar. Identical requests made under streaming and under buffered
+      transport leave byte-identical payloads on disk. Eviction removes
+      oldest-first at the limit. A deliberately corrupted file is dropped from
+      the index rather than served.
     slice: 4
   - title: Voice library store
     status: draft
@@ -108,10 +118,11 @@ slice_specs:
       (designed-from-instruction with seed, or cloned-from-supplied-audio). Copy
       the audio into the voice store rather than referencing a cache entry, so
       voice lifetime is independent of clip eviction. When saving from a
-      generated clip, reuse the WAV already normalised on disk instead of
-      re-encoding or regenerating. When saving from an upload, route through the
-      same reference-intake normalisation. Reads always return audio and
-      transcript as a pair. Persist across restarts.
+      generated clip, copy the cached PCM and frame it as WAV using that clip's
+      sidecar rate and format — a container write, not a re-encode, and never a
+      second GPU request. When saving from an upload, route through the same
+      reference-intake normalisation. Reads always return audio and transcript
+      as a pair. Persist across restarts.
     errors: A name that already exists → accepted with a disambiguating suffix
       rather than refused, since the operator is naming, not keying. A voice
       whose audio file is missing → reported as unavailable and excluded from
@@ -120,8 +131,9 @@ slice_specs:
       voice never touches the clips it was made from. A save from a clip that
       has been evicted → refused with that stated, since there is no audio left
       to copy.
-    tests: A voice saved from a clip reuses the existing WAV, verified by hash, with
-      no re-encode. Evicting the source clip leaves the voice usable. A read
+    tests: A voice saved from a clip carries the same sample data as the cached
+      clip, verified by hashing the PCM inside both, with no transcode and no
+      upstream request. Evicting the source clip leaves the voice usable. A read
       returns audio and transcript together, never one alone. Voices survive a
       restart with name and provenance intact. Deleting a voice leaves its
       source clips present. A duplicate name is disambiguated rather than

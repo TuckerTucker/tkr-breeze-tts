@@ -2,6 +2,10 @@ capability: measurement
 features:
   - name: latency-harness
     status: draft
+    wiring_assignment:
+      territory:
+        - bench/__init__.py
+        - bench/pyproject.toml
     user_story: As the operator, I want time-to-first-audio and real-time factor
       measured against the real deployed endpoint, so that the UI can show
       observed latency instead of repeating a benchmark run on someone else's
@@ -24,6 +28,10 @@ features:
       - Any change to the service being measured (modal-inference).
   - name: cfg-falloff-probe
     status: draft
+    wiring_assignment:
+      territory:
+        - bench/__init__.py
+        - bench/pyproject.toml
     user_story: As the operator, I want to know empirically whether an uncaptured
       cfg_scale leaves the CUDA-graph fast path, so that the UI offers a
       continuous slider only if the latency claim actually survives it.

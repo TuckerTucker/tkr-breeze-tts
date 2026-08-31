@@ -1,8 +1,10 @@
 capability: modal-inference
 slices:
   - paths:
-      - modal/image.py
-      - modal/__init__.py
+      - infra/image.py
+      - infra/__init__.py
+      - infra/pyproject.toml
+      - infra/tests/test_image.py
     depends_on: []
     story_ids:
       - build-the-runtime-image
@@ -25,13 +27,20 @@ slices:
       - A build-time smoke check adapted from docker/smoke_check.py, so a
         cxx11abi mismatch fails the build rather than surfacing at first
         inference.
+      - "The capability's own dependency and test manifest
+        (infra/pyproject.toml), so this slice can be built and its checks run
+        inside its own territory rather than depending on a manifest no slice
+        owns. The package is named infra rather than modal: a local package
+        called modal shadows the Modal SDK on sys.path, so `modal deploy
+        infra/service.py` would import this directory instead of the SDK."
     title: Runtime image with a pinned FlashAttention wheel
     number: 1
     layer: service
     feature: runtime-image
     status: draft
   - paths:
-      - modal/weights.py
+      - infra/weights.py
+      - infra/tests/test_weights.py
     depends_on:
       - 1
     story_ids:
@@ -56,7 +65,8 @@ slices:
     feature: weights-volume
     status: draft
   - paths:
-      - modal/service.py
+      - infra/service.py
+      - infra/tests/test_service.py
     depends_on:
       - 1
       - 2
@@ -85,7 +95,8 @@ slices:
     feature: inference-service
     status: draft
   - paths:
-      - modal/config.py
+      - infra/config.py
+      - infra/tests/test_config.py
     depends_on:
       - 3
     story_ids:
@@ -104,6 +115,13 @@ slices:
       - requires_proxy_auth enabled. Modal endpoints are public by default, and
         serving research/non-commercial weights on an open URL is a materially
         different act from running them locally — posture, not hygiene.
+      - "The proxy auth pair that flag demands, actually provisioned: `modal
+        workspace proxy-tokens create --json` yields the wk-/ws- pair, and
+        create + delete is the rotation path. The pair was previously a
+        precondition of local-gateway/story/keep-the-token-off-the-client that
+        no slice delivered — this capability already claimed the token wiring in
+        scope, so the gap was ownership, not scope. It is CLI-scriptable, not a
+        dashboard errand."
       - Fast-path stage flags exposed as one coherent setting rather than five
         scattered booleans.
     title: GPU, warm window, and proxy auth as configuration

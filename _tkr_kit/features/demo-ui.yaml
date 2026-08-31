@@ -2,6 +2,12 @@ capability: demo-ui
 features:
   - name: synthesis-console
     status: draft
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/main.tsx
+        - ui/package.json
+        - ui/tsconfig.json
     user_story: As the operator, I want one clear surface to type what should be
       said and press go, so that trying an idea takes one action rather than a
       tour of settings.
@@ -24,6 +30,12 @@ features:
       - Playback and history (streaming-playback, clip-history).
   - name: voice-modes
     status: draft
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/main.tsx
+        - ui/package.json
+        - ui/tsconfig.json
     user_story: As the operator, I want the three ways of controlling a voice
       presented as three clear choices, so that I understand what distinguishes
       design from cloning from direction without reading documentation.
@@ -50,6 +62,12 @@ features:
       - Deciding whether the slider is viable — that is the measurement finding.
   - name: streaming-playback
     status: draft
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/main.tsx
+        - ui/package.json
+        - ui/tsconfig.json
     user_story: As the operator, I want audio to start playing while it is still
       being generated, so that the model's low-latency claim is something I hear
       rather than something I am told.
@@ -72,6 +90,12 @@ features:
       - Benchmark measurement runs (measurement).
   - name: wake-state
     status: draft
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/main.tsx
+        - ui/package.json
+        - ui/tsconfig.json
     user_story: As the operator, I want to be told plainly when the GPU is waking
       rather than watching an unexplained spinner, so that a cold start reads as
       a known cost of serverless rather than as the model being slow.
@@ -93,6 +117,12 @@ features:
       - Producing the measurements (measurement).
   - name: clip-history
     status: draft
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/main.tsx
+        - ui/package.json
+        - ui/tsconfig.json
     user_story: As the operator, I want everything I have generated kept and
       re-playable, so that comparing two voices or two cfg values is a click
       rather than a regeneration.
@@ -113,6 +143,12 @@ features:
       - Playback mechanics (streaming-playback).
   - name: voice-picker
     status: draft
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/main.tsx
+        - ui/package.json
+        - ui/tsconfig.json
     user_story: As the operator, I want to pick a saved voice in Clone or Direction,
       so that reusing a voice I already made is one action instead of supplying
       audio and a transcript again.
@@ -136,6 +172,12 @@ features:
       - Reference transcoding and normalisation (local-gateway reference-intake).
   - name: script-editor
     status: draft
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/main.tsx
+        - ui/package.json
+        - ui/tsconfig.json
     user_story: As the operator, I want to write or import a script as a list of
       lines, assign a voice to each, and fix one line without redoing the rest,
       so that producing a multi-voice piece is editing rather than re-running.

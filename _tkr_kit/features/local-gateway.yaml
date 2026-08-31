@@ -2,6 +2,11 @@ capability: local-gateway
 features:
   - name: credential-proxy
     status: draft
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/package.json
+        - gateway/tsconfig.json
     user_story: As the operator, I want the browser to talk only to localhost while
       the Modal token stays server-side, so that no credential is ever readable
       in page source and CORS never becomes a problem to solve.
@@ -23,6 +28,11 @@ features:
       - Anything rendered in the browser (demo-ui).
   - name: dual-transport
     status: draft
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/package.json
+        - gateway/tsconfig.json
     user_story: As the operator, I want to switch between streamed PCM and a
       buffered WAV with one setting, so that the demo stays usable while the
       streaming path is being made to behave, and so the two can be compared
@@ -45,6 +55,11 @@ features:
       - Caching (clip-cache).
   - name: reference-intake
     status: draft
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/package.json
+        - gateway/tsconfig.json
     user_story: As the operator, I want to record a reference voice in the browser
       and have it just work for cloning, so that I never open a terminal to
       convert WebM to WAV or discover the format was wrong after a failed
@@ -71,12 +86,20 @@ features:
         it to be exact.
   - name: clip-cache
     status: draft
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/package.json
+        - gateway/tsconfig.json
     user_story: As the operator, I want every generated clip kept on disk
       automatically, so that re-hearing something I already made is instant and
       free rather than a second GPU request.
     acceptance_criteria:
       - Generated audio is written to disk while streaming, without delaying the
         stream to the client.
+      - The on-disk format is the same whichever transport is active — raw PCM
+        beside a sidecar carrying rate and format — and WAV framing happens at
+        read.
       - A replayed clip is served from disk as a buffered read regardless of the
         active transport.
       - Each cached clip records the request that produced it — text,
@@ -92,6 +115,11 @@ features:
       - Transport selection (dual-transport).
   - name: voice-library
     status: draft
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/package.json
+        - gateway/tsconfig.json
     user_story: As the operator, I want the voices I make kept as named, reusable
       entries, so that using one again is picking it from a list rather than
       hunting through clip history and promoting a clip every time.
@@ -100,8 +128,9 @@ features:
         optional default direction, under a name the operator chooses.
       - Voices persist across gateway restarts and are listed independently of
         clip history — deleting a clip never removes a voice made from it.
-      - "Saving a voice from a generated clip reuses the already-normalised WAV
-        on disk: no re-encode and no second GPU call."
+      - "Saving a voice from a generated clip copies that clip's cached PCM and
+        frames it as WAV: a container write, not a re-encode, and no second GPU
+        call."
       - Selecting a stored voice supplies both halves of the vendor's required
         audio+transcript pair, so a request from the library can never be
         half-formed.
@@ -120,6 +149,11 @@ features:
         saved-voice primitive; this store is entirely local.
   - name: script-runner
     status: draft
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/package.json
+        - gateway/tsconfig.json
     user_story: As the operator, I want a whole script voiced cue by cue, so that a
       multi-line piece with different voices is one queued run rather than forty
       manual requests.
