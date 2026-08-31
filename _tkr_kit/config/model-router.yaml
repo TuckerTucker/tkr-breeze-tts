@@ -1,0 +1,42 @@
+# Model-router policy — git-canonical and deliberately secret-free.
+#
+# Two-tier default:
+#   - System default: the router is OFF (intent `disabled`), so Claude Code uses
+#     the native Claude subscription. Nothing in this file takes effect until you
+#     run `tkr router enable`; `tkr router disable` restores the native settings.
+#   - Router default (once enabled): every Claude Code model class (opus, sonnet,
+#     haiku) is routed to the OpenAI `gpt-5` deployment defined below.
+#
+# The OPENAI_API_KEY value belongs in the selected tkr-kit vault; this file names
+# only its vault key, never the secret.
+
+version: 1
+
+aliases:
+  opus:
+    deployments:
+      - openai-primary
+  sonnet:
+    deployments:
+      - openai-primary
+  haiku:
+    deployments:
+      - openai-primary
+
+deployments:
+  openai-primary:
+    provider: openai
+    model: gpt-5
+    api_key_ref: OPENAI_API_KEY
+
+routing:
+  strategy: simple-shuffle
+  retries: 2
+  timeout_ms: 60000
+
+compatibility:
+  # Routing Claude Code to a non-Claude model (gpt-5) is experimental and is NOT
+  # supported by Anthropic. This opt-in is required for the router to enable at
+  # all, and enablement is still gated: `tkr router enable` fails closed until
+  # `tkr router verify` records passing version/exact-target-bound evidence.
+  allow_experimental_non_claude: true
