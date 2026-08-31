@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-03-waking",
+  "title": "Cold start — waking the GPU",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/know-when-the-gpu-is-waking"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/03-waking.svg",
+  "specPath": null,
+  "artifactHash": "2018c1eb8d42c1110c4f7251e343c8f87e99cce0bef4d63fcd1bb1aa188eeeef",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:11:18.570Z",
+  "validatedAt": "2026-08-31T22:11:18.570Z"
+}

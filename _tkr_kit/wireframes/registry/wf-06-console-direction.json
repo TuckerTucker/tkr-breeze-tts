@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-06-console-direction",
+  "title": "Synthesis console — Direction mode",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/choose-a-voice-mode"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/06-console-direction.svg",
+  "specPath": null,
+  "artifactHash": "6d9b722fede3a470dbe93be975de2a4c1eabc51d1826a9cd51d70ed2f76a0f5f",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:21:32.845Z",
+  "validatedAt": "2026-08-31T22:21:32.845Z"
+}

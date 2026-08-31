@@ -1,0 +1,573 @@
+capability: demo-ui
+stories:
+  - name: compose-an-utterance
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Type what should be said and hear it, without a tour of settings first.
+    preconditions:
+      - The gateway is running
+    trigger_action: The operator opens the demo and types a line of text
+    steps:
+      - actor: Operator
+        action: Types the text to be spoken
+        system_response: Length against the usable ceiling updates as they type
+      - actor: Operator
+        action: Inserts a vocal event such as (laugh)
+        system_response: The marker is inserted correctly without the operator recalling
+          the syntax
+      - actor: Operator
+        action: Presses generate
+        system_response: The request is submitted and playback begins
+    acceptance_criteria:
+      - given: an empty text field
+        when: the operator looks at the generate control
+        then: it is visibly disabled with the reason stated, rather than enabled into a
+          failure
+      - given: text approaching the usable input ceiling
+        when: the operator types
+        then: the limit is shown in place as they go, not enforced after submission
+      - given: text typed and the page reloaded
+        when: the demo reopens
+        then: the draft is still there
+    feature: synthesis-console
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-01-console-design
+      - wf-09-first-run
+      - wf-10-blocked-states
+  - name: choose-a-voice-mode
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Understand and use the three ways this model can be told what voice to
+      produce, without reading documentation to tell them apart.
+    preconditions:
+      - The console accepts text
+    trigger_action: The operator picks a voice mode
+    steps:
+      - actor: Operator
+        action: Selects Design and describes a voice in words
+        system_response: Only the instruction field is shown; no reference audio is requested
+      - actor: Operator
+        action: Switches to Clone
+        system_response: Reference capture and the exact-transcript field appear
+          together, and the typed text is preserved
+      - actor: Operator
+        action: Switches to Direction
+        system_response: Both the reference and the instruction are shown, with the CFG
+          control that balances them
+    acceptance_criteria:
+      - given: any selected mode
+        when: the operator looks at the form
+        then: only the fields that mode needs are present, each mode explained in one
+          line in place rather than in a help modal
+      - given: a mode switch
+        when: it happens
+        then: text already written is preserved rather than cleared
+      - given: the measured cfg fall-off finding
+        when: the CFG control is rendered
+        then: it offers a continuous slider only if measurement showed the fast path
+          survives it, and discrete presets otherwise
+    feature: voice-modes
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-02-console-clone
+      - wf-06-console-direction
+  - name: hear-it-as-it-generates
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Hear the model's speed rather than read about it — audio should begin
+      before generation has finished.
+    preconditions:
+      - The gateway is in streaming transport
+      - A container is warm
+    trigger_action: The operator generates a clip on a warm container
+    steps:
+      - actor: Operator
+        action: Presses generate
+        system_response: Audio begins playing while the rest is still being produced
+      - actor: System
+        action: Finishes the stream
+        system_response: The measured time-to-first-audio for this clip is shown
+    acceptance_criteria:
+      - given: streaming transport and a warm container
+        when: generation starts
+        then: playback begins before the response completes
+      - given: PCM arriving in chunks
+        when: it is played
+        then: there are no audible clicks or gaps at chunk boundaries
+      - given: an AudioWorklet that fails to start
+        when: playback is attempted
+        then: it falls back to buffered playback rather than leaving the operator with
+          silence
+    feature: streaming-playback
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-04-generating
+  - name: know-when-the-gpu-is-waking
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Understand that a slow first request is a cold container waking, not the
+      model being slow.
+    preconditions:
+      - The service uses session-warm scaledown
+      - Measured cold and warm figures exist
+    trigger_action: The operator returns after an idle period longer than the
+      scaledown window and generates
+    steps:
+      - actor: Operator
+        action: Opens the demo after a gap
+        system_response: The page indicates the GPU is asleep and the next request will
+          be a cold start, before anything is submitted
+      - actor: Operator
+        action: Presses generate anyway
+        system_response: A named waking state appears with the expected duration and the
+          warm latency that will follow it
+      - actor: System
+        action: Finishes waking
+        system_response: Generation proceeds and the actual warm latency is shown beside
+          the earlier estimate
+    acceptance_criteria:
+      - given: a cold container
+        when: a request is submitted
+        then: the wake is a distinct named state, visually different from ordinary
+          generation, never a bare spinner
+      - given: a warm container
+        when: a request is submitted
+        then: no wake state appears at all
+      - given: any status to communicate
+        when: it is shown
+        then: it appears in place next to the action rather than as a toast
+    feature: wake-state
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-03-waking
+  - name: revisit-what-i-made
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Compare two generations against each other without regenerating either,
+      and build variations from something that already worked.
+    preconditions:
+      - At least two clips have been generated
+    trigger_action: The operator replays and compares earlier clips
+    steps:
+      - actor: Operator
+        action: Looks at the session history
+        system_response: Every generated clip is listed with the mode, instruction and
+          cfg value that produced it
+      - actor: Operator
+        action: Replays two clips in turn
+        system_response: Both play instantly from cache, and the console keeps its
+          current contents
+      - actor: Operator
+        action: Loads an earlier clip back into the console
+        system_response: Its settings populate the form as the starting point for a variation
+    acceptance_criteria:
+      - given: a generated clip
+        when: it appears in history
+        then: the settings that produced it are visible without opening anything
+      - given: a replay
+        when: it is triggered
+        then: it is instant, reaches no GPU, and does not reset the console
+      - given: a page reload
+        when: the demo reopens
+        then: the history is still there
+    feature: clip-history
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-05-history-actions
+  - name: reproduce-a-generation
+    status: draft
+    number: 2
+    actor: Operator
+    intent: Get the same result twice on purpose, and a different one on purpose —
+      so comparing two settings isolates the setting rather than sampling noise.
+    preconditions:
+      - The console can submit a generation
+    trigger_action: The operator locks or rerolls the seed before generating
+    steps:
+      - actor: Operator
+        action: Generates once, then again with the seed locked and nothing else changed
+        system_response: The same audio is produced, so any later difference is
+          attributable to what they changed
+      - actor: Operator
+        action: Presses reroll
+        system_response: A new seed is drawn and shown, producing a different take of
+          the same text
+      - actor: Operator
+        action: Changes only cfg_scale with the seed still locked
+        system_response: The difference heard is the cfg change alone, not a different sample
+    acceptance_criteria:
+      - given: a locked seed and otherwise identical inputs on the same deployment
+        when: the operator generates twice
+        then: the result is the same both times
+      - given: a locked seed
+        when: the operator changes exactly one other setting
+        then: the audible difference is attributable to that setting, which is what
+          makes A/B comparison meaningful
+      - given: reroll
+        when: it is pressed
+        then: a new seed is drawn and displayed, never hidden
+    feature: synthesis-console
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-01-console-design
+  - name: switch-vocal-event-language
+    status: draft
+    number: 3
+    actor: Operator
+    intent: Get the right vocal-event markers for the language being written,
+      without looking up which bracket form applies.
+    preconditions:
+      - The console accepts text
+    trigger_action: The operator switches the console between English and Chinese
+    steps:
+      - actor: Operator
+        action: Selects Chinese
+        system_response: The vocal-event palette offers the bracket forms the vendor
+          documents, such as [笑] and [咳嗽], instead of the English parenthesis
+          forms
+      - actor: Operator
+        action: Inserts an event and generates
+        system_response: The marker is inserted in the correct form for that language
+          and the request is sent unchanged in shape
+    acceptance_criteria:
+      - given: English selected
+        when: the operator opens the vocal-event palette
+        then: parenthesis forms such as (laugh) and (sigh) are offered
+      - given: Chinese selected
+        when: the operator opens the palette
+        then: bracket forms such as [笑] are offered instead
+      - given: either selection
+        when: the request is submitted
+        then: no language parameter is sent, because the vendor API has none — the model
+          is bilingual and infers from the text, so this is a UI affordance only
+    feature: synthesis-console
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-01-console-design
+  - name: keep-a-clip
+    status: draft
+    number: 2
+    actor: Operator
+    intent: Take a generated clip out of the demo as a normal audio file, without
+      knowing where the cache lives.
+    preconditions:
+      - At least one clip has been generated
+    trigger_action: The operator saves a clip from history or from the player
+    steps:
+      - actor: Operator
+        action: Chooses save on a clip
+        system_response: A WAV file is downloaded, named from the text that produced it
+      - actor: Operator
+        action: Opens the file outside the demo
+        system_response: It plays as an ordinary 24kHz mono WAV in any audio application
+    acceptance_criteria:
+      - given: a clip generated in streaming transport and cached as raw PCM
+        when: the operator saves it
+        then: it is delivered as a valid WAV, not raw PCM that nothing outside the demo
+          can open
+      - given: a saved file
+        when: it is named
+        then: the name derives from the text that produced it rather than an opaque
+          cache id
+      - given: a save
+        when: it happens
+        then: no GPU request is made — it is served from the existing cache route
+    feature: clip-history
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-05-history-actions
+  - name: supply-a-reference-file
+    status: draft
+    number: 2
+    actor: Operator
+    intent: Clone a voice from an audio file I already have, which is usually better
+      reference material than anything a laptop microphone can capture.
+    preconditions:
+      - Clone or Direction mode is selected
+      - The operator has an audio file and its exact transcript
+    trigger_action: The operator drops or picks an audio file as the reference
+    steps:
+      - actor: Operator
+        action: Drops an audio file onto the reference area, or picks one
+        system_response: The file is accepted, its name and duration shown, and the
+          transcript field is revealed alongside it
+      - actor: Operator
+        action: Pastes the exact transcript of that audio
+        system_response: The pair is complete and generate becomes available
+      - actor: Operator
+        action: Submits
+        system_response: The gateway normalises the file to WAV and forwards it; the
+          clone is produced
+    acceptance_criteria:
+      - given: Clone or Direction mode
+        when: the operator looks at the reference control
+        then: file upload and microphone capture are offered as peer options, neither
+          presented as a fallback for the other
+      - given: a common audio format such as MP3, M4A, FLAC or WAV
+        when: it is supplied
+        then: it is accepted and normalised by the gateway rather than refused for being
+          the wrong container
+      - given: a supplied file without a transcript
+        when: submission is attempted
+        then: it is refused locally naming the missing transcript, because the vendor
+          requires the pair and an incomplete one would waste a GPU wake
+      - given: a file that is not audio, or is unreadable
+        when: it is dropped
+        then: it is rejected at the point of drop with the reason shown, not on submit
+    feature: voice-modes
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-02-console-clone
+      - wf-10-blocked-states
+  - name: promote-a-clip-to-a-voice
+    status: draft
+    number: 3
+    actor: Operator
+    intent: Keep a voice I designed, by turning a generated clip into reference
+      audio I can clone from later — the model has no saved-voice primitive, so
+      this is how a created voice persists.
+    preconditions:
+      - At least one clip has been generated
+      - Clone and Direction modes accept reference audio
+    trigger_action: The operator chooses 'use as reference voice' on a generated clip
+    steps:
+      - actor: Operator
+        action: Designs a voice from a description and hears a clip they like
+        system_response: The clip is generated and appears in history
+      - actor: Operator
+        action: Chooses use-as-reference on that clip
+        system_response: The mode switches to Clone, the clip becomes the reference
+          audio, and the transcript is filled in automatically from the text
+          that produced it
+      - actor: Operator
+        action: Types new text and generates
+        system_response: The new line is spoken in the designed voice
+    acceptance_criteria:
+      - given: a clip generated by this demo
+        when: it is promoted to a reference
+        then: ref_text is populated automatically from the text that produced it,
+          because the system already knows it and the vendor requires it to be
+          exact
+      - given: a promoted clip cached as raw PCM
+        when: it is sent as reference
+        then: it is normalised to WAV on the way, the same path an uploaded file takes
+      - given: a designed voice promoted this way
+        when: the operator generates new text
+        then: the voice carries across, which is how a created voice survives without a
+          saved-voice primitive in the model
+      - given: promotion
+        when: it happens
+        then: the operator is switched into the mode that can use it rather than left to
+          work out that Design cannot
+    feature: clip-history
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-05-history-actions
+  - name: pick-a-saved-voice
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Reuse a voice I already made by choosing it, instead of supplying its
+      audio and transcript again.
+    preconditions:
+      - At least one voice has been saved
+      - Clone or Direction is selected
+    trigger_action: The operator opens the voice library and picks a voice
+    steps:
+      - actor: Operator
+        action: Chooses Clone and opens saved voices
+        system_response: The library lists each voice with its name and what it came from
+      - actor: Operator
+        action: Picks one
+        system_response: Reference audio and the exact transcript are both filled from
+          the store, and generate becomes available
+      - actor: Operator
+        action: Switches to Direction
+        system_response: The same voice stays selected and a delivery instruction field
+          appears alongside it
+    acceptance_criteria:
+      - given: Clone or Direction mode
+        when: the operator looks at reference intake
+        then: saved voices, file upload and microphone capture are offered as three peer
+          options
+      - given: a picked voice
+        when: the fields populate
+        then: reference and transcript arrive together and the pair can never be left
+          half-filled
+      - given: a picked voice and a switch between Clone and Direction
+        when: the mode changes
+        then: the voice selection survives, because it is the same reference either way
+    feature: voice-picker
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-07-voice-library
+  - name: name-a-voice-i-made
+    status: draft
+    number: 2
+    actor: Operator
+    intent: Turn a voice I just designed into something I can find again, at the
+      moment I decide I like it.
+    preconditions:
+      - A clip has just been generated
+    trigger_action: The operator saves the current clip as a named voice
+    steps:
+      - actor: Operator
+        action: Hears a designed voice they like and chooses save as voice
+        system_response: A name is suggested from the instruction that produced it, and
+          can be edited in place
+      - actor: Operator
+        action: Accepts the name
+        system_response: The voice joins the library showing that it was designed, and
+          from which instruction
+      - actor: Operator
+        action: Deletes a voice they no longer want
+        system_response: It disappears immediately with an undo available — no
+          confirmation dialog
+    acceptance_criteria:
+      - given: a designed clip
+        when: it is saved as a voice
+        then: a name is pre-filled from the instruction rather than left blank, and
+          stays editable
+      - given: a voice in the library
+        when: the operator reads it
+        then: its origin is visible — designed from an instruction, or cloned from
+          supplied audio
+      - given: a deletion
+        when: it happens
+        then: it takes effect immediately with an undo, never behind an 'are you sure'
+          dialog
+    feature: voice-picker
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-07-voice-library
+  - name: import-a-script
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Start from a script or subtitle file I already have, rather than
+      retyping it a line at a time.
+    preconditions:
+      - The gateway is running
+    trigger_action: The operator drops a VTT or text file onto the script surface
+    steps:
+      - actor: Operator
+        action: Drops a WebVTT file
+        system_response: Its cues become an editable list, each showing its target
+          timing from the file
+      - actor: Operator
+        action: Assigns a voice to each cue, or one voice to all
+        system_response: Voices come from the library and each cue shows which it will use
+      - actor: Operator
+        action: Runs the script
+        system_response: Cues fill in one at a time with visible progress
+    acceptance_criteria:
+      - given: a WebVTT file
+        when: it is dropped in
+        then: every cue becomes an editable line carrying its target timing
+      - given: a plain text file
+        when: it is dropped in
+        then: lines become untimed cues, with no target timing shown rather than a
+          fabricated one
+      - given: a malformed VTT
+        when: it is dropped
+        then: the failing cue is named and the rest still import, instead of the whole
+          file being rejected
+    feature: script-editor
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-08-script-editor
+  - name: edit-one-line-without-redoing-the-rest
+    status: draft
+    number: 2
+    actor: Operator
+    intent: Fix a single line that came out wrong without paying to regenerate the
+      thirty-nine that were fine.
+    preconditions:
+      - A script has been generated at least once
+    trigger_action: The operator edits the text or voice of one cue
+    steps:
+      - actor: Operator
+        action: Rewrites the text of cue 07
+        system_response: Only cue 07 is marked stale; every other cue keeps its audio
+      - actor: Operator
+        action: Re-runs
+        system_response: Cue 07 regenerates and the rest replay from cache, so the run
+          is near-instant
+      - actor: Operator
+        action: Changes the voice on cue 12 instead
+        system_response: Cue 12 goes stale on the same rule, because voice is part of
+          what identifies a cue's audio
+    acceptance_criteria:
+      - given: an edit to one cue's text, voice, cfg or seed
+        when: the change lands
+        then: only that cue becomes stale and the rest stay done
+      - given: a re-run with one stale cue
+        when: it executes
+        then: exactly one GPU request is made
+      - given: any cue
+        when: the operator looks at it
+        then: its state is visible in place — queued, generating, done, stale, or
+          drifted
+    feature: script-editor
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-08-script-editor
+  - name: reconcile-timing-drift
+    status: draft
+    number: 3
+    actor: Operator
+    intent: Understand where generated speech does not fit the timings the source
+      file asked for, and decide what to do about it, rather than having the
+      system quietly distort the audio.
+    preconditions:
+      - A timed VTT was imported and generated
+    trigger_action: The operator reviews cues whose generated duration differs from the target
+    steps:
+      - actor: System
+        action: Finishes a cue whose audio is longer than its target slot
+        system_response: The cue shows target, actual, and the drift between them
+      - actor: Operator
+        action: Shortens the line, or rerolls the seed
+        system_response: Only that cue regenerates and the drift is recomputed
+      - actor: Operator
+        action: Accepts the drift instead
+        system_response: The exported VTT carries the real timings, re-flowed, rather
+          than the original targets
+    acceptance_criteria:
+      - given: a cue whose generated audio differs from its target duration
+        when: it completes
+        then: target, actual and drift are all shown, rather than the difference being
+          hidden
+      - given: any drift
+        when: the system handles it
+        then: the audio is never time-stretched or pitch-corrected to fit — the timing
+          is reported, not forced
+      - given: accepted drift across a script
+        when: VTT is exported
+        then: cue timings are re-flowed from the real durations so the file stays
+          internally consistent
+    feature: script-editor
+    flow_refs:
+      - demo-ui-voice-loop
+    wireframe_refs:
+      - wf-08-script-editor

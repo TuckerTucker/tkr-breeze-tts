@@ -1,0 +1,303 @@
+{
+  "id": "swiss",
+  "name": "Swiss",
+  "version": "1.0.0",
+  "spec": {
+    "spec_version": "0.2",
+    "tagline": "Grid + Grotesk + Single Saturated Accent",
+    "grammar_family": "contemporary_clean",
+    "tokens": {
+      "common": {
+        "color": {
+          "ink": "#000000",
+          "ink-muted": "#666666",
+          "surface": "#FFFFFF",
+          "surface-inset": "#F5F5F5",
+          "accent": "#E3000B",
+          "accent-on": "#FFFFFF",
+          "outline": "#E0E0E0",
+          "outline-strong": "#000000",
+          "image-placeholder": "#F5F5F5"
+        },
+        "typography": {
+          "display": {
+            "family": "Inter",
+            "size": 40,
+            "weight": 700,
+            "leading": 1,
+            "case": "mixed"
+          },
+          "headline": {
+            "family": "Inter",
+            "size": 32,
+            "weight": 700,
+            "leading": 1.05,
+            "case": "mixed"
+          },
+          "title": {
+            "family": "Inter",
+            "size": 22,
+            "weight": 700,
+            "leading": 1.1,
+            "case": "mixed"
+          },
+          "body": {
+            "family": "Inter",
+            "size": 14,
+            "weight": 400,
+            "leading": 1.4,
+            "case": "mixed"
+          },
+          "caption": {
+            "family": "Inter",
+            "size": 9,
+            "weight": 400,
+            "leading": 1.2,
+            "case": "uppercase",
+            "tracking": 0.16
+          }
+        },
+        "spacing": {
+          "xs": 8,
+          "sm": 16,
+          "md": 24,
+          "lg": 32,
+          "xl": 48
+        },
+        "stroke": {
+          "hairline": 1,
+          "regular": 1,
+          "bold": 2
+        },
+        "radius": {
+          "none": 0,
+          "sm": 0,
+          "md": 0,
+          "full": 9999
+        }
+      },
+      "system": {
+        "grid": {
+          "columns": 12,
+          "gutter": 24,
+          "margin": 48
+        },
+        "headline-stroke-overlay": true
+      },
+      "colors": {
+        "page_bg": "#FFFFFF",
+        "surface": "#FFFFFF",
+        "surface_elevated": "#F5F5F5",
+        "text_primary": "#000000",
+        "text_secondary": "#000000",
+        "text_muted": "#666666",
+        "accent": "#E3000B",
+        "palette": [
+          {
+            "name": "ink",
+            "value": "#000000",
+            "role": "all body and structural type",
+            "usage_constraint": "the only color for body type; never substituted with grays"
+          },
+          {
+            "name": "paper",
+            "value": "#FFFFFF",
+            "role": "page and primary surface",
+            "usage_constraint": "no off-whites or warm whites; pure paper"
+          },
+          {
+            "name": "gray_surface",
+            "value": "#F5F5F5",
+            "role": "secondary surface (selection background, message blocks)",
+            "usage_constraint": "the only gray surface; no intermediate tiers"
+          },
+          {
+            "name": "gray_metadata",
+            "value": "#666666",
+            "role": "9px uppercase metadata only",
+            "usage_constraint": "never used for body type or anything above 11px"
+          },
+          {
+            "name": "rule_hairline",
+            "value": "#F0F0F0",
+            "role": "1px dividers between subtle sections"
+          },
+          {
+            "name": "rule_default",
+            "value": "#E0E0E0",
+            "role": "1px dividers between distinct sections"
+          },
+          {
+            "name": "red",
+            "value": "#E3000B",
+            "role": "the system's only accent",
+            "usage_constraint": "exactly 4 uses per screen — see rulebook"
+          }
+        ]
+      },
+      "typography": {
+        "families": [
+          {
+            "id": "structural",
+            "stack": "Inter, system-ui, sans-serif",
+            "role": "every piece of type in the system",
+            "mixing_rule": "no other family permitted; this is a single-typeface system"
+          }
+        ],
+        "scale": [
+          {
+            "size": 9,
+            "role": "metadata"
+          },
+          {
+            "size": 11,
+            "role": "small_label"
+          },
+          {
+            "size": 13,
+            "role": "secondary_body"
+          },
+          {
+            "size": 14,
+            "role": "body"
+          },
+          {
+            "size": 22,
+            "role": "display_small"
+          },
+          {
+            "size": 32,
+            "role": "display_medium"
+          },
+          {
+            "size": 40,
+            "role": "display_large"
+          }
+        ],
+        "case": {
+          "metadata": "uppercase",
+          "body": "mixed",
+          "headers": "mixed"
+        },
+        "tracking": {
+          "metadata": 0.16,
+          "body": 0,
+          "headers": 0
+        }
+      },
+      "spacing": {
+        "grid_unit": 8,
+        "allowed_steps": [
+          8,
+          16,
+          24,
+          32,
+          40,
+          48,
+          64
+        ],
+        "enforcement": "strict"
+      },
+      "borders": {
+        "radius_default": 0,
+        "radius_inputs": 0,
+        "radius_chrome": 0,
+        "no_radius_anywhere": true
+      },
+      "elevation": {
+        "strategy": "typographic",
+        "config": {
+          "rule_weight_hairline": {
+            "width": 1,
+            "color": "#F0F0F0"
+          },
+          "rule_weight_default": {
+            "width": 1,
+            "color": "#E0E0E0"
+          },
+          "rule_weight_strong": {
+            "width": 1,
+            "color": "#000000"
+          },
+          "accent_bar": {
+            "width": 2,
+            "color": "#E3000B",
+            "position": "left",
+            "usage": "selected list items only"
+          },
+          "spacing_units": [
+            8,
+            16,
+            24,
+            32,
+            40,
+            48,
+            64
+          ],
+          "no_shadow": true,
+          "no_radius": true
+        }
+      }
+    },
+    "rulebook": [
+      {
+        "id": "swiss-red-finite-resource",
+        "severity": "required",
+        "check_method": "mechanical"
+      },
+      {
+        "id": "swiss-grid-alignment",
+        "severity": "required",
+        "check_method": "both"
+      },
+      {
+        "id": "swiss-zero-radius",
+        "severity": "required",
+        "check_method": "mechanical"
+      },
+      {
+        "id": "swiss-no-shadows",
+        "severity": "required",
+        "check_method": "mechanical"
+      },
+      {
+        "id": "swiss-numerical-display",
+        "severity": "required",
+        "check_method": "semantic"
+      },
+      {
+        "id": "swiss-zero-padded-indices",
+        "severity": "required",
+        "check_method": "semantic"
+      },
+      {
+        "id": "swiss-fixed-type-scale",
+        "severity": "required",
+        "check_method": "mechanical"
+      },
+      {
+        "id": "swiss-single-typeface",
+        "severity": "required",
+        "check_method": "mechanical"
+      },
+      {
+        "id": "swiss-metadata-uppercase",
+        "severity": "required",
+        "check_method": "mechanical"
+      },
+      {
+        "id": "swiss-no-emoji-imagery",
+        "severity": "required",
+        "check_method": "semantic"
+      }
+    ],
+    "library": "design-system-skill/libraries/swiss-library"
+  },
+  "schemaVersion": 1,
+  "contentHash": "5c557ba58fd040adc5165d68e9c5f21267d88577d5cb9917b8cb9bcfacd9dc5f",
+  "validation": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:11:17.330Z"
+}

@@ -1,0 +1,216 @@
+capability: demo-ui
+slice_specs:
+  - title: Console shell
+    status: draft
+    purpose: Give the operator one surface where typing a line and hearing it takes
+      a single action.
+    interface: "The root view: text area, instruction field, vocal-event affordance,
+      generate control, and a status region adjacent to that control."
+    behavior: "Keep text and instruction always visible — both are needed in every
+      mode. Offer vocal-event insertion at the caret, with the palette
+      determined by a language selection: English parenthesis forms, or the
+      Chinese bracket forms the vendor documents. Send no language parameter —
+      the vendor API has none and the model infers language from the text, so
+      the selection drives the palette only. Show length against the usable
+      ceiling continuously as the operator types. Provide a seed control that is
+      always visible, lockable, and rerollable, so a held seed isolates the
+      effect of any other change. Keep the generate control disabled with a
+      visible reason whenever the request cannot succeed. Persist the draft, the
+      language selection and the seed state so a reload loses nothing."
+    errors: Over-length input → surfaced while typing, never as a post-submit
+      rejection. Gateway unreachable → generate disabled with that stated as the
+      reason, rather than enabled into a failure. No toasts; status appears next
+      to the action it concerns.
+    tests: Generate is disabled with a reason on empty text and on an unreachable
+      gateway. Vocal-event insertion places the marker at the caret, in the form
+      matching the selected language. No language field appears in the outgoing
+      request. A locked seed with identical inputs reproduces the same
+      generation; reroll draws and displays a new one. The length indicator
+      tracks input live. A reload restores draft, language and seed.
+    slice: 1
+  - title: Voice modes
+    status: draft
+    purpose: Make the model's three ways of specifying a voice legible and usable
+      without documentation.
+    interface: Mode selector over design | clone | direction, driving which fields
+      render and which request shape is sent.
+    behavior: "Design shows the instruction only. Clone and direction reveal
+      reference intake and the exact-transcript field together, never one
+      without the other, mirroring the vendor's both-or-neither rule so the
+      invalid state cannot be expressed. Reference intake offers file upload
+      (drop or pick) and microphone capture as peer options, neither framed as
+      the other's fallback — an existing clean recording is usually the better
+      reference and usually the one with a transcript to hand. Show an accepted
+      file's name and duration. Direction adds a second instruction field — how
+      the line should be delivered — on top of the reference. The CFG control is
+      present in ALL THREE modes, not only direction: it is
+      instruction-following strength everywhere (the vendor's own voice-design
+      example runs at 4.0), and in the reference modes it is the dial between
+      preserving the reference voice and following the instruction. It is
+      therefore the only thing separating clone from direction, which share one
+      template and one request shape. Render it as discrete presets at the
+      captured 1.0 and 4.0 if the measurement finding shows an uncaptured value
+      leaves the fast path, and as a continuous slider only if it does not.
+      Preserve typed text across mode switches. Carry one line of in-place
+      explanation per mode."
+    errors: A non-audio or unreadable file → rejected at the point of drop with the
+      reason shown, not on submit. An unavailable microphone → the capture
+      control is disabled with the reason shown; upload is unaffected, since it
+      was never the fallback. Reference without transcript, or transcript
+      without reference → generate stays disabled naming the missing half, so an
+      incomplete pair never wakes a GPU. A missing measurement finding → default
+      to the conservative discrete presets rather than presenting a slider whose
+      latency behaviour is unverified.
+    tests: Each mode renders exactly its own field set, and direction shows both the
+      reference and a delivery instruction. The CFG control appears in all three
+      modes, labelled for what it does in each. Upload and capture are both
+      present in clone and direction, and disabling the microphone leaves upload
+      working. An accepted file shows name and duration. Reference and
+      transcript always appear together, and generate stays disabled until both
+      are present. Text survives a mode switch. The CFG control shape follows
+      the recorded finding, and falls back to presets when no finding is
+      present.
+    slice: 2
+  - title: Streaming playback
+    status: draft
+    purpose: Make the model's latency audible by playing audio before generation has
+      finished.
+    interface: A player accepting either a PCM stream or a WAV response, selected to
+      match the gateway transport; reports measured first-audio time.
+    behavior: In streaming mode, read the response body as a stream, convert s16le
+      to float32, and feed an AudioWorklet through a ring buffer sized to absorb
+      network jitter without adding perceptible delay. Begin playback on the
+      first chunk. In buffered mode, play the returned WAV through a standard
+      element. Record the interval from request send to first audible sample and
+      display it once playback begins.
+    errors: AudioWorklet unavailable or failing to start → fall back to buffered
+      playback automatically, so the operator gets audio rather than silence.
+      Buffer underrun → hold rather than emit a click, and resume when data
+      arrives. Aborted stream → stop cleanly and report the clip as incomplete
+      rather than leaving the player stuck.
+    tests: Playback begins before the response completes, asserted on timing. No
+      discontinuity at chunk boundaries in the produced samples. A forced
+      worklet failure falls back and still produces audio. Reported first-audio
+      time matches an independent measurement of the same request.
+    slice: 3
+  - title: Wake state
+    status: draft
+    purpose: Tell the truth about serverless cold start, so a slow first request
+      reads as a waking container rather than a slow model.
+    interface: A readiness indicator driven by gateway health, plus a distinct
+      waking state during a cold request.
+    behavior: Poll gateway health cheaply enough to know before submission whether
+      the next request will be warm or cold, and show that. On a cold request,
+      present a named waking state that is visually distinct from ordinary
+      generation, carrying the expected duration from measured data and the warm
+      latency that will follow. On completion, show the observed warm latency
+      beside the earlier estimate. Show no wake state at all when warm. Render
+      status in place, adjacent to the action — never a toast.
+    errors: Health unavailable → report readiness as unknown rather than guessing
+      warm, since a wrong warm claim is the one that misleads. A wake exceeding
+      its estimate → keep the state and update the elapsed figure rather than
+      switching to an indeterminate spinner. Missing measured data → say the
+      duration is not yet measured rather than invent one.
+    tests: A cold request renders the waking state and a warm request renders none.
+      Readiness is visible before submission. With health unavailable, readiness
+      is unknown, not warm. Expected and observed figures are both shown after a
+      cold start.
+    slice: 4
+  - title: Clip history
+    status: draft
+    purpose: Let the operator compare and iterate on generations without
+      regenerating them.
+    interface: A history list backed by the gateway clip cache, with replay and
+      load-into-console actions per entry.
+    behavior: "List every generated clip with the settings that produced it visible
+      without opening anything — mode, instruction, cfg value, seed, and
+      measured first-audio time. Replay reads from the cache and reaches no GPU.
+      Replay does not clear or reset the console, so an A/B comparison never
+      destroys work in progress. Loading an entry populates the console with its
+      settings, seed included, as the starting point for a variation. Offer
+      promote-to-reference on any clip: switch to Clone, attach the clip as
+      reference audio, and populate ref_text automatically from the text that
+      produced it — the system already holds that text and the vendor requires
+      the transcript to be exact, so asking the operator to retype it would be
+      asking for work already done. Offer save-as-WAV on any clip and on the
+      current player, served through the gateway's existing cache route and WAV
+      wrapper, named from the text that produced it. Persist history across
+      reload."
+    errors: A cache entry missing on disk → shown as unavailable and removed from
+      the list rather than failing playback silently. Cache unreachable →
+      history renders read-only with the reason shown, rather than disappearing.
+      Loading an entry never overwrites unsaved console text without the
+      operator initiating it. A save of a clip cached as raw PCM → wrapped as
+      WAV before delivery, never handed over as bytes nothing outside the demo
+      can open. A promotion while in Design mode → switches to Clone rather than
+      silently attaching a reference the current mode cannot send.
+    tests: Every generation appears with its settings including seed. Replay reaches
+      no upstream, asserted with upstream unreachable. Replay leaves console
+      contents intact. Load-into-console populates every field of the original
+      request, seed included. Promote-to-reference switches mode, attaches the
+      clip, and fills ref_text from the originating text; generating afterwards
+      carries the voice across. A promoted PCM clip is normalised to WAV on the
+      way upstream. A saved file decodes as a valid 24kHz mono WAV and is named
+      from its source text. History survives reload.
+    slice: 5
+  - title: Voice library and picker
+    status: draft
+    purpose: Make a voice something the operator picks by name, rather than
+      something they rebuild from a clip each time.
+    interface: A library panel listing saved voices with origin and default
+      direction; a picker embedded in Clone and Direction reference intake;
+      save-as-voice actions on the player and history entries.
+    behavior: Offer saved voices as a third peer option beside upload and microphone
+      capture wherever a reference is needed. Selecting a voice fills reference
+      and transcript together from the store and never one alone. Show each
+      voice's name, origin (designed from an instruction, or cloned from
+      supplied audio) and default direction if it has one. Offer save-as-voice
+      from the player and from any history entry, pre-filling the name from the
+      instruction that produced the clip and leaving it editable in place.
+      Deleting removes the voice immediately and offers an undo; no confirmation
+      dialog. A selected voice survives switching between Clone and Direction,
+      because the reference is identical in both.
+    errors: An empty library → the option is present but explains that saving a clip
+      is how voices get here, rather than being hidden. A voice whose audio the
+      gateway reports unavailable → shown as unavailable and unselectable, with
+      the reason, rather than selectable into a failed request. A save attempted
+      on a clip no longer cached → the action is disabled with that stated. A
+      duplicate name → accepted and disambiguated, never blocked mid-typing.
+    tests: Clone and Direction each show three peer reference options. Selecting a
+      voice populates reference and transcript together and enables generate.
+      The selection survives a Clone/Direction switch. Save-as-voice pre-fills a
+      name from the instruction and remains editable. Delete takes effect
+      immediately and undo restores the voice. An empty library explains itself
+      instead of hiding. An unavailable voice is not selectable.
+    slice: 6
+  - title: Script editor
+    status: draft
+    purpose: Make a multi-voice script something the operator edits line by line,
+      where fixing one line costs one line.
+    interface: "A cue list view: per-row text, assigned voice, state,
+      target/actual/drift, and row actions; plus import drop target, run
+      control, and export actions."
+    behavior: Present the script as an ordered cue list — the list is the document.
+      Each row carries editable text, a voice picked from the library, and its
+      state (queued, generating, done, stale, drifted). Accept a dropped VTT or
+      text file. Editing a row's text, voice, cfg or seed marks only that row
+      stale and leaves every other row's audio intact. Running regenerates stale
+      rows only. Where a row came from a timed VTT, show target, actual and
+      drift together, and offer reroll, shorten, or accept — the three honest
+      responses. Show whole-script progress during a run. Export to VTT with
+      re-flowed real timings, and to one continuous audio file.
+    errors: A malformed imported cue → surfaced as a named row that needs attention,
+      not a silent drop and not a rejected file. A row whose voice was deleted
+      from the library → marked unrunnable with the reason, and the run skips it
+      rather than failing the script. Text beyond the model's ceiling → flagged
+      on the row while typing, with run disabled for that row, never rejected
+      after dispatch. Drift → always displayed; the UI offers no option that
+      would stretch audio to fit, because that option does not exist.
+    tests: A dropped VTT becomes an editable cue list carrying target timings;
+      dropped plain text yields untimed rows with no fabricated timings. Editing
+      one row marks only it stale. A re-run issues one GPU request for one stale
+      row. Row state is visible in place for every row. Drift shows target,
+      actual and difference. Deleting a voice used by a row marks that row
+      unrunnable with the reason. Export produces a VTT whose timings match the
+      generated audio.
+    slice: 7

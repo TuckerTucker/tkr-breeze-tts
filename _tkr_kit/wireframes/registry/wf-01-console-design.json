@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-01-console-design",
+  "title": "Synthesis console — Design mode",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/compose-an-utterance",
+    "demo-ui/story/reproduce-a-generation",
+    "demo-ui/story/switch-vocal-event-language"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/01-console-design.svg",
+  "specPath": null,
+  "artifactHash": "512a20b5c5f6fcdf858fb54bb27013f257cac5911eafa145ac938a6f6c606898",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:11:17.961Z",
+  "validatedAt": "2026-08-31T22:11:17.961Z"
+}

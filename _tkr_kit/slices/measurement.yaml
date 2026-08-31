@@ -1,0 +1,51 @@
+capability: measurement
+slices:
+  - paths:
+      - bench/harness.py
+      - bench/__init__.py
+    depends_on: []
+    story_ids:
+      - measure-first-audio-latency
+    delivers:
+      - Time-to-first-audio measured at the client from request send to first
+        PCM byte — the only honest place to measure it, since the value under
+        test is end-to-end.
+      - Real-time factor from wall time over audio duration, with duration
+        derived exactly as bytes / 2 / 24000 (mono s16le at 24kHz) rather than
+        estimated.
+      - Cold and warm runs reported as distinct classes, cold forced by idling
+        past the scaledown window instead of assumed.
+      - Warmup milliseconds scraped from the log line the vendor already emits,
+        decomposing cold start into container start, weight load, and graph
+        capture rather than one opaque number.
+      - Results written to a file the brief and plan can cite by path.
+    title: "Latency harness: first-audio, real-time factor, cold versus warm"
+    number: 1
+    layer: integration
+    feature: latency-harness
+    status: draft
+  - paths:
+      - bench/cfg_probe.py
+      - bench/findings
+    depends_on:
+      - 1
+    story_ids:
+      - probe-the-cfg-fast-path
+    delivers:
+      - "The experiment that closes the plan's one open decision: identical warm
+        requests at cfg_scale 1.0 and 4.0 (both captured in configs/fast.json)
+        against an uncaptured value such as 2.5."
+      - A token-length probe above the 512-token captured ceiling, since the
+        same freeze_after_warmup mechanism governs both.
+      - Warm-only execution, because a cold start would swamp the effect being
+        measured.
+      - A recorded finding stating plainly whether a continuous CFG slider
+        preserves the latency claim — the evidence the demo-ui CFG control is
+        built against, rather than an assumption read out of a config file.
+      - The finding written where the brief and the plan's open decision can
+        cite it by path.
+    title: CFG fast-path fall-off probe
+    number: 2
+    layer: integration
+    feature: cfg-falloff-probe
+    status: draft

@@ -1,0 +1,85 @@
+capability: modal-inference
+slice_specs:
+  - title: Runtime image
+    status: draft
+    purpose: Produce a container image in which the vendor Breeze runtime imports
+      and runs, with no GPU-architecture assumption baked in.
+    interface: modal.Image — consumed by the serving class and the volume-fill function.
+    behavior: "Build on Python 3.12 (the only cp3xx with a published flash-attn
+      wheel for torch 2.9). Install vendor requirements at exact pins, then
+      FlashAttention 2.8.3 from the published cu12/torch2.9/cp312 x86_64 wheel
+      by URL. Place the vendor source on the import path. Run an import smoke
+      check as the final build step. Do not compile flash-attn from source: the
+      vendor's docker/build.sh pins FLASH_ATTN_CUDA_ARCHS=90, which would tie
+      the image to Hopper."
+    errors: cxx11abi or torch/flash-attn version mismatch → the smoke check fails
+      the build naming the failing import, never a successful build that raises
+      at first inference. An unavailable wheel URL → build failure at that step,
+      not a silent fallback to source compilation.
+    tests: Build succeeds; smoke check imports torch, flash_attn, transformers,
+      qwen_tts and the vendor models package. Assert flash_attn version is 2.8.3
+      and that torch reports CUDA availability inside a GPU container.
+    slice: 1
+  - title: Weights volume
+    status: draft
+    purpose: Hold the 7.7GB checkpoint so it is downloaded once and every later
+      deploy reuses it.
+    interface: modal.Volume mounted read-only at a fixed path; a fill entrypoint
+      invoked manually before first deploy.
+    behavior: Create a named Volume. The fill function runs snapshot_download for
+      BreezeBlue/Breeze-TTS-2 with HF_XET_HIGH_PERFORMANCE=1, writing both model
+      shards, the index, tokenizer files and the bundled audio_tokenizer
+      directory. Re-running skips files already present. A verification pass
+      confirms the shards and audio_tokenizer exist before the volume is
+      declared usable.
+    errors: Missing audio_tokenizer → named explicitly, because the vendor's
+      load_runtime raises a FileNotFoundError deep in the loader that does not
+      read as a provisioning problem. Interrupted download → re-runnable without
+      duplicating completed files.
+    tests: Fill into an empty volume yields the expected file set and total size.
+      Re-running is a no-op. Verification detects a deliberately removed
+      audio_tokenizer and names it.
+    slice: 2
+  - title: Serving class
+    status: draft
+    purpose: Serve the vendor FastAPI app from a Modal container that is fully
+      loaded and warmed before it receives any traffic.
+    interface: A modal.Cls with @modal.enter() and @modal.asgi_app(); exposes the
+      vendor routes GET /health and POST /v1/audio/speech unchanged.
+    behavior: "In enter(): populate breeze_infer.api._settings, then run the
+      vendor's load path (tokenizer, model, audio tokenizer) and the fast-path
+      warmup, logging warmup milliseconds. Then return the vendor app from the
+      asgi_app function. Loading must not sit in the FastAPI lifespan, because
+      Modal marks a container warm when enter() returns and would route traffic
+      to a container still answering 503. Serve one input per container — no
+      @modal.concurrent."
+    errors: Settings not injected → the vendor raises RuntimeError('API settings are
+      not initialized'); this is prevented, not caught. A load failure in
+      enter() → the container never reports warm, so no request is routed to it.
+      Upstream 409 from the vendor's _request_lock passes through unchanged for
+      the gateway to type.
+    tests: Health returns ready immediately once warm, never 503. A streamed
+      response yields its first bytes before generation completes. A second
+      concurrent request receives 409. Warmup milliseconds appear in the
+      container log.
+    slice: 3
+  - title: Deployment configuration
+    status: draft
+    purpose: Express GPU, warm behaviour, authentication and fast-path posture as
+      one configuration surface rather than decorator arguments spread through
+      the service.
+    interface: "A settings object read by the serving class at decoration time: gpu,
+      scaledown_window, min_containers, requires_proxy_auth, fast-path flags."
+    behavior: Default gpu to H100 (the part the published figures were measured on)
+      and treat it as swappable, since the multi-arch wheel removes any image
+      dependency on architecture. Default scaledown_window to 300 seconds —
+      session-warm. Leave min_containers unset so the service scales to zero.
+      Enable requires_proxy_auth. Express the fast path as one setting rather
+      than five independent booleans.
+    errors: An unrecognised GPU value → rejected at load with the allowed set named,
+      rather than failing at deploy. scaledown_window outside Modal's 2s-20min
+      range → rejected with the bound named.
+    tests: Defaults assert to H100, 300s, min_containers unset, proxy auth on.
+      Changing the GPU value requires no image rebuild. An out-of-range
+      scaledown value is rejected with its bound.
+    slice: 4

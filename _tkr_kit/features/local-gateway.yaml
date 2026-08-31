@@ -1,0 +1,150 @@
+capability: local-gateway
+features:
+  - name: credential-proxy
+    status: draft
+    user_story: As the operator, I want the browser to talk only to localhost while
+      the Modal token stays server-side, so that no credential is ever readable
+      in page source and CORS never becomes a problem to solve.
+    acceptance_criteria:
+      - Modal-Key and Modal-Secret are read from the environment and attached
+        server-side only.
+      - No response to the browser contains the token or any part of it.
+      - The gateway exposes its own routes for synthesis and health; the browser
+        never learns the Modal URL.
+      - The vendor's 409 becomes a typed busy response the UI can render as a
+        disabled state.
+      - A missing or rejected token fails at startup with a message naming the
+        fix, not on the first synthesis attempt.
+    scope_in:
+      - Token custody, request forwarding, health passthrough, error typing.
+      - Gateway configuration loading and startup validation.
+    scope_out:
+      - Transport selection between buffered and streaming (dual-transport).
+      - Anything rendered in the browser (demo-ui).
+  - name: dual-transport
+    status: draft
+    user_story: As the operator, I want to switch between streamed PCM and a
+      buffered WAV with one setting, so that the demo stays usable while the
+      streaming path is being made to behave, and so the two can be compared
+      side by side.
+    acceptance_criteria:
+      - One configuration value selects buffered or streaming; no other change
+        is required.
+      - In buffered mode the gateway returns a valid WAV with a correct 24kHz
+        mono 16-bit header.
+      - In streaming mode PCM is forwarded without buffering and reaches the
+        client incrementally.
+      - Sample rate and format are taken from the upstream response headers, not
+        hardcoded twice.
+      - Switching modes does not change the request contract the browser uses.
+    scope_in:
+      - Both transport implementations behind one selector.
+      - WAV header construction and unbuffered pass-through.
+    scope_out:
+      - Browser-side playback of either transport (demo-ui).
+      - Caching (clip-cache).
+  - name: reference-intake
+    status: draft
+    user_story: As the operator, I want to record a reference voice in the browser
+      and have it just work for cloning, so that I never open a terminal to
+      convert WebM to WAV or discover the format was wrong after a failed
+      request.
+    acceptance_criteria:
+      - Browser-recorded WebM/Opus is transcoded to WAV via ffmpeg before
+        forwarding.
+      - Uploaded files in common containers (MP3, M4A, OGG, FLAC) are normalised
+        to WAV; only an already-conforming WAV passes through untouched.
+      - The ref_audio and ref_text both-or-neither rule is enforced locally,
+        before the request leaves the machine.
+      - A missing ffmpeg is reported at startup with the install command, not at
+        first use.
+      - An unsupported or non-audio file is rejected with its detected type
+        named, before transcode.
+    scope_in:
+      - Transcode and normalisation pipeline for both recorded and uploaded
+        reference audio.
+      - Format detection and pairing validation.
+      - Temporary file lifecycle and cleanup.
+    scope_out:
+      - Microphone capture in the browser (demo-ui).
+      - Transcript accuracy — the operator supplies ref_text; the model requires
+        it to be exact.
+  - name: clip-cache
+    status: draft
+    user_story: As the operator, I want every generated clip kept on disk
+      automatically, so that re-hearing something I already made is instant and
+      free rather than a second GPU request.
+    acceptance_criteria:
+      - Generated audio is written to disk while streaming, without delaying the
+        stream to the client.
+      - A replayed clip is served from disk as a buffered read regardless of the
+        active transport.
+      - Each cached clip records the request that produced it — text,
+        instruction, mode, cfg_scale, seed.
+      - A cache read never reaches Modal, so replay works while the container is
+        scaled to zero.
+      - Cache growth is bounded by a configured limit with oldest-first eviction.
+    scope_in:
+      - Tee-to-disk during streaming, replay path, request metadata, eviction.
+      - Cache index and lookup.
+    scope_out:
+      - History presentation and re-audition UI (demo-ui).
+      - Transport selection (dual-transport).
+  - name: voice-library
+    status: draft
+    user_story: As the operator, I want the voices I make kept as named, reusable
+      entries, so that using one again is picking it from a list rather than
+      hunting through clip history and promoting a clip every time.
+    acceptance_criteria:
+      - A voice is stored as its reference audio, the exact transcript, and an
+        optional default direction, under a name the operator chooses.
+      - Voices persist across gateway restarts and are listed independently of
+        clip history — deleting a clip never removes a voice made from it.
+      - "Saving a voice from a generated clip reuses the already-normalised WAV
+        on disk: no re-encode and no second GPU call."
+      - Selecting a stored voice supplies both halves of the vendor's required
+        audio+transcript pair, so a request from the library can never be
+        half-formed.
+      - A voice records what it came from — designed from an instruction, or
+        cloned from supplied audio — so its origin survives the naming.
+    scope_in:
+      - "The voice store: create, list, rename, delete, and read for request
+        construction."
+      - Reuse of the reference-intake normalisation so every stored voice is a
+        conforming WAV.
+      - "Provenance: the instruction, seed, or source clip a voice came from."
+    scope_out:
+      - Browsing and selecting voices in the browser (demo-ui voice-picker).
+      - Clip caching, which stores generations rather than voices (clip-cache).
+      - Any server-side notion of a voice on Modal — the model has no
+        saved-voice primitive; this store is entirely local.
+  - name: script-runner
+    status: draft
+    user_story: As the operator, I want a whole script voiced cue by cue, so that a
+      multi-line piece with different voices is one queued run rather than forty
+      manual requests.
+    acceptance_criteria:
+      - WebVTT is parsed into cues — index, target timing, and text — and plain
+        text is accepted as untimed cues.
+      - Each cue is synthesised as its own request with its own assigned voice,
+        because the vendor API exposes no speaker field and cannot voice a
+        multi-character script in one call.
+      - Cues run one at a time, matching the vendor's single-request lock, with
+        per-cue progress reported.
+      - Each cue is cached under a key covering its text, voice, cfg and seed —
+        so re-running a script only regenerates what changed.
+      - Export emits WebVTT carrying the durations actually generated, computed
+        exactly as bytes / 2 / 24000, never the imported targets.
+    scope_in:
+      - VTT parse and emit; plain-text intake as untimed cues.
+      - "The cue queue: sequential execution, per-cue status, resumable after
+        failure."
+      - Per-cue cache keying and reuse; drift measurement against any imported
+        target timing.
+      - Concatenating cue audio into one continuous track on request.
+    scope_out:
+      - The script editing surface (demo-ui script-editor).
+      - Voice storage (voice-library); the runner reads voices, it does not own
+        them.
+      - Any time-stretching or pitch correction to force audio into a target
+        duration — explicitly rejected.

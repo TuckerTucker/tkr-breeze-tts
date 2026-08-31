@@ -1,0 +1,38 @@
+wireframe:
+  brief: Voice library — saved voices as a reference source
+  platform: desktop
+  dimensions:
+    width: 1280
+    height: 800
+  generated_at: '2026-08-31T22:40:15Z'
+  generator_version: 3.0-decomposition
+  svg: 07-voice-library.svg
+  sha256: e384ba488ed7a364
+design_system:
+  id: swiss
+  spec_version: '0.2'
+  system_version: 1.0.0
+  layout_template_used: null
+  base_pattern: null
+  composition: decomposition (atoms + library components)
+  selection_rationale: Swiss authors no synthesis-console pattern; its 12 layout templates are auth, dashboard,
+    data-table, drawer, empty-state, form, header, modal, settings and sidebar. Text substitution would
+    have kept a dashboard's structure, so the screen is composed from Swiss primitives and token-resolved
+    atoms per the skill's decomposition path.
+  components_used: []
+  rulebook_compliance:
+    checked: 9
+    mechanical_passed: 9
+    mechanical_failed: 0
+    advisory_warnings: 1
+    failed_rules: []
+    ruleset: swiss
+    scope: artifact
+  artifact_treatments_applied: []
+plan:
+  capability: demo-ui
+  stories:
+  - demo-ui/story/pick-a-saved-voice
+  - demo-ui/story/name-a-voice-i-made
+notes:
+- text: Grid-alignment advisory is text-baseline positioning, which the rule's own note calls expected.

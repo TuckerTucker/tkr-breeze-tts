@@ -1,0 +1,46 @@
+capability: measurement
+features:
+  - name: latency-harness
+    status: draft
+    user_story: As the operator, I want time-to-first-audio and real-time factor
+      measured against the real deployed endpoint, so that the UI can show
+      observed latency instead of repeating a benchmark run on someone else's
+      hardware.
+    acceptance_criteria:
+      - Time-to-first-audio is measured from request send to first PCM byte
+        received.
+      - Real-time factor is computed from wall time and audio duration derived
+        as bytes / 2 / 24000.
+      - Cold and warm requests are reported as separate classes, with cold
+        forced by waiting past the scaledown window.
+      - Warmup duration is captured from service logs and reported alongside
+        total cold-start time.
+      - Results are written to a file the plan and brief can cite.
+    scope_in:
+      - The measuring client, its timing method, and its result format.
+      - Cold-versus-warm run orchestration.
+    scope_out:
+      - The cfg fall-off experiment specifically (cfg-falloff-probe).
+      - Any change to the service being measured (modal-inference).
+  - name: cfg-falloff-probe
+    status: draft
+    user_story: As the operator, I want to know empirically whether an uncaptured
+      cfg_scale leaves the CUDA-graph fast path, so that the UI offers a
+      continuous slider only if the latency claim actually survives it.
+    acceptance_criteria:
+      - An identical request is issued at cfg_scale 1.0, 4.0, and at least one
+        uncaptured value such as 2.5.
+      - Time-to-first-audio is compared across those values on warm containers
+        only.
+      - The same probe checks input length behaviour above the 512-token
+        captured ceiling.
+      - The result states plainly whether a continuous CFG control is viable,
+        with numbers behind it.
+      - The finding is recorded so the open CFG decision in the plan can be
+        closed by citation.
+    scope_in:
+      - The fall-off experiment design, execution, and its recorded finding.
+      - Token-length ceiling probe as part of the same run.
+    scope_out:
+      - General latency measurement (latency-harness).
+      - Implementing whichever CFG control the result selects (demo-ui).

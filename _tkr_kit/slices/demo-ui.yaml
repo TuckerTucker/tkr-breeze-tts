@@ -1,0 +1,224 @@
+capability: demo-ui
+slices:
+  - paths:
+      - ui/src/App.tsx
+      - ui/src/components/Console.tsx
+      - ui/src/state/draft.ts
+      - ui/index.html
+    depends_on: []
+    story_ids:
+      - compose-an-utterance
+      - reproduce-a-generation
+      - switch-vocal-event-language
+    delivers:
+      - A single always-visible surface for text and instruction — the two
+        fields every mode needs — with nothing essential behind a menu.
+      - "Vocal-event insertion whose palette follows a language selection:
+        English parenthesis forms such as (laugh) and (sigh), or the Chinese
+        bracket forms such as [笑] and [咳嗽]. The selection is a UI affordance
+        only — the vendor API has no language field and the model infers
+        language from the text."
+      - Live length feedback against the usable ceiling as the operator types,
+        so over-long input is visible before submission rather than rejected
+        after it.
+      - "A seed control with lock and reroll, the value always displayed.
+        Locking the seed is what makes an A/B comparison meaningful: with it
+        held, an audible difference is attributable to the setting that changed
+        rather than to a different sample."
+      - Generate disabled with a stated reason whenever the request cannot
+        succeed — never enabled into a failure.
+      - Draft persistence across reload, so nothing typed is lost.
+    title: Console shell and utterance entry
+    number: 1
+    layer: ui
+    feature: synthesis-console
+    status: draft
+  - paths:
+      - ui/src/components/VoiceModes.tsx
+      - ui/src/components/CfgControl.tsx
+      - ui/src/state/mode.ts
+    depends_on:
+      - 1
+    story_ids:
+      - choose-a-voice-mode
+      - supply-a-reference-file
+    delivers:
+      - Design, Clone and Direction as three selectable modes, each showing only
+        the fields it needs — progressive disclosure rather than one form
+        carrying every possibility.
+      - "Reference intake offering file upload and microphone capture as peer
+        options. Upload is not a fallback: a clean existing recording is usually
+        better reference material than a laptop microphone, and far more likely
+        to come with the exact transcript the vendor requires."
+      - Reference and the exact-transcript field revealed together and never
+        separately, because the vendor enforces both-or-neither and a form that
+        permits one alone is a form that manufactures errors.
+      - "A CFG control whose shape is determined by the measured fall-off
+        finding: discrete presets at the captured 1.0 and 4.0 if a continuous
+        slider leaves the fast path, a slider if it does not. The control is
+        built against evidence, not against a guess."
+      - Mode switching that preserves already-typed text.
+      - One line of in-place explanation per mode — no help modal, since the
+        distinction between design, cloning and direction is the thing the demo
+        exists to teach.
+    title: Three voice modes with mode-appropriate fields
+    number: 2
+    layer: ui
+    feature: voice-modes
+    status: draft
+  - paths:
+      - ui/src/audio/worklet.ts
+      - ui/src/audio/player.ts
+      - ui/src/audio/pcm-processor.js
+    depends_on:
+      - 1
+    story_ids:
+      - hear-it-as-it-generates
+    delivers:
+      - An AudioWorklet pipeline playing 24kHz mono PCM as it arrives,
+        converting s16le to float32 through a ring buffer. No audio element can
+        play raw PCM, so this is the only route by which the latency claim
+        becomes audible rather than described.
+      - Chunk-boundary handling that produces no clicks or gaps — the difference
+        between a demo that sounds fast and one that sounds broken.
+      - A buffered-element path matching the gateway's transport setting, and
+        used automatically as fallback when the worklet fails to start, so a
+        failure degrades to working audio instead of silence.
+      - Per-clip measured time-to-first-audio displayed once playback begins —
+        the number shown is observed here, not quoted from a benchmark.
+      - The real work of the both-transports decision; the buffered half is the
+        cheap safety net beneath it.
+    title: Streaming playback with buffered fallback
+    number: 3
+    layer: ui
+    feature: streaming-playback
+    status: draft
+  - paths:
+      - ui/src/components/WakeState.tsx
+      - ui/src/state/readiness.ts
+    depends_on:
+      - 3
+    story_ids:
+      - know-when-the-gpu-is-waking
+    delivers:
+      - "Cold start as a distinct, named state rather than the same indicator as
+        ordinary generation. Sporadic play makes this the interaction most
+        likely to misrepresent the model: a guided session pays one cold start
+        and amortises it, while irregular use pays it again after every gap
+        longer than the scaledown window."
+      - Expected wake duration drawn from measured data, shown alongside the
+        warm latency that follows it — 'cold start 45s, then 38ms' is both truer
+        and more interesting than a spinner.
+      - Readiness indicated before submission via gateway health, so the
+        operator knows whether the next request is warm or cold without
+        discovering it by waiting.
+      - No wake state at all on a warm container.
+      - Status rendered in place, contextual to the action — no toast, per the
+        project's UX rules.
+    title: "Wake state: cold start told honestly"
+    number: 4
+    layer: ui
+    feature: wake-state
+    status: draft
+  - paths:
+      - ui/src/components/History.tsx
+      - ui/src/state/history.ts
+    depends_on:
+      - 2
+      - 4
+    story_ids:
+      - revisit-what-i-made
+      - keep-a-clip
+      - promote-a-clip-to-a-voice
+    delivers:
+      - A session history listing every generated clip with the settings that
+        produced it visible without opening anything — mode, instruction, cfg
+        value, seed.
+      - Instant replay from the gateway cache, reaching no GPU, so comparing two
+        voices costs nothing and works while the container is scaled to zero.
+      - Playback that does not reset the console, so an A/B comparison does not
+        destroy the work in progress that prompted it.
+      - Reload of an earlier clip's settings back into the console — including
+        its seed — as the starting point for a variation.
+      - "Promote-to-reference: turn a generated clip into reference audio for
+        Clone or Direction, with ref_text filled in automatically from the text
+        that produced it. The model has no saved-voice primitive — no embedding,
+        no voice id, and `speaker` is only a text prefix token — so promoting a
+        designed clip to a reference is how a created voice actually persists,
+        and it survives redeployment in a way an (instruction, seed) pair does
+        not."
+      - Save-as-WAV for any clip, over the existing cache route. Clips cached in
+        streaming transport are raw PCM, which nothing outside the demo can
+        open, so the save path reuses the gateway's WAV wrapper rather than
+        handing over bytes the operator cannot use.
+      - History surviving page reload.
+    title: Clip history and re-audition
+    number: 5
+    layer: ui
+    feature: clip-history
+    status: draft
+  - paths:
+      - ui/src/components/VoiceLibrary.tsx
+      - ui/src/state/voices.ts
+    depends_on:
+      - 2
+      - 5
+    story_ids:
+      - pick-a-saved-voice
+      - name-a-voice-i-made
+    delivers:
+      - Saved voices offered as a third peer option beside file upload and
+        microphone capture in Clone and Direction — completing the set of ways a
+        reference can arrive.
+      - Selection that fills reference and transcript together, so the library
+        is structurally incapable of producing the half-formed pair the vendor
+        rejects.
+      - Save-as-voice from the player and from history, with a name pre-filled
+        from the instruction that produced it — naming a voice at the moment the
+        operator decides they like it, not later from memory.
+      - Each entry showing its origin — designed from an instruction, or cloned
+        from supplied audio — so the library stays legible once there are twenty
+        of them.
+      - Delete with immediate effect and an undo, never a confirmation dialog,
+        per the project's UX rules.
+      - A voice selection that survives switching between Clone and Direction,
+        since it is the same reference either way.
+    title: Voice library and picker
+    number: 6
+    layer: ui
+    feature: voice-picker
+    status: draft
+  - paths:
+      - ui/src/components/ScriptEditor.tsx
+      - ui/src/components/CueRow.tsx
+      - ui/src/state/script.ts
+    depends_on:
+      - 1
+      - 6
+    story_ids:
+      - import-a-script
+      - edit-one-line-without-redoing-the-rest
+      - reconcile-timing-drift
+    delivers:
+      - "The cue list as the document: add, edit, reorder, delete, and assign a
+        library voice per line — which is what turns the voice library into a
+        cast."
+      - Import by drop for WebVTT and plain text; a malformed cue is named and
+        skipped rather than rejecting the whole file.
+      - Per-cue state shown in place — queued, generating, done, stale, drifted
+        — plus whole-script progress, so a forty-cue run is legible while it
+        happens.
+      - Editing one cue marks only that cue stale. Everything else replays from
+        cache, so correcting a line costs one GPU request instead of forty. This
+        is the difference between a script feature that is usable and one that
+        is not.
+      - Drift shown as target, actual and difference wherever a cue came from a
+        timed VTT, with reroll, shorten, or accept as the three honest responses
+        — the audio is never stretched to fit.
+      - Export to WebVTT with re-flowed real timings, and to a single continuous
+        audio file.
+    title: "Script editor: cue list, per-cue voice and state"
+    number: 7
+    layer: ui
+    feature: script-editor
+    status: draft

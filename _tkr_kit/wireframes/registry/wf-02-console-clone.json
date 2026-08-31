@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-02-console-clone",
+  "title": "Synthesis console — Clone mode",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/choose-a-voice-mode",
+    "demo-ui/story/supply-a-reference-file"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/02-console-clone.svg",
+  "specPath": null,
+  "artifactHash": "cc80ab83da8345bc3006d897ac6b82f00f53e6b6286375fcf66175014d21a50d",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:11:18.254Z",
+  "validatedAt": "2026-08-31T22:11:18.254Z"
+}

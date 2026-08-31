@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "wf-08-script-editor",
+  "title": "Script editor — cue list with per-cue voice and drift",
+  "systemId": "swiss",
+  "flowId": "demo-ui-voice-loop",
+  "storyIds": [
+    "demo-ui/story/edit-one-line-without-redoing-the-rest",
+    "demo-ui/story/import-a-script",
+    "demo-ui/story/reconcile-timing-drift"
+  ],
+  "platform": "desktop",
+  "artifactPath": "wireframes/demo-ui/08-script-editor.svg",
+  "specPath": null,
+  "artifactHash": "13451b0a56f16088ff5bc38909dec020d1fd5450043938fe8d9a7fd84ce4954c",
+  "specHash": null,
+  "compliance": {
+    "passed": true,
+    "diagnostics": []
+  },
+  "registeredAt": "2026-08-31T22:36:13.828Z",
+  "validatedAt": "2026-08-31T22:36:13.828Z"
+}
