@@ -1,0 +1,58 @@
+capability: measurement
+stories:
+  - name: measure-first-audio-latency
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Know what this deployment actually does, rather than what a benchmark on
+      someone else's H100 reported.
+    preconditions:
+      - The service is deployed and reachable with a valid token
+    trigger_action: The operator runs the latency harness against the deployed endpoint
+    steps:
+      - actor: Operator
+        action: Runs the harness after an idle period
+        system_response: A cold request is measured and reported with warmup
+          milliseconds broken out
+      - actor: Operator
+        action: Lets the harness issue repeat requests immediately after
+        system_response: Warm time-to-first-audio and real-time factor are reported
+          separately from the cold figure
+    acceptance_criteria:
+      - given: a stream of PCM bytes
+        when: the harness computes duration
+        then: it uses bytes / 2 / 24000 exactly rather than an estimate
+      - given: a cold and a warm run
+        when: results are reported
+        then: they appear as distinct classes and are never averaged together
+      - given: a completed run
+        when: the operator looks for the numbers
+        then: they are in a file the brief and plan can cite by path
+    feature: latency-harness
+  - name: probe-the-cfg-fast-path
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Settle empirically whether the UI can offer a continuous CFG slider, or
+      must offer the two captured presets.
+    preconditions:
+      - The latency harness works
+      - The service runs with the fast path enabled
+    trigger_action: The operator runs the cfg fall-off probe on a warm container
+    steps:
+      - actor: Operator
+        action: Runs an identical request at cfg_scale 1.0, 4.0 and 2.5
+        system_response: Time-to-first-audio is reported for each, warm-only
+      - actor: Operator
+        action: Runs the same probe above the 512-token captured ceiling
+        system_response: The latency behaviour past the ceiling is reported alongside
+    acceptance_criteria:
+      - given: cfg_scale values captured in the warmup profile versus one that is not
+        when: the probe compares them warm
+        then: any fast-path fall-off appears as a latency difference with numbers behind
+          it
+      - given: a completed probe
+        when: the CFG control decision is revisited
+        then: the finding states plainly whether a continuous slider is viable, and the
+          open decision can be closed by citing it
+    feature: cfg-falloff-probe

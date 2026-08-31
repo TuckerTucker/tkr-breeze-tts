@@ -1,0 +1,164 @@
+capability: local-gateway
+slice_specs:
+  - title: Credential proxy
+    status: draft
+    purpose: Give the browser a same-origin endpoint to talk to, so the Modal
+      credential stays server-side and CORS never arises.
+    interface: POST /api/speech and GET /api/health on localhost; forwards to the
+      Modal endpoint with auth headers attached server-side.
+    behavior: Read the Modal base URL and the Modal-Key/Modal-Secret pair from the
+      environment at startup and validate them before accepting traffic. Attach
+      the pair to every forwarded request. Serve the UI from the same origin so
+      no cross-origin request is ever made. Never include the token, the header
+      names, or the Modal URL in any response body or error. Log through pino
+      with the credential redacted.
+    errors: Missing or malformed credentials at startup → refuse to start, naming
+      the missing variable and how to create a token pair. Upstream 401/403 →
+      surfaced as a configuration error, distinct from a synthesis failure.
+      Upstream 409 → a typed busy response the UI renders as a disabled state,
+      not an error. Upstream timeout → typed as such, distinguishable from a
+      cold start.
+    tests: No response body or header contains any part of the token. Startup with
+      an absent variable fails with the remedy named. A stubbed upstream 409
+      produces the typed busy shape. Logs contain no credential material.
+    slice: 1
+  - title: Dual transport
+    status: draft
+    purpose: Offer buffered-WAV and streaming-PCM delivery behind one setting,
+      without changing the contract the browser uses.
+    interface: "One configuration value, transport: 'buffered' | 'streaming'. The
+      route shape and request body are identical in both."
+    behavior: In buffered mode, read the upstream stream to completion, prepend a
+      WAV header built from the upstream X-Sample-Rate and X-Sample-Format
+      headers, and respond as audio/wav. In streaming mode, pipe the upstream
+      body through with no buffering and no transformation, preserving the
+      format headers. Never hardcode 24000 or s16le a second time — take both
+      from upstream so the two paths cannot drift.
+    errors: Missing upstream format headers → fail loudly rather than assume a rate,
+      since a wrong header produces audio that plays at the wrong speed instead
+      of failing. Upstream stream aborted mid-flight → buffered mode returns an
+      error rather than a truncated WAV claiming full length; streaming mode
+      ends the response and the client is told it was incomplete.
+    tests: Buffered output is a valid WAV whose header matches upstream values,
+      verified by decoding. Streaming output reaches the client before upstream
+      completion, asserted on first-byte timing. Both transports accept an
+      identical request. A wrong-rate header is rejected, not silently accepted.
+    slice: 2
+  - title: Reference intake
+    status: draft
+    purpose: Make browser-recorded audio usable for cloning without the operator
+      converting anything by hand.
+    interface: Multipart intake of ref_audio plus ref_text on the synthesis route;
+      forwards a WAV upstream.
+    behavior: Detect the incoming container. Normalise reference audio to mono WAV
+      via ffmpeg — both the WebM/Opus that MediaRecorder produces and uploaded
+      files in common containers such as MP3, M4A, OGG or FLAC. Pass through
+      only audio that is already a conforming WAV; anything else is converted
+      rather than forwarded, because the vendor reads reference audio through
+      soundfile and a container it cannot decode would fail inside the loader
+      rather than here. Enforce the vendor's both-or-neither rule on ref_audio
+      and ref_text locally, before the request leaves the machine, so an
+      incomplete pair never wakes a GPU. Delete temporary files on both success
+      and failure paths.
+    errors: ffmpeg absent → detected at startup and reported with the install
+      command, not at first use. An unsupported or non-audio file → rejected
+      with the detected type named, before transcode. Transcode failure → a
+      typed error naming the input problem rather than a generic 500. Audio
+      without transcript, or transcript without audio → refused locally naming
+      which half is missing. Unreadable or empty upload → rejected before
+      transcode.
+    tests: A WebM fixture is transcoded and forwarded as WAV. MP3, M4A and FLAC
+      fixtures are each normalised to WAV rather than passed through. An
+      already-conforming WAV passes through unmodified. A non-audio file is
+      rejected with its detected type. Each half of an incomplete pair is
+      refused with the missing half named. Temporary files are absent after both
+      a success and a forced failure.
+    slice: 3
+  - title: Clip cache
+    status: draft
+    purpose: Keep every generated clip on disk so replay is instant, free, and works
+      while the GPU is scaled to zero.
+    interface: GET /api/clips and GET /api/clips/:id served from disk; writes happen
+      as a side effect of synthesis.
+    behavior: Tee the upstream audio to disk while forwarding it, without delaying
+      bytes to the client. Store request provenance alongside each clip — text,
+      instruction, mode, cfg_scale, seed, transport, and measured first-byte
+      time. Serve replay as a buffered read regardless of the active transport.
+      Maintain an index for listing. Evict oldest-first once a configured size
+      limit is reached.
+    errors: A disk write failure → logged and the stream to the client continues
+      uninterrupted, because losing a cache entry must never cost the operator
+      their audio. A missing or corrupt cached file → reported as absent and
+      removed from the index rather than served as a truncated clip. A full disk
+      → eviction runs, and if space cannot be reclaimed, caching disables itself
+      rather than failing synthesis.
+    tests: First-byte timing with caching on matches caching off within tolerance.
+      Replay serves from disk with no upstream request, asserted with the
+      upstream unreachable. Eviction removes oldest-first at the limit. A
+      deliberately corrupted file is dropped from the index rather than served.
+    slice: 4
+  - title: Voice library store
+    status: draft
+    purpose: Give a created voice a durable identity the model itself cannot
+      provide, so reusing it is a lookup rather than a reconstruction.
+    interface: GET /api/voices, POST /api/voices, PATCH /api/voices/:id, DELETE
+      /api/voices/:id; reads return audio path plus exact transcript together.
+    behavior: Store each voice as its own conforming WAV, its exact transcript, an
+      optional default direction instruction, a name, and provenance
+      (designed-from-instruction with seed, or cloned-from-supplied-audio). Copy
+      the audio into the voice store rather than referencing a cache entry, so
+      voice lifetime is independent of clip eviction. When saving from a
+      generated clip, reuse the WAV already normalised on disk instead of
+      re-encoding or regenerating. When saving from an upload, route through the
+      same reference-intake normalisation. Reads always return audio and
+      transcript as a pair. Persist across restarts.
+    errors: A name that already exists → accepted with a disambiguating suffix
+      rather than refused, since the operator is naming, not keying. A voice
+      whose audio file is missing → reported as unavailable and excluded from
+      selection rather than producing a request the vendor will reject. A delete
+      → soft for long enough to support undo in the UI, then final; deleting a
+      voice never touches the clips it was made from. A save from a clip that
+      has been evicted → refused with that stated, since there is no audio left
+      to copy.
+    tests: A voice saved from a clip reuses the existing WAV, verified by hash, with
+      no re-encode. Evicting the source clip leaves the voice usable. A read
+      returns audio and transcript together, never one alone. Voices survive a
+      restart with name and provenance intact. Deleting a voice leaves its
+      source clips present. A duplicate name is disambiguated rather than
+      rejected.
+    slice: 5
+  - title: Script runner
+    status: draft
+    purpose: Turn a script into voiced audio cue by cue, cheaply re-runnable, with
+      timing reported honestly rather than forced.
+    interface: POST /api/scripts (import VTT or text), GET /api/scripts/:id, POST
+      /api/scripts/:id/run, GET /api/scripts/:id/export.vtt, GET
+      /api/scripts/:id/export.wav
+    behavior: "Parse WebVTT into cues carrying index, target start/end and text;
+      accept plain text as untimed cues. Run cues strictly sequentially, one
+      request each, with the cue's assigned voice supplying reference audio and
+      transcript together. Key each cue's cache entry on text + voice + cfg +
+      seed so an unchanged cue is served from disk and never reaches the GPU.
+      Measure each generated cue's duration as bytes / 2 / 24000 and, where a
+      target exists, record the drift. On export, emit VTT whose timings are the
+      generated durations re-flowed from zero, and optionally concatenate cue
+      audio into one continuous WAV. One request per cue is required, not
+      preferred: the served API exposes no speaker field, so a multi-voice
+      script cannot be expressed as a single dialogue call even though the model
+      supports one."
+    errors: A malformed cue → named and skipped, the remaining cues still import;
+      the file is not rejected wholesale. A cue whose assigned voice is missing
+      or unavailable → that cue fails and is marked, the run continues and is
+      resumable rather than aborting the script. An upstream 409 → impossible by
+      construction, since the queue is sequential; if seen, treated as a fault
+      and retried once. A cue exceeding the model's token ceiling → refused
+      before dispatch with the limit named, rather than truncated silently.
+      Drift of any size → recorded, never resolved by time-stretching or pitch
+      correction.
+    tests: A VTT round-trips to cues and back with generated timings, not imported
+      ones. A script with three different voices issues three separate requests.
+      Re-running after one edit issues exactly one GPU request. A malformed cue
+      is skipped with the rest importing. A missing voice fails one cue and
+      leaves the run resumable. Concatenated export decodes as one continuous 24
+      kHz mono WAV whose length equals the sum of cue durations.
+    slice: 6

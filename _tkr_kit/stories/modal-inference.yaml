@@ -1,0 +1,114 @@
+capability: modal-inference
+stories:
+  - name: build-the-runtime-image
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Get a container image that runs the vendor TTS runtime correctly,
+      without discovering a dependency mismatch at inference time.
+    preconditions:
+      - A Modal workspace is authenticated
+      - The vendor inference repo is available to the build
+    trigger_action: The operator builds or deploys the Modal app for the first time
+    steps:
+      - actor: Operator
+        action: Triggers the image build
+        system_response: Python 3.12, the pinned vendor requirements, and the prebuilt
+          FlashAttention wheel are installed
+      - actor: System
+        action: Runs the import smoke check as the final build step
+        system_response: Imports succeed, or the build fails naming the mismatched component
+    acceptance_criteria:
+      - given: a build with the published flash-attn wheel for torch 2.9 / cu12 / cp312
+        when: the image is built
+        then: no source compilation occurs and the build carries no GPU-architecture
+          assumption
+      - given: an ABI or version mismatch between torch and flash-attn
+        when: the smoke check runs
+        then: the build fails with the failing import named, rather than succeeding into
+          a runtime error
+    feature: runtime-image
+  - name: fill-the-weights-volume
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Put the 7.7GB checkpoint somewhere it is downloaded once and reused by
+      every later deploy.
+    preconditions:
+      - A Modal workspace is authenticated
+      - The model is publicly downloadable and ungated
+    trigger_action: The operator runs the one-off volume fill before the first deploy
+    steps:
+      - actor: Operator
+        action: Runs the fill function
+        system_response: The checkpoint and its bundled audio_tokenizer are downloaded
+          into the named Volume
+      - actor: Operator
+        action: Re-runs the fill function later
+        system_response: Already-present files are recognised and not re-downloaded
+    acceptance_criteria:
+      - given: an empty Volume
+        when: the fill function runs
+        then: the full checkpoint including audio_tokenizer is present and verified
+      - given: a partially filled Volume
+        when: the service starts
+        then: the missing component is named in the failure rather than surfacing as a
+          tokenizer error deep in the load
+    feature: weights-volume
+  - name: serve-warm-inference
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Have requests only ever reach a container that has finished loading and
+      warming the model.
+    preconditions:
+      - The image builds
+      - The weights Volume is filled
+    trigger_action: A synthesis request arrives while no container is running
+    steps:
+      - actor: System
+        action: Starts a container and runs the enter-time hook
+        system_response: Weights load from the Volume and the fast-path graphs are
+          captured; warmup duration is logged
+      - actor: System
+        action: Marks the container warm and routes the request
+        system_response: The vendor app streams PCM back incrementally
+    acceptance_criteria:
+      - given: loading placed in the enter-time hook rather than the ASGI lifespan
+        when: Modal marks a container warm
+        then: the model is already loaded and health reports ready, never 503
+      - given: the vendor app imported without its settings populated
+        when: the service starts
+        then: settings are injected first, so the app does not raise on missing
+          configuration
+      - given: a generation in progress
+        when: the client reads the response
+        then: audio arrives incrementally rather than after completion
+    feature: inference-service
+  - name: tune-the-deployment
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Adjust the cost and latency posture of the deployment without editing
+      code scattered across decorators.
+    preconditions:
+      - The service deploys and serves requests
+    trigger_action: The operator changes GPU, warm behaviour, or auth in configuration
+    steps:
+      - actor: Operator
+        action: Changes the GPU value in configuration
+        system_response: The next deploy runs on that GPU with no image rebuild
+      - actor: Operator
+        action: Switches warm mode from session-warm to always-on
+        system_response: A container is kept resident and cold starts stop occurring
+    acceptance_criteria:
+      - given: session-warm as the default posture
+        when: the service is deployed
+        then: scaledown_window is 5 minutes and min_containers is unset
+      - given: proxy auth enabled
+        when: a request arrives without a valid token pair
+        then: it is rejected before reaching the model
+      - given: a GPU change in configuration
+        when: the app is redeployed
+        then: no image rebuild is required, because the wheel is multi-arch
+    feature: service-config

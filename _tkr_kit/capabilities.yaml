@@ -1,0 +1,123 @@
+capabilities:
+  - name: modal-inference
+    layer: service
+    status: draft
+    paths:
+      - modal
+    depends_on: []
+    provides_to:
+      - measurement
+      - local-gateway
+    description: "Everything that runs on Modal: the container image carrying the
+      vendor runtime and a version-matched FlashAttention wheel, the Volume
+      holding 7.7GB of weights, the serving class that loads the model at
+      container-warm time and mounts the vendor's FastAPI app, and the
+      deployment posture (GPU type, session-warm scaledown window, proxy auth)
+      expressed as configuration rather than scattered decorator arguments."
+    scope_in:
+      - Modal image definition — Python 3.12, vendor requirements, prebuilt
+        flash-attn wheel, repo source, import smoke check.
+      - modal.Volume for model weights and the one-off function that fills it
+        from HuggingFace.
+      - "The serving class: weight load and fast-path warmup inside
+        @modal.enter(), the vendor FastAPI app mounted via @modal.asgi_app()."
+      - "Deployment configuration: GPU selection, scaledown_window,
+        min_containers, requires_proxy_auth."
+    scope_out:
+      - Measuring what the deployed service does (measurement).
+      - Credential custody on the client side, audio transcoding, caching
+        (local-gateway).
+      - Any modification to vendor inference logic — the runtime is used as
+        shipped.
+  - name: measurement
+    layer: integration
+    status: draft
+    paths:
+      - bench
+    depends_on:
+      - modal-inference
+    provides_to:
+      - local-gateway
+      - demo-ui
+    description: The instrumented client that turns the plan's two unmeasured
+      quantities into recorded numbers. Warmup duration sets the scaledown
+      window; the cfg_scale fall-off probe settles whether the UI can offer a
+      continuous CFG slider or must offer discrete presets. This capability
+      exists to close decisions, not to ship a feature — its output is evidence
+      other capabilities build against.
+    scope_in:
+      - Latency harness measuring time-to-first-audio and real-time factor
+        against the deployed endpoint.
+      - Cold-versus-warm request classification, including forced scaledown
+        between runs.
+      - "The cfg_scale fast-path fall-off experiment: identical request at
+        captured (1.0, 4.0) versus uncaptured values."
+      - Recorded findings written where the plan and the brief can cite them.
+    scope_out:
+      - Deploying or configuring the service under test (modal-inference).
+      - Any production request path — the harness is a bench client, not a
+        gateway.
+  - name: local-gateway
+    layer: api
+    status: draft
+    paths:
+      - gateway
+    depends_on:
+      - modal-inference
+    provides_to:
+      - demo-ui
+    description: "The small local service between the browser and Modal. It exists
+      to hold the proxy credential off the client, to make the browser
+      same-origin so CORS never arises, and to absorb the two chores the browser
+      is bad at: transcoding recorded microphone audio into the WAV the cloning
+      path requires, and caching generated clips so re-audition is instant. It
+      also owns the playback transport switch — buffered WAV or pass-through
+      PCM."
+    scope_in:
+      - "Credential custody: Modal-Key/Modal-Secret held server-side, never sent
+        to the browser."
+      - Request forwarding to /v1/audio/speech and /health, with the vendor's
+        409 surfaced as a typed busy state.
+      - "Both playback transports behind one configuration value: buffer-to-WAV,
+        or unbuffered PCM pass-through."
+      - Reference audio intake — ffmpeg transcode of WebM/Opus to WAV, and
+        enforcement of the ref_audio/ref_text both-or-neither rule before the
+        request leaves the machine.
+      - "Clip cache: tee to disk while streaming so replay is a buffered read in
+        either transport."
+    scope_out:
+      - Browser playback mechanics — AudioWorklet, ring buffer, element fallback
+        (demo-ui).
+      - GPU, warm window, and Modal-side configuration (modal-inference).
+      - Latency benchmarking (measurement).
+  - name: demo-ui
+    layer: ui
+    status: draft
+    paths:
+      - ui
+    depends_on:
+      - local-gateway
+    provides_to: []
+    description: "The browser surface the operator actually plays with. It has one
+      job beyond working: make the model's three control modes legible and make
+      its latency perceptible. That means playing PCM as it arrives rather than
+      after it completes, and telling the truth about cold start instead of
+      hiding a 45-second wake behind an indeterminate spinner. Constrains inputs
+      so invalid states are unreachable rather than reporting errors after
+      submission."
+    scope_in:
+      - "The synthesis console: text, instruction, vocal-event affordances, and
+        submission state."
+      - The three voice modes — design, clone, direction — each showing only the
+        fields it needs.
+      - Streaming playback via AudioWorklet with a buffered-element fallback,
+        matching the gateway's transport setting.
+      - "Wake state: cold start surfaced as a first-class, honest state
+        alongside measured warm latency."
+      - Clip history and re-audition from the local cache.
+    scope_out:
+      - Credential handling and audio transcoding (local-gateway).
+      - Any direct call to the Modal endpoint — the browser talks only to the
+        gateway.
+      - "Multi-user concerns: accounts, sharing, concurrency beyond one
+        operator."

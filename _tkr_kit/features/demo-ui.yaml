@@ -1,0 +1,164 @@
+capability: demo-ui
+features:
+  - name: synthesis-console
+    status: draft
+    user_story: As the operator, I want one clear surface to type what should be
+      said and press go, so that trying an idea takes one action rather than a
+      tour of settings.
+    acceptance_criteria:
+      - Text and instruction entry are always visible; nothing essential hides
+        behind a menu.
+      - Vocal events such as (laugh) and (sigh) are insertable without
+        memorising the syntax.
+      - Input length is shown against the model's usable ceiling as the operator
+        types, not rejected on submit.
+      - Submit is disabled with a visible reason when the request cannot succeed
+        — never enabled into an error.
+      - Work in progress persists across reload; nothing typed is lost.
+    scope_in:
+      - Console layout, text and instruction entry, vocal-event affordance,
+        submission state.
+      - Draft persistence and length feedback.
+    scope_out:
+      - Mode-specific fields such as reference audio (voice-modes).
+      - Playback and history (streaming-playback, clip-history).
+  - name: voice-modes
+    status: draft
+    user_story: As the operator, I want the three ways of controlling a voice
+      presented as three clear choices, so that I understand what distinguishes
+      design from cloning from direction without reading documentation.
+    acceptance_criteria:
+      - Design, clone, and direction are selectable, and each shows only the
+        fields it needs.
+      - Choosing clone or direction reveals reference intake and the
+        exact-transcript field together, never one alone.
+      - Reference intake offers file upload and microphone capture as peer
+        options — upload is a first-class path, not a fallback for a missing
+        microphone.
+      - The CFG control matches the measured fall-off finding — discrete presets
+        if a continuous slider leaves the fast path.
+      - Switching modes preserves the text already written.
+      - Each mode explains in one line what it does, in place, without a help
+        modal.
+    scope_in:
+      - Mode selection, per-mode field sets, CFG control.
+      - "Reference intake affordance: file drop/pick and microphone capture,
+        with accepted-file feedback."
+      - In-place explanation of each mode.
+    scope_out:
+      - Transcoding and format normalisation of reference audio (local-gateway).
+      - Deciding whether the slider is viable — that is the measurement finding.
+  - name: streaming-playback
+    status: draft
+    user_story: As the operator, I want audio to start playing while it is still
+      being generated, so that the model's low-latency claim is something I hear
+      rather than something I am told.
+    acceptance_criteria:
+      - Streaming mode plays PCM as it arrives through an AudioWorklet, starting
+        before generation completes.
+      - Incoming s16le samples are converted and buffered without audible gaps
+        or clicks at chunk boundaries.
+      - Buffered mode plays the returned WAV through a standard element,
+        matching the gateway setting.
+      - Measured time-to-first-audio for the current clip is displayed after
+        playback begins.
+      - A worklet failure falls back to buffered playback rather than leaving
+        the operator with silence.
+    scope_in:
+      - AudioWorklet pipeline, ring buffer, format conversion, fallback path.
+      - Per-clip time-to-first-audio display.
+    scope_out:
+      - Producing either transport (local-gateway).
+      - Benchmark measurement runs (measurement).
+  - name: wake-state
+    status: draft
+    user_story: As the operator, I want to be told plainly when the GPU is waking
+      rather than watching an unexplained spinner, so that a cold start reads as
+      a known cost of serverless rather than as the model being slow.
+    acceptance_criteria:
+      - A cold start is shown as a distinct, named state — not the same
+        indicator as normal generation.
+      - The wake state shows expected duration from measured data and the warm
+        latency that follows it.
+      - Warm requests show no wake state at all.
+      - The operator can tell, before submitting, whether the next request will
+        be warm or cold.
+      - No toast is used; status appears in place, contextual to the action.
+    scope_in:
+      - Wake state detection via gateway health, its presentation, and readiness
+        indication.
+      - Displaying measured cold and warm figures together.
+    scope_out:
+      - Setting the scaledown window (modal-inference).
+      - Producing the measurements (measurement).
+  - name: clip-history
+    status: draft
+    user_story: As the operator, I want everything I have generated kept and
+      re-playable, so that comparing two voices or two cfg values is a click
+      rather than a regeneration.
+    acceptance_criteria:
+      - Every generated clip appears in a session history with the settings that
+        produced it.
+      - Replaying a clip is instant and does not reach the GPU.
+      - Two clips can be compared without losing either — the console is not
+        reset by playback.
+      - History survives reload.
+      - A clip can be reloaded into the console as the starting point for a
+        variation.
+    scope_in:
+      - History list, replay, reload-into-console, persistence across reload.
+      - Showing the settings behind each clip.
+    scope_out:
+      - Disk caching and eviction (local-gateway).
+      - Playback mechanics (streaming-playback).
+  - name: voice-picker
+    status: draft
+    user_story: As the operator, I want to pick a saved voice in Clone or Direction,
+      so that reusing a voice I already made is one action instead of supplying
+      audio and a transcript again.
+    acceptance_criteria:
+      - Clone and Direction offer saved voices as a third peer option alongside
+        upload and microphone capture.
+      - Selecting a saved voice fills reference and transcript together and
+        cannot leave the pair half-filled.
+      - A generated clip can be named and saved to the library from the player
+        or from history.
+      - Each voice shows what it came from — designed from an instruction, or
+        cloned from supplied audio — so the library is legible months later.
+      - Deleting a voice happens immediately with an undo, never a confirmation
+        dialog.
+    scope_in:
+      - "The library surface: browse, select, name, rename, delete with undo."
+      - Save-as-voice from the player and from clip history.
+      - Showing each voice's origin and its default direction if it has one.
+    scope_out:
+      - Persisting voices to disk (local-gateway voice-library).
+      - Reference transcoding and normalisation (local-gateway reference-intake).
+  - name: script-editor
+    status: draft
+    user_story: As the operator, I want to write or import a script as a list of
+      lines, assign a voice to each, and fix one line without redoing the rest,
+      so that producing a multi-voice piece is editing rather than re-running.
+    acceptance_criteria:
+      - A script is a list of cues; each cue carries its text, an assigned voice
+        from the library, and its state.
+      - A VTT or plain-text file can be dropped in and becomes an editable cue
+        list.
+      - Editing one cue marks only that cue stale — every other cue keeps its
+        generated audio and replays from cache.
+      - Where a cue came from a timed VTT, the generated duration is shown
+        against the target with the drift, and the operator can reroll, shorten
+        the text, or accept.
+      - The script can be exported as WebVTT with real generated timings, and as
+        one continuous audio file.
+    scope_in:
+      - "The cue list as the document: add, edit, reorder, delete, assign a
+        voice per cue."
+      - Import by drop; export to VTT and to a single audio file.
+      - Per-cue state — queued, generating, done, stale, drifted — and
+        whole-script progress.
+      - Drift presentation against imported target timings.
+    scope_out:
+      - Parsing and emitting VTT, and running the queue (local-gateway
+        script-runner).
+      - Voice storage and naming (voice-library / voice-picker).

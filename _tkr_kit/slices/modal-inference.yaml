@@ -1,0 +1,113 @@
+capability: modal-inference
+slices:
+  - paths:
+      - modal/image.py
+      - modal/__init__.py
+    depends_on: []
+    story_ids:
+      - build-the-runtime-image
+    delivers:
+      - A Modal image on Python 3.12 — the only cp3xx published for the torch
+        2.9 FlashAttention wheel, so the interpreter version is a consequence of
+        the dependency rather than a preference.
+      - "FlashAttention installed from
+        flash_attn-2.8.3+cu12torch2.9cxx11abiTRUE-cp312-cp312-linux_x86_64.whl
+        rather than built from source. This is what keeps GPU type a config
+        value: official wheels are multi-arch, while the vendor's
+        docker/build.sh pins FLASH_ATTN_CUDA_ARCHS=90 and would bake Hopper into
+        the image."
+      - "Flash-attn is mandatory, not optional: the shipped config.json pins
+        text_encoder_config.preferred_attn_implementation to flash_attention_2,
+        which models/breeze.py reads directly and the documented eager setting
+        never overrides."
+      - Vendor requirements at their exact pins (torch 2.9.1, transformers
+        4.57.3, qwen-tts 0.1.1) with the vendor source on the path.
+      - A build-time smoke check adapted from docker/smoke_check.py, so a
+        cxx11abi mismatch fails the build rather than surfacing at first
+        inference.
+    title: Runtime image with a pinned FlashAttention wheel
+    number: 1
+    layer: service
+    feature: runtime-image
+    status: draft
+  - paths:
+      - modal/weights.py
+    depends_on:
+      - 1
+    story_ids:
+      - fill-the-weights-volume
+    delivers:
+      - A named modal.Volume holding the 7.7GB checkpoint — two model shards
+        plus the 683MB bundled audio_tokenizer the vendor runtime requires and
+        refuses to run without.
+      - A one-off fill function using snapshot_download with
+        HF_XET_HIGH_PERFORMANCE enabled. The model is ungated, so no token
+        acceptance or licence click is needed.
+      - "Weights deliberately on a Volume rather than baked into the image: an
+        image rebuild would otherwise re-download 7.7GB, and Volume storage
+        falls inside Modal's free tier."
+      - Read-only mount at a fixed path in the serving container.
+      - Completeness verification that names the missing component, rather than
+        letting an absent audio_tokenizer surface as an opaque failure deep
+        inside the vendor loader.
+    title: Weights volume and its one-off fill
+    number: 2
+    layer: data
+    feature: weights-volume
+    status: draft
+  - paths:
+      - modal/service.py
+    depends_on:
+      - 1
+      - 2
+    story_ids:
+      - serve-warm-inference
+    delivers:
+      - "Weight load and fast-path warmup lifted into @modal.enter(). This is
+        the correctness crux: Modal treats a container as warm once enter()
+        returns, so leaving the load in the vendor's ASGI lifespan would have
+        Modal routing requests to a container whose /health still answers 503."
+      - Injection of the vendor's module-level _settings before the app is
+        served — breeze_infer.api sets it only inside main(), so importing the
+        app without it raises RuntimeError('API settings are not initialized')
+        at startup.
+      - The vendor FastAPI app mounted through @modal.asgi_app() with its routes
+        unchanged, including the streaming PCM response and its X-Sample-Rate /
+        X-Sample-Format headers.
+      - Warmup duration logged on every cold start, from the line the vendor
+        already prints — the input the measurement capability reads.
+      - "No @modal.concurrent: the vendor holds a process-wide _request_lock and
+        returns 409, and configs/fast.json declares concurrency 1. One input per
+        container is the correct posture, not a limitation to work around."
+    title: "Serving class: enter-time load and ASGI mount"
+    number: 3
+    layer: service
+    feature: inference-service
+    status: draft
+  - paths:
+      - modal/config.py
+    depends_on:
+      - 3
+    story_ids:
+      - tune-the-deployment
+    delivers:
+      - GPU type as a single configuration value, changeable without an image
+        rebuild — a property the prebuilt multi-arch wheel buys and the vendor's
+        SM90 source build would have denied. H100 is the default because it is
+        the part the published numbers were measured on.
+      - "scaledown_window defaulting to 5 minutes: session-warm, not always-on.
+        Provisional by intent — it is currently set against an unmeasured
+        warmup, and measurement exists to correct it."
+      - An always-on escape hatch via min_containers, off by default, because
+        keeping an H100 resident costs roughly $3.95/hr against ~$0.003 for the
+        generation it serves.
+      - requires_proxy_auth enabled. Modal endpoints are public by default, and
+        serving research/non-commercial weights on an open URL is a materially
+        different act from running them locally — posture, not hygiene.
+      - Fast-path stage flags exposed as one coherent setting rather than five
+        scattered booleans.
+    title: GPU, warm window, and proxy auth as configuration
+    number: 4
+    layer: service
+    feature: service-config
+    status: draft

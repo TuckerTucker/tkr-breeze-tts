@@ -1,0 +1,43 @@
+capability: measurement
+slice_specs:
+  - title: Latency harness
+    status: draft
+    purpose: Replace published H100 benchmark figures with numbers measured against
+      this deployment.
+    interface: "A CLI producing a results file: per-request time-to-first-audio,
+      real-time factor, class (cold|warm), and warmup milliseconds on cold
+      runs."
+    behavior: Issue authenticated requests to /v1/audio/speech. Record
+      time-to-first-audio as the interval from send to first received PCM byte.
+      Compute audio duration as bytes / 2 / 24000 exactly, and real-time factor
+      as wall time over that duration. Force a cold class by idling beyond
+      scaledown_window; classify subsequent immediate requests as warm. Scrape
+      the vendor's warmup log line to decompose cold start.
+    errors: A 409 → retried after a bounded wait rather than recorded as a latency
+      sample, since it measures contention not speed. Auth failure → abort with
+      the remedy named. A truncated stream → the sample is discarded rather than
+      reported as a fast result.
+    tests: Duration derivation is exact against a known byte count. Cold and warm
+      samples are never merged. A forced 409 does not enter the sample set. The
+      results file is written at a stable path.
+    slice: 1
+  - title: CFG fall-off probe
+    status: draft
+    purpose: Determine empirically whether an uncaptured cfg_scale leaves the
+      CUDA-graph fast path, closing the plan's one open decision.
+    interface: "A CLI producing a finding: time-to-first-audio per cfg_scale, plus a
+      stated verdict on continuous-slider viability."
+    behavior: Hold text, instruction, seed and container warm constant. Vary only
+      cfg_scale across 1.0 and 4.0 (both captured in configs/fast.json under
+      service.cfg_scales) and at least one uncaptured value such as 2.5. Repeat
+      each enough times to distinguish a real difference from noise. Separately
+      probe input length above the 512-token captured ceiling, which the same
+      freeze_after_warmup mechanism governs. Write a finding stating the verdict
+      with the numbers behind it.
+    errors: A cold start mid-run → the sample is discarded, since cold start would
+      swamp the effect. Insufficient separation between conditions → reported as
+      inconclusive rather than resolved in either direction.
+    tests: Captured and uncaptured cfg values are compared warm-only with repeats.
+      The verdict is derived from the samples rather than asserted. The finding
+      is written where the plan's open decision can cite it by path.
+    slice: 2

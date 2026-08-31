@@ -1,0 +1,42 @@
+product:
+  name: breeze-tts-demo
+  status: draft
+  version: 0.1.0
+  schema_version: 1
+  problem: "Breeze-TTS-2 is a 3B open-weight bilingual (EN/ZH) TTS model whose
+    distinguishing claims — sub-40ms time-to-first-audio, voice cloning,
+    natural-language voice design, and instruction-steered voice direction — are
+    invisible from a model card. It cannot run on the target Mac: the vendor
+    runtime raises unconditionally on a non-CUDA device
+    (models/fast_streaming.py:192) and the shipped config pins a
+    flash_attention_2 text encoder that the documented `eager` path never
+    overrides. The vendor's own surface is a single-request Linux/CUDA CLI plus
+    a FastAPI app returning raw PCM. There is no way to *feel* what the model
+    does."
+  target_state: A local demo the single operator opens on a Mac and plays with.
+    GPU inference runs serverless on Modal behind a session-warm container; a
+    local gateway holds the credential, absorbs audio-format chores, and caches
+    clips; a browser UI exposes the three voice-control modes and plays 24kHz
+    PCM as it arrives, so the latency claim is demonstrated rather than
+    described. The demo is honest about cold start rather than hiding it behind
+    a spinner.
+  success_criteria:
+    - All three voice-control modes (clone, design, direction) are reachable
+      from the browser and produce audio without the operator touching a
+      terminal.
+    - Time-to-first-audio is measured and shown, not asserted — the streaming
+      transport is real end to end.
+    - Cold start is a first-class UI state with the measured warm latency beside
+      it, never a bare spinner.
+    - The Modal credential never reaches browser JavaScript.
+    - Reference audio recorded in the browser is usable for cloning without the
+      operator converting a file by hand.
+    - The cfg_scale fast-path fall-off is measured, and the UI's CFG control
+      reflects the measured truth rather than an assumption.
+    - The Modal endpoint is not reachable without proxy auth.
+  strategy: Measure before deciding. Stand up the Modal service first — prebuilt
+    FlashAttention wheel, weights on a Volume — and instrument it to answer the
+    two unmeasured questions (warmup duration, cfg fast-path fall-off). Build
+    the gateway and UI against measured latency rather than published H100
+    benchmarks. Build both playback transports so the demo stays usable while
+    the streaming path is made to behave.

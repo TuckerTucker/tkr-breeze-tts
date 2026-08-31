@@ -1,0 +1,162 @@
+capability: local-gateway
+slices:
+  - paths:
+      - gateway/src/proxy.ts
+      - gateway/src/config.ts
+      - gateway/src/index.ts
+    depends_on: []
+    story_ids:
+      - keep-the-token-off-the-client
+    delivers:
+      - A local service the browser talks to exclusively, keeping the
+        Modal-Key/Modal-Secret pair in the gateway process and out of page
+        source. Same-origin by construction, which removes CORS as a problem
+        rather than configuring around it.
+      - Gateway-shaped synthesis and health routes; the browser never learns the
+        .modal.run URL.
+      - The vendor's 409 from _request_lock translated into a typed busy state,
+        so the UI can disable rather than surface an HTTP error.
+      - Startup validation — a missing or rejected token fails immediately with
+        the remedy named, not at the operator's first synthesis attempt.
+      - Structured pino logging and strict TypeScript with named exports, per
+        project convention.
+    title: Credential-holding proxy over the Modal endpoint
+    number: 1
+    layer: api
+    feature: credential-proxy
+    status: draft
+  - paths:
+      - gateway/src/transport.ts
+    depends_on:
+      - 1
+    story_ids:
+      - switch-playback-transport
+    delivers:
+      - "Both transports behind a single configuration value: buffer-to-WAV, or
+        unbuffered PCM pass-through. The request contract the browser uses is
+        identical either way, so the switch is invisible to the caller."
+      - WAV header construction taking sample rate and format from the upstream
+        X-Sample-Rate and X-Sample-Format headers rather than hardcoding 24kHz
+        s16le a second time.
+      - A genuinely unbuffered streaming path — any buffering here would
+        silently discard the sub-40ms claim that justifies the GPU.
+      - "Asymmetric by design: buffered is trivial and exists as the safety net
+        that keeps the demo usable while the AudioWorklet path is being made to
+        behave."
+    title: Dual playback transport behind one setting
+    number: 2
+    layer: api
+    feature: dual-transport
+    status: draft
+  - paths:
+      - gateway/src/reference.ts
+    depends_on:
+      - 1
+    story_ids:
+      - record-a-reference-voice
+    delivers:
+      - ffmpeg transcode of browser-recorded WebM/Opus into the WAV the cloning
+        path requires — the browser produces one format and the model wants
+        another, and absorbing that gap is exactly the kind of work the operator
+        should never see.
+      - Pass-through without re-encoding when an uploaded file is already in a
+        supported format.
+      - Local enforcement of the ref_audio/ref_text both-or-neither rule before
+        the request leaves the machine, so an incomplete pair never becomes a
+        wasted GPU wake.
+      - Startup detection of a missing ffmpeg, reported with the install command
+        rather than failing at first use.
+      - Temporary file lifecycle with cleanup on both the success and failure
+        paths.
+    title: Reference audio intake and transcode
+    number: 3
+    layer: api
+    feature: reference-intake
+    status: draft
+  - paths:
+      - gateway/src/cache.ts
+      - gateway/src/cache-index.ts
+    depends_on:
+      - 2
+    story_ids:
+      - keep-every-clip
+    delivers:
+      - A tee to disk during streaming that never delays the bytes going to the
+        browser — the cache must not cost the latency the stream exists to
+        demonstrate.
+      - Replay served from disk as a buffered read in either transport, so
+        generation streams while replay is instant.
+      - Request provenance stored beside each clip — text, instruction, mode,
+        cfg_scale, seed — which is what makes A/B comparison in the UI possible
+        at all.
+      - Replay that reaches no GPU, so re-auditioning works while the container
+        is scaled to zero and costs nothing.
+      - Bounded growth with oldest-first eviction at a configured limit.
+    title: "Clip cache: tee while streaming, replay buffered"
+    number: 4
+    layer: data
+    feature: clip-cache
+    status: draft
+  - paths:
+      - gateway/src/voices.ts
+      - gateway/src/voices-index.ts
+    depends_on:
+      - 3
+      - 4
+    story_ids:
+      - keep-a-named-voice
+    delivers:
+      - "A local store of named voices, each owning a conforming WAV, its exact
+        transcript, an optional default direction, and its provenance. This is
+        the product's answer to a model-level gap: Breeze-TTS-2 has no
+        saved-voice primitive — no embedding, no voice id — so a voice can only
+        persist as reference audio plus its transcript."
+      - "Voices own their audio rather than pointing at a clip, so a voice
+        survives eviction of the clip it came from. Two lifetimes, deliberately
+        separated: clips are exhaust, voices are kept."
+      - Saving from a generated clip reuses the WAV already normalised on disk —
+        no re-encode, no second GPU request.
+      - Reads that hand back both halves of the vendor's required
+        audio+transcript pair together, so a request built from the library
+        cannot be half-formed.
+      - Create, list, rename and delete, persisted across gateway restarts.
+    title: Voice library store
+    number: 5
+    layer: data
+    feature: voice-library
+    status: draft
+  - paths:
+      - gateway/src/script.ts
+      - gateway/src/vtt.ts
+      - gateway/src/cue-queue.ts
+    depends_on:
+      - 4
+      - 5
+    story_ids:
+      - run-a-script-cue-by-cue
+    delivers:
+      - WebVTT parsed into cues (index, target timing, text); plain text
+        accepted as untimed cues rather than being given invented timings.
+      - "One request per cue, each carrying its own voice. This is forced, not
+        chosen: the model itself supports multi-turn dialogue with per-turn
+        speaker_id — its own generation docstring demonstrates it — but
+        breeze_infer/api.py exposes only text, instruction, cfg_scale,
+        ref_audio, ref_text and seed, and templates.py hardcodes speaker S0. A
+        multi-voice script therefore cannot be a single dialogue call."
+      - A strictly sequential queue, which is the natural shape given the
+        vendor's process-wide _request_lock rather than a limitation worked
+        around.
+      - Per-cue cache keyed on text + voice + cfg + seed, so re-running a script
+        regenerates only what changed. Cue-sized requests also keep every call
+        under the 512-token captured ceiling, where one long blob would fall off
+        the fast path.
+      - VTT export carrying generated durations computed exactly as bytes / 2 /
+        24000, and optional concatenation of cue audio into one continuous
+        track.
+      - "No time-stretching, ever: drift against an imported target is measured
+        and reported, never corrected by distorting the audio."
+    title: "Script runner: VTT, cue queue, per-cue cache"
+    number: 6
+    layer: api
+    feature: script-runner
+    status: draft

@@ -1,0 +1,200 @@
+capability: local-gateway
+stories:
+  - name: keep-the-token-off-the-client
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Use the demo in a browser without the Modal credential ever being
+      present in something a page could read.
+    preconditions:
+      - A Modal proxy token pair exists
+      - The service is deployed with proxy auth required
+    trigger_action: The operator opens the demo and submits a synthesis request
+    steps:
+      - actor: Operator
+        action: Opens the local demo page
+        system_response: The page loads from the gateway's own origin; no Modal URL or
+          token appears anywhere in it
+      - actor: Operator
+        action: Submits a request
+        system_response: The gateway attaches the token server-side and forwards to
+          Modal, returning audio to the page
+    acceptance_criteria:
+      - given: a request from the browser
+        when: the gateway forwards it
+        then: the token is attached server-side and appears in no response the browser
+          receives
+      - given: an inference already running
+        when: a second request arrives and Modal returns 409
+        then: the gateway returns a typed busy state the UI can render as disabled
+          rather than as an error
+      - given: a missing or invalid token
+        when: the gateway starts
+        then: it fails immediately naming the remedy, not at first synthesis
+    feature: credential-proxy
+  - name: switch-playback-transport
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Move between streamed PCM and a buffered WAV with one setting, to
+      compare them and to keep the demo working while the streaming path is
+      still being built.
+    preconditions:
+      - The proxy forwards requests successfully
+    trigger_action: The operator changes the transport setting and reloads
+    steps:
+      - actor: Operator
+        action: Sets transport to buffered
+        system_response: The gateway returns a complete WAV the browser can play with a
+          standard element
+      - actor: Operator
+        action: Sets transport to streaming
+        system_response: PCM is forwarded unbuffered and the page can begin playing
+          before generation finishes
+    acceptance_criteria:
+      - given: buffered transport
+        when: audio is returned
+        then: it is a valid WAV whose header matches the upstream sample rate and format
+          headers rather than hardcoded values
+      - given: streaming transport
+        when: the gateway forwards
+        then: no buffering is introduced and bytes reach the client incrementally
+      - given: either transport
+        when: the browser makes a request
+        then: the request contract is identical, so the switch is invisible to the
+          caller
+    feature: dual-transport
+  - name: record-a-reference-voice
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Clone a voice recorded in the browser without hand-converting an audio
+      file or discovering the format was wrong only after the request failed.
+    preconditions:
+      - ffmpeg is installed locally
+      - The operator can record or supply reference audio
+    trigger_action: The operator records a reference clip and supplies its exact transcript
+    steps:
+      - actor: Operator
+        action: Records a short reference clip in the browser
+        system_response: The WebM/Opus capture is transcoded to WAV by the gateway
+          before it is forwarded
+      - actor: Operator
+        action: Submits with the transcript filled in
+        system_response: The pairing is validated locally and the clone request is forwarded
+    acceptance_criteria:
+      - given: browser-recorded WebM/Opus
+        when: it reaches the gateway
+        then: it is transcoded to WAV before forwarding, with no operator action
+      - given: reference audio without a transcript, or a transcript without audio
+        when: submission is attempted
+        then: it is refused locally before the request leaves the machine, naming which
+          half is missing
+      - given: ffmpeg not installed
+        when: the gateway starts
+        then: it reports this with the install command, rather than failing on first use
+    feature: reference-intake
+  - name: keep-every-clip
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Re-hear anything already generated instantly and for free, including
+      while the GPU container is scaled to zero.
+    preconditions:
+      - At least one clip has been generated
+    trigger_action: The operator replays a previously generated clip
+    steps:
+      - actor: System
+        action: Writes audio to disk while streaming it to the browser
+        system_response: The clip is cached without delaying playback
+      - actor: Operator
+        action: Replays that clip later
+        system_response: It is served from disk, with no Modal request and no cold start
+    acceptance_criteria:
+      - given: a generation in streaming transport
+        when: the gateway tees to disk
+        then: the stream to the browser is not delayed by the write
+      - given: a cached clip and a container scaled to zero
+        when: the operator replays it
+        then: playback is immediate and no GPU is woken
+      - given: the cache at its configured size limit
+        when: a new clip is written
+        then: the oldest is evicted rather than growth continuing unbounded
+    feature: clip-cache
+  - name: keep-a-named-voice
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Have a voice I made survive as a named thing I can reuse, rather than as
+      a clip I have to find and re-promote each time.
+    preconditions:
+      - A clip has been generated, or reference audio has been supplied
+    trigger_action: The operator saves a voice under a name
+    steps:
+      - actor: Operator
+        action: Names and saves a voice from a generated clip
+        system_response: The already-normalised WAV, its exact transcript, and the
+          clip's provenance are stored under that name
+      - actor: Operator
+        action: Restarts the gateway and lists voices
+        system_response: The voice is still there, independent of whether its source
+          clip is still cached
+      - actor: Operator
+        action: Selects that voice for a new request
+        system_response: Reference audio and transcript are both supplied from the store
+    acceptance_criteria:
+      - given: a saved voice made from a generated clip
+        when: it is stored
+        then: the existing normalised WAV is reused — no re-encode and no second GPU
+          request
+      - given: a saved voice whose source clip has since been evicted from the clip
+          cache
+        when: the voice is used
+        then: it still works, because a voice owns its own copy rather than pointing at
+          a clip
+      - given: a stored voice
+        when: a request is built from it
+        then: audio and transcript are supplied together, so the vendor's
+          both-or-neither rule cannot be violated from the library
+      - given: a gateway restart
+        when: voices are listed
+        then: every saved voice is present with its name and origin intact
+    feature: voice-library
+  - name: run-a-script-cue-by-cue
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Voice a whole multi-line script in one run, with a different voice per
+      line, without hand-firing a request per line.
+    preconditions:
+      - Voices exist in the library
+      - A script of cues exists
+    trigger_action: The operator runs the script
+    steps:
+      - actor: System
+        action: Synthesises each cue as its own request with that cue's assigned voice
+        system_response: Cues complete one at a time and progress is reported per cue
+      - actor: System
+        action: Reaches a cue whose text, voice, cfg and seed are unchanged since the
+          last run
+        system_response: It is served from cache and no GPU request is made
+      - actor: Operator
+        action: Exports the finished run
+        system_response: A WebVTT is emitted carrying the durations actually generated
+    acceptance_criteria:
+      - given: a script with several different assigned voices
+        when: it runs
+        then: each cue is its own request, because the vendor API exposes no speaker
+          field and one dialogue call is not available
+      - given: the vendor's single-request lock
+        when: the queue runs
+        then: cues execute strictly one at a time and a 409 is never provoked
+      - given: a re-run after one cue was edited
+        when: the queue runs
+        then: only the edited cue reaches the GPU and every other cue is served from
+          cache
+      - given: an exported VTT
+        when: its timings are read
+        then: they are the generated durations computed as bytes / 2 / 24000, never the
+          imported targets
+    feature: script-runner

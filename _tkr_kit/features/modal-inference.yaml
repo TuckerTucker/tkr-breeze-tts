@@ -1,0 +1,87 @@
+capability: modal-inference
+features:
+  - name: runtime-image
+    status: draft
+    user_story: As the operator, I want a Modal image that boots the vendor runtime
+      correctly on the first try, so that a deploy fails at build time with a
+      clear message rather than at inference time with a CUDA or ABI error.
+    acceptance_criteria:
+      - The image pins Python 3.12 and installs the vendor requirements at their
+        exact versions.
+      - FlashAttention 2.8.3 is installed from the published prebuilt wheel
+        matching torch 2.9 / cu12 / cp312, not built from source.
+      - An import smoke check runs at build time and fails the build on an ABI
+        or version mismatch.
+      - The image carries no GPU-architecture assumption — the same image runs
+        on any supported GPU.
+    scope_in:
+      - Image definition, dependency pinning, vendor source inclusion.
+      - Build-time smoke check adapted from the vendor's docker/smoke_check.py.
+    scope_out:
+      - Model weights — they live on a Volume, never in the image
+        (weights-volume).
+      - Runtime configuration such as GPU type or warm window (service-config).
+  - name: weights-volume
+    status: draft
+    user_story: As the operator, I want the 7.7GB checkpoint to live on a Modal
+      Volume filled once, so that redeploying the service never re-downloads
+      weights and image rebuilds stay fast.
+    acceptance_criteria:
+      - A named modal.Volume holds the full checkpoint including the bundled
+        audio_tokenizer directory.
+      - A one-off function fills the Volume from HuggingFace and is safe to
+        re-run without duplicating work.
+      - The service mounts the Volume read-only at a fixed path.
+      - A missing or partial checkpoint is detected with a message naming what
+        is absent, not a downstream tokenizer error.
+    scope_in:
+      - Volume creation and the fill function using snapshot_download.
+      - Checkpoint completeness verification before the service claims readiness.
+    scope_out:
+      - Loading weights into GPU memory (inference-service).
+      - Image contents (runtime-image).
+  - name: inference-service
+    status: draft
+    user_story: As the operator, I want the model loaded and warmed before Modal
+      routes any traffic to a container, so that a request never lands on a
+      container that is still loading and reports itself unhealthy.
+    acceptance_criteria:
+      - Weight load and fast-path warmup happen inside @modal.enter(), not in
+        the ASGI lifespan.
+      - The vendor's module-level settings object is populated before the app is
+        served, so importing the app does not raise on missing settings.
+      - The vendor FastAPI app is mounted through @modal.asgi_app() with its
+        routes unchanged.
+      - Warmup duration is logged on every cold start.
+      - Streaming responses reach the client incrementally rather than being
+        buffered to completion.
+    scope_in:
+      - The Modal class, its enter-time load, and the ASGI mount.
+      - Bridging the vendor's _settings global and _load_app into Modal's
+        lifecycle.
+    scope_out:
+      - Choosing the GPU or warm window (service-config).
+      - Modifying vendor request handling or the 409 lock — used as shipped.
+  - name: service-config
+    status: draft
+    user_story: As the operator, I want GPU type, warm behaviour, and authentication
+      to be configuration values in one place, so that I can retune the
+      cost/latency trade-off without editing decorators scattered through the
+      service.
+    acceptance_criteria:
+      - GPU type is a single configuration value; changing it requires no image
+        rebuild.
+      - scaledown_window defaults to 5 minutes and is adjustable without code
+        changes.
+      - An always-on mode is available by setting min_containers, off by default.
+      - requires_proxy_auth is enabled, so the endpoint is unreachable without a
+        token pair.
+      - Fast-path flags are exposed but default to the vendor's --fast-all
+        posture as one coherent setting.
+    scope_in:
+      - A single configuration surface for GPU, warm mode, auth, and fast-path
+        flags.
+      - Proxy auth token wiring on the Modal side.
+    scope_out:
+      - Client-side credential custody (local-gateway).
+      - Deciding the final scaledown value — that is evidence from measurement.
