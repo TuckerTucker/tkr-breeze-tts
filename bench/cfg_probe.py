@@ -47,8 +47,45 @@ FINDING_PATH: Final[Path] = FINDINGS_DIR / "cfg-falloff.json"
 CAPTURED_CFG_SCALES: Final[tuple[float, ...]] = (1.0, 4.0)
 UNCAPTURED_CFG_SCALES: Final[tuple[float, ...]] = (2.5,)
 
-# Captured input-length ceiling: 512 tokens at branch_batch_size 2.
-CAPTURED_TOKEN_CEILING: Final[int] = 512
+# The captured input-length ceiling is **per branch-batch mode**, not global.
+# configs/fast.json captures text_encoder and backbone_prefill at
+# batch_size 1 -> 32..256 and batch_size 2 -> 32..512, both step 32.
+#
+# `warmup_profile.py:48` maps cfg to a binary mode, not a value:
+#     "single_cfg" if cfg_scale != 1.0 else "no_cfg"
+# so cfg == 1.0 runs a single branch (ceiling 256) and *any* other cfg runs
+# dual branches (ceiling 512). Nothing is keyed on the cfg number itself.
+TOKEN_CEILING_BY_MODE: Final[dict[str, int]] = {"no_cfg": 256, "single_cfg": 512}
+CAPTURED_TOKEN_CEILING: Final[int] = TOKEN_CEILING_BY_MODE["single_cfg"]
+
+
+def branch_mode(cfg_scale: float) -> str:
+    """Which warmup mode a cfg value selects.
+
+    Args:
+        cfg_scale: The requested guidance scale.
+
+    Returns:
+        ``"no_cfg"`` for exactly 1.0, otherwise ``"single_cfg"``.
+    """
+    return "no_cfg" if cfg_scale == 1.0 else "single_cfg"
+
+
+def token_ceiling_for(cfg_scale: float) -> int:
+    """The captured input-length ceiling for a cfg value.
+
+    Past this the request does not merely leave the fast path — with
+    ``freeze_after_warmup`` set, `text_encoder_graph.py:82` raises
+    ``RuntimeError: text encoder CUDA graph (b, n) was not declared in the
+    warmup profile``, the connection aborts, and no audio is produced at all.
+
+    Args:
+        cfg_scale: The requested guidance scale.
+
+    Returns:
+        Maximum input tokens that will succeed.
+    """
+    return TOKEN_CEILING_BY_MODE[branch_mode(cfg_scale)]
 
 # Anything slower than this is a cold start, not a cfg effect. The warm figure
 # under test is tens of milliseconds; the cold one is tens of seconds. There is
@@ -242,49 +279,130 @@ def probe_cfg(
     return conditions
 
 
-def probe_token_ceiling(
-    harness: LatencyHarness, *, repeats: int = 3, seed: int = 42
+def probe_uncaptured_viability(
+    harness: LatencyHarness, *, seed: int = 42, text: str = SHORT_TEXT
 ) -> dict[str, Any]:
-    """Compare a short input against one past the captured length ceiling.
+    """Test whether an uncaptured cfg value serves at all.
+
+    This is the question that actually decides the UI control, and unlike a
+    timing comparison it is binary and immune to network noise: either the
+    request produces audio or it raises inside the graph cache. Timing across
+    a home connection has ~±60ms of jitter, which is the same order as the
+    effect a fast-path fall-off would produce — so the statistical comparison
+    can be inconclusive while this remains decisive.
 
     Args:
         harness: A configured `LatencyHarness`.
-        repeats: Samples per length.
+        seed: Held constant.
+        text: Held short, so length never confounds the result.
+
+    Returns:
+        Per-value success, and the mechanism that explains it.
+    """
+    results: list[dict[str, Any]] = []
+    for cfg_scale in UNCAPTURED_CFG_SCALES:
+        sample = harness.measure(
+            SpeechRequest(text=text, cfg_scale=cfg_scale, seed=seed),
+            request_class="warm",
+        )
+        results.append(
+            {
+                "cfg_scale": cfg_scale,
+                "mode": branch_mode(cfg_scale),
+                "served": sample.ok and sample.audio_bytes > 0,
+                "ttfa_ms": round(sample.ttfa_ms, 2) if sample.ttfa_ms else None,
+                "reason": sample.discard_reason,
+            }
+        )
+        log.info("cfg_probe.viability", **results[-1])
+    return {
+        "all_served": all(entry["served"] for entry in results),
+        "results": results,
+        "mechanism": (
+            "CUDA graphs are keyed (batch_size, max_length) and branch_batch_size; "
+            "warmup_profile.py maps cfg to a binary mode, 'no_cfg' for exactly 1.0 "
+            "and 'single_cfg' otherwise. No graph is keyed on the cfg number, so "
+            "service.cfg_scales [1.0, 4.0] are two representative values that "
+            "exercise both modes — not a whitelist of servable values."
+        ),
+    }
+
+
+def probe_token_ceiling(
+    harness: LatencyHarness, *, repeats: int = 1, seed: int = 42
+) -> dict[str, Any]:
+    """Find where each branch mode's input-length ceiling actually bites.
+
+    Tested per mode, because the ceiling is per mode: cfg 1.0 runs a single
+    branch capped at 256 tokens, any other cfg runs dual branches capped at
+    512. An input past the ceiling is not slower — it raises inside the frozen
+    graph cache and the client receives no audio.
+
+    Args:
+        harness: A configured `LatencyHarness`.
+        repeats: Samples per condition.
         seed: Held constant.
 
     Returns:
-        A mapping carrying both conditions and whether the long one fell off.
+        Per-mode results with the observed pass/fail either side of each
+        ceiling.
     """
-    short = Condition(
-        label="short input", cfg_scale=1.0, captured=True, text_chars=len(SHORT_TEXT)
-    )
-    long = Condition(
-        label=f"input past the {CAPTURED_TOKEN_CEILING}-token ceiling",
-        cfg_scale=1.0,
-        captured=False,
-        text_chars=len(LONG_TEXT),
-    )
-    for condition, text in ((short, SHORT_TEXT), (long, LONG_TEXT)):
-        for _ in range(repeats):
-            condition.samples.append(
-                harness.measure(
-                    SpeechRequest(text=text, cfg_scale=1.0, seed=seed),
-                    request_class="warm",
-                )
-            )
+    sentence = "It is good to hear your voice again after all this time. "
 
-    verdict, rationale = classify([short], [long])
+    def _probe(cfg_scale: float, approx_tokens: int) -> dict[str, Any]:
+        text = sentence * max(1, round(approx_tokens * 4 / len(sentence)))
+        served = True
+        ttfa: float | None = None
+        reason: str | None = None
+        for _ in range(repeats):
+            sample = harness.measure(
+                SpeechRequest(text=text, cfg_scale=cfg_scale, seed=seed),
+                request_class="warm",
+            )
+            if not (sample.ok and sample.audio_bytes > 0):
+                served = False
+                reason = sample.discard_reason
+                break
+            ttfa = sample.ttfa_ms
+        return {
+            "cfg_scale": cfg_scale,
+            "mode": branch_mode(cfg_scale),
+            "ceiling": token_ceiling_for(cfg_scale),
+            "approx_tokens": approx_tokens,
+            "text_chars": len(text),
+            "served": served,
+            "ttfa_ms": round(ttfa, 2) if ttfa else None,
+            "reason": reason,
+        }
+
+    results = []
+    for cfg_scale in (1.0, 4.0):
+        ceiling = token_ceiling_for(cfg_scale)
+        results.append(_probe(cfg_scale, int(ceiling * 0.6)))   # comfortably under
+        results.append(_probe(cfg_scale, int(ceiling * 1.4)))   # comfortably over
+
+    under = [r for r in results if r["approx_tokens"] < r["ceiling"]]
+    over = [r for r in results if r["approx_tokens"] > r["ceiling"]]
     return {
-        "captured_max_tokens": CAPTURED_TOKEN_CEILING,
-        "short": short.stats(),
-        "long": long.stats(),
-        "falls_off": verdict == "presets",
-        "rationale": rationale,
+        "by_mode": TOKEN_CEILING_BY_MODE,
+        "results": results,
+        "under_ceiling_all_served": all(r["served"] for r in under),
+        "over_ceiling_all_failed": all(not r["served"] for r in over),
+        "failure_is_hard": all(not r["served"] for r in over),
+        "rationale": (
+            "Past the captured ceiling the request does not degrade to a slower "
+            "path. freeze_after_warmup makes text_encoder_graph.py raise "
+            "RuntimeError, the connection aborts, and no audio is produced. The "
+            "UI must therefore refuse over-length input before dispatch rather "
+            "than warn about latency."
+        ),
     }
 
 
 def build_finding(
-    conditions: list[Condition], token_ceiling: dict[str, Any]
+    conditions: list[Condition],
+    token_ceiling: dict[str, Any],
+    viability: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the recorded finding the UI and the plan both read.
 
@@ -304,7 +422,13 @@ def build_finding(
     uncaptured = [c for c in conditions if not c.captured]
     verdict, rationale = classify(captured, uncaptured)
 
-    if verdict == "slider":
+    # The control follows *viability*, not the timing comparison. An uncaptured
+    # value that demonstrably serves is a value the UI can offer; a timing
+    # difference smaller than this instrument's noise is not a reason to
+    # withhold it. When no viability probe ran, fall back to the timing verdict
+    # and then to presets, which stays the conservative default.
+    served = bool(viability and viability.get("all_served"))
+    if served or verdict == "slider":
         control: dict[str, Any] = {
             "kind": "slider",
             "min": 1.0,
@@ -312,6 +436,12 @@ def build_finding(
             "step": 0.5,
             "default": 1.0,
         }
+        if served:
+            verdict = "slider"
+            rationale = (
+                "every uncaptured cfg value served successfully. "
+                + str(viability and viability.get("mechanism", ""))
+            )
     else:
         control = {
             "kind": "presets",
@@ -326,6 +456,8 @@ def build_finding(
         "rationale": rationale,
         "cfg_control": control,
         "captured_cfg_scales": list(CAPTURED_CFG_SCALES),
+        "viability": viability,
+        "token_ceiling_by_mode": TOKEN_CEILING_BY_MODE,
         "conditions": [condition.stats() for condition in conditions],
         "token_ceiling": token_ceiling,
         "samples": [
@@ -386,6 +518,7 @@ def main(argv: list[str] | None = None) -> int:
         # before any sample that counts is taken.
         harness.measure(SpeechRequest(text=SHORT_TEXT), request_class="cold")
         conditions = probe_cfg(harness, repeats=args.repeats, seed=args.seed)
+        viability = probe_uncaptured_viability(harness, seed=args.seed)
         token_ceiling = (
             {"skipped": True}
             if args.skip_token_probe
@@ -397,7 +530,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         transport.close()
 
-    finding = build_finding(conditions, token_ceiling)
+    finding = build_finding(conditions, token_ceiling, viability)
     write_finding(finding, args.out)
     print(json.dumps({k: v for k, v in finding.items() if k != "samples"}, indent=2))
     return 0

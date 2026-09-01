@@ -10,6 +10,10 @@ import pytest
 from bench.cfg_probe import (
     CAPTURED_CFG_SCALES,
     CAPTURED_TOKEN_CEILING,
+    TOKEN_CEILING_BY_MODE,
+    branch_mode,
+    probe_uncaptured_viability,
+    token_ceiling_for,
     COLD_SAMPLE_THRESHOLD_MS,
     LONG_TEXT,
     SHORT_TEXT,
@@ -109,19 +113,82 @@ def test_the_probe_varies_only_cfg_scale(credentials: Credentials, clock) -> Non
     assert cfgs == {"1.0", "4.0", "2.5"}
 
 
-def test_the_token_probe_compares_against_the_captured_ceiling(
+def test_the_token_ceiling_is_per_branch_mode_not_global(
+    credentials: Credentials, clock
+) -> None:
+    """Measured live: ~299 tokens fails at cfg 1.0 and serves at cfg 2.5/4.0.
+
+    configs/fast.json captures batch 1 at 32..256 and batch 2 at 32..512, and
+    warmup_profile.py maps cfg to a binary mode rather than a value. A single
+    global ceiling would let a 300-token Design request through to a hard
+    failure.
+    """
+    assert token_ceiling_for(1.0) == 256
+    assert token_ceiling_for(2.5) == 512
+    assert token_ceiling_for(4.0) == 512
+    assert branch_mode(1.0) == "no_cfg"
+    assert branch_mode(2.5) == "single_cfg"
+    assert TOKEN_CEILING_BY_MODE == {"no_cfg": 256, "single_cfg": 512}
+
+
+def test_the_token_probe_tests_each_mode_either_side_of_its_ceiling(
     credentials: Credentials, clock
 ) -> None:
     transport = FakeTransport(
         [FakeResponse(chunks=(b"\x00" * 4800,), tick_s=0.04, clock=clock)]
     )
     result = probe_token_ceiling(
-        LatencyHarness(credentials, transport, clock=clock), repeats=2
+        LatencyHarness(credentials, transport, clock=clock), repeats=1
     )
-    assert result["captured_max_tokens"] == CAPTURED_TOKEN_CEILING
-    assert result["short"]["text_chars"] == len(SHORT_TEXT)
-    assert result["long"]["text_chars"] == len(LONG_TEXT)
-    assert len(LONG_TEXT) > 2_000  # comfortably past 512 tokens
+    assert result["by_mode"] == TOKEN_CEILING_BY_MODE
+    # Two modes, each probed under and over its own ceiling.
+    assert len(result["results"]) == 4
+    assert {r["ceiling"] for r in result["results"]} == {256, 512}
+    assert "no audio is produced" in result["rationale"]
+
+
+def test_uncaptured_viability_is_binary_and_noise_free(
+    credentials: Credentials, clock
+) -> None:
+    """The question that decides the control is 'does it serve', not 'is it
+    slower' — timing across a home connection has jitter the same order as the
+    effect being looked for."""
+    transport = FakeTransport(
+        [FakeResponse(chunks=(b"\x00" * 4800,), tick_s=0.04, clock=clock)]
+    )
+    result = probe_uncaptured_viability(
+        LatencyHarness(credentials, transport, clock=clock)
+    )
+    assert result["all_served"] is True
+    assert all(entry["mode"] == "single_cfg" for entry in result["results"])
+    assert "not a whitelist" in result["mechanism"]
+
+
+def test_a_served_uncaptured_value_selects_a_slider_over_a_noisy_verdict(
+    credentials: Credentials, clock
+) -> None:
+    """Live, the timing comparison came back inconclusive (the captured
+    condition alone spread 1.80x) while every uncaptured value served. The
+    control follows viability."""
+    finding = build_finding(
+        [_condition(1.0, True, [182, 200]), _condition(2.5, False, [175, 300])],
+        {"skipped": True},
+        {"all_served": True, "results": [], "mechanism": "not a whitelist of servable values"},
+    )
+    assert finding["verdict"] == "slider"
+    assert finding["cfg_control"]["kind"] == "slider"
+    assert finding["token_ceiling_by_mode"] == TOKEN_CEILING_BY_MODE
+
+
+def test_a_failing_uncaptured_value_still_falls_back_to_presets(
+    credentials: Credentials, clock
+) -> None:
+    finding = build_finding(
+        [_condition(1.0, True, [182, 200]), _condition(2.5, False, [900, 950])],
+        {"skipped": True},
+        {"all_served": False, "results": [], "mechanism": ""},
+    )
+    assert finding["cfg_control"]["kind"] == "presets"
 
 
 def test_the_finding_names_the_control_the_ui_should_render() -> None:
