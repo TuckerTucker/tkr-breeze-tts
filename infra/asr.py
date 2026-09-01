@@ -25,7 +25,16 @@ reason it does in the synthesis service: Modal marks a container warm when
 container that is not ready.
 """
 
-from __future__ import annotations
+# Deliberately no `from __future__ import annotations`.
+#
+# The route handlers below are defined inside `serve()`, where `UploadFile` and
+# friends are local imports — the container has FastAPI, this repo's own
+# environment does not, and the tests import this module. Under PEP 563 an
+# annotation is stored as a *string* and FastAPI resolves it through
+# `get_type_hints`, which looks in the function's **module** globals. There it
+# finds nothing, and the route 500s at first request with a
+# `PydanticUserError: ... is not fully defined`. Evaluated eagerly, the
+# annotation binds the class that is actually in scope.
 
 import time
 from typing import Any, Final

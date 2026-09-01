@@ -89,6 +89,24 @@ def test_env_overrides_are_parsed_and_validated() -> None:
     assert config.min_containers == 1
 
 
+def test_the_readme_gpu_override_produces_a_spec_modal_accepts() -> None:
+    # `BREEZE_GPU=L40S modal deploy infra/service.py` is an example this
+    # project's README gives, and with the pin left at its default it used to
+    # build `L40S!` — which Modal rejects as "not a valid GPU type", at deploy,
+    # after the image work. The pin is dropped where there is no upgrade to
+    # prevent.
+    from infra.config import PINNABLE_GPUS
+
+    config = config_from_env({"BREEZE_GPU": "L40S"})
+    assert config.pin_gpu is True
+    assert config.gpu_spec == "L40S"
+    assert "!" not in config.gpu_spec
+
+    # The one case a pin means something is still pinned.
+    assert PINNABLE_GPUS == frozenset({"H100"})
+    assert config_from_env({}).gpu_spec == "H100!"
+
+
 def test_env_defaults_match_the_dataclass_defaults() -> None:
     assert config_from_env({}) == ServiceConfig()
 

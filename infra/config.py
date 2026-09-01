@@ -28,6 +28,13 @@ ALLOWED_GPUS: Final[frozenset[str]] = frozenset(
     {"H100", "H200", "L40S", "A100-40GB", "A100-80GB", "A10G", "L4"}
 )
 
+# GPUs Modal accepts a pin suffix on. The suffix is a request *not to be
+# auto-upgraded*, so the server has a spelling for it only where an upgrade
+# path exists — H100 can become an H200, and `L4!` is rejected outright as "not
+# a valid GPU type". Observed at deploy, not inferred: `H100!` is what the
+# synthesis service runs on today, and `L4!` is what failed.
+PINNABLE_GPUS: Final[frozenset[str]] = frozenset({"H100"})
+
 # CTranslate2 quantisation modes this project will run. Restricted on purpose:
 # a typo like "fp16" is accepted by nobody and would surface as a load failure
 # inside the container, after the GPU has been requested.
@@ -175,8 +182,20 @@ class ServiceConfig:
 
     @property
     def gpu_spec(self) -> str:
-        """The string handed to Modal's ``gpu=`` argument."""
-        return f"{self.gpu}!" if self.pin_gpu else self.gpu
+        """The string handed to Modal's ``gpu=`` argument.
+
+        The pin is dropped on a GPU Modal will not accept it for. That is not a
+        silent failure of intent: the suffix asks not to be auto-upgraded, and
+        where there is no upgrade to prevent the server has no spelling for it.
+        Keeping the suffix there instead would turn ``BREEZE_GPU=L40S`` — an
+        example this project's own README gives — into a deploy-time rejection.
+
+        Returns:
+            The GPU string, pinned only where a pin means something.
+        """
+        if self.pin_gpu and self.gpu in PINNABLE_GPUS:
+            return f"{self.gpu}!"
+        return self.gpu
 
     def with_overrides(self, **changes: object) -> ServiceConfig:
         """Return a validated copy with `changes` applied.
@@ -252,8 +271,20 @@ class AsrConfig:
 
     @property
     def gpu_spec(self) -> str:
-        """The string handed to Modal's ``gpu=`` argument."""
-        return f"{self.gpu}!" if self.pin_gpu else self.gpu
+        """The string handed to Modal's ``gpu=`` argument.
+
+        The pin is dropped on a GPU Modal will not accept it for. That is not a
+        silent failure of intent: the suffix asks not to be auto-upgraded, and
+        where there is no upgrade to prevent the server has no spelling for it.
+        Keeping the suffix there instead would turn ``BREEZE_GPU=L40S`` — an
+        example this project's own README gives — into a deploy-time rejection.
+
+        Returns:
+            The GPU string, pinned only where a pin means something.
+        """
+        if self.pin_gpu and self.gpu in PINNABLE_GPUS:
+            return f"{self.gpu}!"
+        return self.gpu
 
 
 def asr_config_from_env(env: dict[str, str] | None = None) -> AsrConfig:

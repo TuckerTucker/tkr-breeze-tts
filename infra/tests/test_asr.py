@@ -60,9 +60,13 @@ def test_the_endpoint_is_closed_by_default() -> None:
     assert AsrConfig().requires_proxy_auth is True
 
 
-def test_the_gpu_is_pinned_so_a_measurement_names_the_part_it_ran_on() -> None:
-    assert AsrConfig().gpu_spec == "L4!"
-    assert AsrConfig(pin_gpu=False).gpu_spec == "L4"
+def test_the_pin_is_dropped_on_a_gpu_modal_will_not_accept_it_for() -> None:
+    # `L4!` is rejected by Modal as "not a valid GPU type" — the suffix asks
+    # not to be auto-upgraded, and only H100 has an upgrade path to prevent.
+    # Verified at deploy: this is what the first attempt failed on.
+    assert AsrConfig().pin_gpu is True
+    assert AsrConfig().gpu_spec == "L4"
+    assert AsrConfig(gpu="H100").gpu_spec == "H100!"
 
 
 @pytest.mark.parametrize(
