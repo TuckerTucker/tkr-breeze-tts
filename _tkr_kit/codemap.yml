@@ -1,0 +1,177 @@
+meta:
+  fmt: 14
+  name: breeze-tts-demo
+  ts: "2026-09-01T01:10:00Z"
+  what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
+    Modal; a local gateway holds the credential and absorbs audio chores; a browser
+    UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
+  langs: [python, typescript, tsx]
+  runtimes: { node: "20.19", python: "3.12" }
+  cmds:
+    install: "npm run install:all"
+    build: "npm run build"
+    start: "npm start"
+    test: "npm test && npm run test:python"
+    deploy: "modal run infra/weights.py && modal deploy infra/service.py"
+    measure: "python -m bench.harness && python -m bench.cfg_probe"
+
+capabilities:
+  - id: modal-inference
+    state: in_progress
+    dir: infra/
+    provides: "Modal image, weights Volume, warm serving class, deployment config"
+    verified: "40 tests offline; image never built, so the flash-attn ABI check is unrun"
+  - id: measurement
+    state: in_progress
+    dir: bench/
+    provides: "first-audio + RTF harness; cfg fast-path fall-off probe"
+    verified: "34 tests against an injected transport; never run on real hardware"
+  - id: local-gateway
+    state: done
+    dir: gateway/
+    evidence: "commit 69103a2"
+    provides: "credential proxy, dual transport, reference intake, clip cache, voice library, script runner"
+    verified: "104 tests + end-to-end against a stub upstream"
+  - id: demo-ui
+    state: done
+    dir: ui/
+    evidence: "commit 3372dec"
+    provides: "console, three voice modes, streaming playback, wake state, history, voice library, script editor"
+    verified: "131 tests + real AudioWorklet driven in Chrome"
+
+state:
+  built:
+    - "All four capabilities' source and tests: 309 tests, all passing offline."
+    - "Gateway verified end to end: streaming first byte 17ms vs 176ms total;
+       replay served from cache with the upstream killed; 409 typed as busy."
+    - "UI verified in Chrome: real AudioWorklet, 19ms first audio, no fallback."
+  deferred:
+    - "Nothing is deployed. `modal deploy` and the 7.7GB weights fill are unrun."
+    - "bench/findings/ is empty. Every latency figure the UI shows is absent until
+       the harness runs; the UI says 'not yet measured' rather than inventing one."
+  do_not_assume:
+    - "There is NO deployed endpoint. MODAL_ENDPOINT_URL in .env is unverified."
+    - "The container image has never been built — the flash-attn cxx11-ABI smoke
+       check has not actually run against a real wheel."
+    - "The vendor runtime is NOT in this repo. It is cloned into the image at a
+       pinned commit (infra/image.py VENDOR_COMMIT); nothing here imports it locally."
+    - "cfg fall-off is UNMEASURED. The UI defaults to captured presets, and the
+       'slider' branch has never been exercised against real data."
+    - "Koji is off (headless). Planning state is file-canonical in _tkr_kit/."
+
+invariants:
+  - "The Modal credential never leaves the gateway process. No response body,
+     header, log line, or bundled asset may contain the pair or the .modal.run URL."
+  - "The browser issues only same-origin relative /api/* requests. It never learns
+     the upstream endpoint, which is what makes CORS a non-problem rather than a
+     configured one."
+  - "The clip cache holds exactly ONE on-disk format — raw PCM s16le plus a sidecar.
+     WAV framing happens at read, never at write, so a clip's readability never
+     depends on which transport was active when it was generated."
+  - "Sample rate and format come from upstream X-Sample-Rate / X-Sample-Format.
+     Never hardcode 24000 or s16le a second time: a wrong rate does not fail, it
+     plays at the wrong speed."
+  - "No @modal.concurrent. The vendor holds a process-wide _request_lock and
+     returns 409; configs/fast.json declares concurrency 1."
+  - "The model load lives in @modal.enter(), never the ASGI lifespan. Modal marks a
+     container warm when enter() returns."
+  - "Readiness is inferred from idle time, never polled. GET /health on a
+     scaled-to-zero container starts one."
+  - "The AudioWorklet processor is served from ui/public/ untransformed, and its
+     AudioContext runs at the model's own sample rate."
+  - "No time-stretch, ever. Script drift is measured and reported, never corrected."
+  - "No language field is sent. The vendor API has none; the selector drives the
+     vocal-event palette only."
+  - "UX: no toasts, no confirmation dialogs, undo over 'are you sure?', status in
+     place beside the control it concerns."
+
+deps:
+  gateway: { runtime: [fastify, "@fastify/multipart", "@fastify/static", pino], dev: [typescript, tsx, vitest] }
+  ui: { runtime: [react, react-dom], dev: [vite, vitest, jsdom, "@testing-library/react", typescript] }
+  python: { infra: ["modal>=0.64", "huggingface-hub>=0.26", "structlog"], bench: ["httpx>=0.27", "structlog"] }
+  external: { ffmpeg: "required for reference intake; checked at startup, degrades to WAV-only uploads" }
+
+struct:
+  infra:     { n: 6,  lines: 840,  tests: 5, role: "Modal deployment surface" }
+  bench:     { n: 3,  lines: 1094, tests: 4, role: "measurement clients + findings/" }
+  gateway/src: { n: 12, lines: 3888, tests: 7, role: "local Node service" }
+  ui/src:    { n: 21, lines: 3366, tests: 9, role: "React browser surface" }
+  ui/public: { n: 1, role: "pcm-processor.js — served untransformed, deliberately not bundled" }
+
+nav:
+  read_first: [_tkr_kit/breeze-tts-2-modal-brief.md, README.md]
+  entry_points:
+    modal: infra/service.py
+    gateway: gateway/src/index.ts
+    ui: ui/src/main.tsx
+  data_flow: "browser → gateway/src/index.ts → proxy.ts → Modal → vendor FastAPI →
+    PCM stream → tee to cache.ts + pipe to ui/src/audio/player.ts → AudioWorklet"
+  pure_logic: [gateway/src/cache-index.ts, gateway/src/voices-index.ts, gateway/src/vtt.ts, ui/src/state/]
+
+api:
+  gateway:
+    health:  ["GET /api/health", "POST /api/wake", "GET /api/findings"]
+    speech:  ["POST /api/speech"]
+    clips:   ["GET /api/clips", "GET /api/clips/:id", "DELETE /api/clips/:id"]
+    voices:  ["GET /api/voices", "POST /api/voices", "PATCH /api/voices/:id",
+              "DELETE /api/voices/:id", "GET /api/voices/:id/audio"]
+    scripts: ["POST /api/scripts", "GET /api/scripts", "GET /api/scripts/:id",
+              "PATCH /api/scripts/:id/cues/:cueId", "PUT /api/scripts/:id/cues",
+              "DELETE /api/scripts/:id", "POST /api/scripts/:id/run (SSE)",
+              "GET /api/scripts/:id/export.vtt", "GET /api/scripts/:id/export.wav"]
+  upstream_vendor: ["GET /health", "POST /v1/audio/speech (multipart → raw PCM stream)"]
+  error_types: [busy, auth, timeout, upstream, unavailable, validation, format, reference, not-found]
+
+config:
+  env_file: ".env at the repo root — one copy, because the gateway and bench
+    authenticate to the same endpoint (.env.example is the template)"
+  gateway: [MODAL_ENDPOINT_URL, MODAL_KEY, MODAL_SECRET, GATEWAY_PORT, GATEWAY_TRANSPORT,
+            CLIP_CACHE_DIR, CLIP_CACHE_MAX_BYTES, VOICE_STORE_DIR, SCRIPT_STORE_DIR]
+  modal: [BREEZE_GPU, BREEZE_PIN_GPU, BREEZE_SCALEDOWN_WINDOW_S, BREEZE_MIN_CONTAINERS,
+          BREEZE_REQUIRES_PROXY_AUTH]
+  defaults: { port: 8787, transport: streaming, gpu: "H100!", scaledown_s: 300, cache_max: 2GiB }
+  tokens: "MODAL_KEY/MODAL_SECRET are proxy tokens (wk-/ws-). An ak-/as- API token
+    authenticates to nothing here and is refused at startup by both the gateway and bench."
+
+relations:
+  - "infra/config.py is the single decoration-time surface; image.py, weights.py and
+     service.py all read it and none carries its own decorator arguments."
+  - "bench writes findings/ → gateway reads them → UI renders them. The UI never
+     computes a latency figure it did not observe or read."
+  - "Clips and voices have separate lifetimes: clips evict oldest-first, voices own
+     their own copy of the audio and survive their source clip."
+  - "A script cue's clipId is a hash of text+voice+cfg+seed, so staleness is derived
+     rather than tracked and one edit costs one GPU request."
+
+testing:
+  totals: { infra: 40, bench: 34, gateway: 104, ui: 131, all: 309 }
+  runners: { python: pytest, gateway: vitest, ui: "vitest + jsdom + testing-library" }
+  principle: "No test needs a GPU, a network, or a deployed service — the Modal SDK
+    is only constructed, and every HTTP/audio boundary is injected."
+  real_io: "gateway/test/reference.test.ts uses real ffmpeg fixtures; container
+    detection against a fabricated header would pass while the real thing failed."
+
+arch:
+  boundaries:
+    - "browser ↔ gateway: same-origin HTTP only"
+    - "gateway ↔ Modal: proxy-auth headers, attached server-side only"
+    - "pure index/parse modules carry no filesystem access, so their rules are testable alone"
+  patterns: [inversion-of-control, injected-transport, injected-clock, derived-state]
+  logging: { python: structlog, node: pino }
+
+ops:
+  scripts: { root: [install:all, build, start, test, test:python, typecheck] }
+  gitignored: [.env, .cache/, node_modules/, dist/, .venv/]
+
+semantic:
+  ~cold_start: "~20x the cost of the generation it precedes, and paid again after
+    every gap > scaledown_window. It is the interaction most likely to
+    misrepresent a model sold on latency, which is why it is a named UI state."
+  ~flash_attn: "Mandatory on every path, including the one documented as eager —
+    config.json pins it on the text encoder, which the eager arg never reaches."
+  ~cfg_scale: "The most interesting control and the least documented. It is the
+    ONLY thing separating clone from direction, which share one template."
+  ~no_saved_voice: "The model has no voice primitive — no embedding, no id. A voice
+    can only persist as reference audio plus its exact transcript, entirely locally."
+  ~one_request_per_cue: "Forced, not chosen: the served API exposes no speaker
+    field and templates.py hardcodes S0."
