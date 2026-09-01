@@ -37,7 +37,10 @@ slices:
     number: 1
     layer: service
     feature: runtime-image
-    status: in_progress
+    status: done
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - paths:
       - infra/weights.py
       - infra/tests/test_weights.py
@@ -63,7 +66,10 @@ slices:
     number: 2
     layer: data
     feature: weights-volume
-    status: in_progress
+    status: done
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - paths:
       - infra/service.py
       - infra/tests/test_service.py
@@ -93,7 +99,10 @@ slices:
     number: 3
     layer: service
     feature: inference-service
-    status: in_progress
+    status: done
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - paths:
       - infra/config.py
       - infra/tests/test_config.py
@@ -128,4 +137,7 @@ slices:
     number: 4
     layer: service
     feature: service-config
-    status: in_progress
+    status: done
+    evidence:
+      kind: commit
+      ref: 183a1a0

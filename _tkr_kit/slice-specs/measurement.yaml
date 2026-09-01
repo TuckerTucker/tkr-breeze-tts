@@ -1,7 +1,7 @@
 capability: measurement
 slice_specs:
   - title: Latency harness
-    status: in_progress
+    status: done
     purpose: Replace published H100 benchmark figures with numbers measured against
       this deployment.
     interface: "A CLI producing a results file: per-request time-to-first-audio,
@@ -31,8 +31,11 @@ slice_specs:
       Modal-Secret headers, and no code path in the harness shells out to `modal
       curl`.
     slice: 1
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - title: CFG fall-off probe
-    status: in_progress
+    status: done
     purpose: Determine empirically whether an uncaptured cfg_scale leaves the
       CUDA-graph fast path, closing the plan's one open decision.
     interface: "A CLI producing a finding: time-to-first-audio per cfg_scale, plus a
@@ -51,3 +54,6 @@ slice_specs:
       The verdict is derived from the samples rather than asserted. The finding
       is written where the plan's open decision can cite it by path.
     slice: 2
+    evidence:
+      kind: commit
+      ref: 183a1a0

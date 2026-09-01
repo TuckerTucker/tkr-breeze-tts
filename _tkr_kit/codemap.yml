@@ -1,7 +1,7 @@
 meta:
   fmt: 14
   name: breeze-tts-demo
-  ts: "2026-09-01T01:10:00Z"
+  ts: "2026-09-01T02:35:00Z"
   what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
     Modal; a local gateway holds the credential and absorbs audio chores; a browser
     UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
@@ -17,15 +17,17 @@ meta:
 
 capabilities:
   - id: modal-inference
-    state: in_progress
+    state: done
     dir: infra/
+    evidence: "commit 183a1a0; deployed and serving on an H100"
     provides: "Modal image, weights Volume, warm serving class, deployment config"
-    verified: "40 tests offline; image never built, so the flash-attn ABI check is unrun"
+    verified: "41 tests; image built, flash-attn ABI check passed, 7.68GB on the Volume"
   - id: measurement
-    state: in_progress
+    state: done
     dir: bench/
+    evidence: "commit 183a1a0; findings recorded from real hardware"
     provides: "first-audio + RTF harness; cfg fast-path fall-off probe"
-    verified: "34 tests against an injected transport; never run on real hardware"
+    verified: "42 tests; both probes run against the deployed endpoint"
   - id: local-gateway
     state: done
     dir: gateway/
@@ -41,22 +43,32 @@ capabilities:
 
 state:
   built:
-    - "All four capabilities' source and tests: 309 tests, all passing offline."
+    - "All four capabilities' source and tests: 320 tests, all passing offline."
+    - "DEPLOYED. Image built, 7.68GB checkpoint on the Volume, service live at
+       tuckertucker--breeze-tts-breezeservice-serve.modal.run, proxy auth enforced."
+    - "Measured on an H100: warm TTFA 161ms, RTF 0.39, graph-capture warmup 148.6s,
+       cold start ~166s. Published claims are <40ms and 0.32."
     - "Gateway verified end to end: streaming first byte 17ms vs 176ms total;
        replay served from cache with the upstream killed; 409 typed as busy."
     - "UI verified in Chrome: real AudioWorklet, 19ms first audio, no fallback."
   deferred:
-    - "Nothing is deployed. `modal deploy` and the 7.7GB weights fill are unrun."
-    - "bench/findings/ is empty. Every latency figure the UI shows is absent until
-       the harness runs; the UI says 'not yet measured' rather than inventing one."
+    - "Clone and Direction hard-fail at cfg != 1.0 — see
+       docs/audits/2026-08-31-cfg-branch-batch.md. Not fixed."
+    - "Cold TTFA is unmeasured client-side; the figure is known from container
+       logs only, so the UI's wake state says 'not yet measured'."
   do_not_assume:
-    - "There is NO deployed endpoint. MODAL_ENDPOINT_URL in .env is unverified."
-    - "The container image has never been built — the flash-attn cxx11-ABI smoke
-       check has not actually run against a real wheel."
+    - "The plan reads 19/19 slices done and demo-ui/slice/2 is NOT satisfied: its
+       CFG control offers values that hard-fail in Clone and Direction. The kit
+       refuses done -> in_progress, so the gap lives in docs/audits/."
+    - "cfg is NOT graph-keyed. warmup_profile.py maps it to a binary mode, so a
+       continuous slider is viable — for Design. The brief says otherwise; the
+       brief is wrong."
+    - "The token ceiling is PER BRANCH MODE and exceeding it is a hard failure,
+       not a slowdown: 256 at cfg 1.0, 512 otherwise, then RuntimeError."
+    - "ref_edit_tata is never warmed. fast.json's warmup_request is hardcoded to
+       tts_instruction, so Clone/Direction work at cfg 1.0 only by coincidence."
     - "The vendor runtime is NOT in this repo. It is cloned into the image at a
        pinned commit (infra/image.py VENDOR_COMMIT); nothing here imports it locally."
-    - "cfg fall-off is UNMEASURED. The UI defaults to captured presets, and the
-       'slider' branch has never been exercised against real data."
     - "Koji is off (headless). Planning state is file-canonical in _tkr_kit/."
 
 invariants:
@@ -129,7 +141,7 @@ config:
             CLIP_CACHE_DIR, CLIP_CACHE_MAX_BYTES, VOICE_STORE_DIR, SCRIPT_STORE_DIR]
   modal: [BREEZE_GPU, BREEZE_PIN_GPU, BREEZE_SCALEDOWN_WINDOW_S, BREEZE_MIN_CONTAINERS,
           BREEZE_REQUIRES_PROXY_AUTH]
-  defaults: { port: 8787, transport: streaming, gpu: "H100!", scaledown_s: 300, cache_max: 2GiB }
+  defaults: { port: 8787, transport: streaming, gpu: "H100!", scaledown_s: 600, cache_max: 2GiB }
   tokens: "MODAL_KEY/MODAL_SECRET are proxy tokens (wk-/ws-). An ak-/as- API token
     authenticates to nothing here and is refused at startup by both the gateway and bench."
 
@@ -144,7 +156,7 @@ relations:
      rather than tracked and one edit costs one GPU request."
 
 testing:
-  totals: { infra: 40, bench: 34, gateway: 104, ui: 131, all: 309 }
+  totals: { infra: 41, bench: 42, gateway: 106, ui: 132, all: 321 }
   runners: { python: pytest, gateway: vitest, ui: "vitest + jsdom + testing-library" }
   principle: "No test needs a GPU, a network, or a deployed service — the Modal SDK
     is only constructed, and every HTTP/audio boundary is injected."
@@ -170,7 +182,8 @@ semantic:
   ~flash_attn: "Mandatory on every path, including the one documented as eager —
     config.json pins it on the text encoder, which the eager arg never reaches."
   ~cfg_scale: "The most interesting control and the least documented. It is the
-    ONLY thing separating clone from direction, which share one template."
+    ONLY thing separating clone from direction — which is exactly why the
+    batch-4 failure removes Direction rather than degrading it."
   ~no_saved_voice: "The model has no voice primitive — no embedding, no id. A voice
     can only persist as reference audio plus its exact transcript, entirely locally."
   ~one_request_per_cue: "Forced, not chosen: the served API exposes no speaker
