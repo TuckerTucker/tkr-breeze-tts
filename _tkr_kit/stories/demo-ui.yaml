@@ -1,7 +1,7 @@
 capability: demo-ui
 stories:
   - name: compose-an-utterance
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Type what should be said and hear it, without a tour of settings first.
@@ -37,8 +37,11 @@ stories:
       - wf-01-console-design
       - wf-09-first-run
       - wf-10-blocked-states
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: choose-a-voice-mode
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Understand and use the three ways this model can be told what voice to
@@ -76,8 +79,11 @@ stories:
     wireframe_refs:
       - wf-02-console-clone
       - wf-06-console-direction
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: hear-it-as-it-generates
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Hear the model's speed rather than read about it — audio should begin
@@ -109,8 +115,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-04-generating
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: know-when-the-gpu-is-waking
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Understand that a slow first request is a cold container waking, not the
@@ -149,8 +158,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-03-waking
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: revisit-what-i-made
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Compare two generations against each other without regenerating either,
@@ -185,8 +197,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-05-history-actions
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: reproduce-a-generation
-    status: draft
+    status: done
     number: 2
     actor: Operator
     intent: Get the same result twice on purpose, and a different one on purpose —
@@ -222,8 +237,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-01-console-design
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: switch-vocal-event-language
-    status: draft
+    status: done
     number: 3
     actor: Operator
     intent: Get the right vocal-event markers for the language being written,
@@ -257,8 +275,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-01-console-design
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: keep-a-clip
-    status: draft
+    status: done
     number: 2
     actor: Operator
     intent: Take a generated clip out of the demo as a normal audio file, without
@@ -290,8 +311,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-05-history-actions
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: supply-a-reference-file
-    status: draft
+    status: done
     number: 2
     actor: Operator
     intent: Clone a voice from an audio file I already have, which is usually better
@@ -334,8 +358,11 @@ stories:
     wireframe_refs:
       - wf-02-console-clone
       - wf-10-blocked-states
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: promote-a-clip-to-a-voice
-    status: draft
+    status: done
     number: 3
     actor: Operator
     intent: Keep a voice I designed, by turning a generated clip into reference
@@ -379,8 +406,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-05-history-actions
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: pick-a-saved-voice
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Reuse a voice I already made by choosing it, instead of supplying its
@@ -418,8 +448,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-07-voice-library
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: name-a-voice-i-made
-    status: draft
+    status: done
     number: 2
     actor: Operator
     intent: Turn a voice I just designed into something I can find again, at the
@@ -458,8 +491,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-07-voice-library
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: import-a-script
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Start from a script or subtitle file I already have, rather than
@@ -495,8 +531,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-08-script-editor
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: edit-one-line-without-redoing-the-rest
-    status: draft
+    status: done
     number: 2
     actor: Operator
     intent: Fix a single line that came out wrong without paying to regenerate the
@@ -532,8 +571,11 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-08-script-editor
+    evidence:
+      kind: commit
+      ref: 3372dec
   - name: reconcile-timing-drift
-    status: draft
+    status: done
     number: 3
     actor: Operator
     intent: Understand where generated speech does not fit the timings the source
@@ -571,3 +613,6 @@ stories:
       - demo-ui-voice-loop
     wireframe_refs:
       - wf-08-script-editor
+    evidence:
+      kind: commit
+      ref: 3372dec

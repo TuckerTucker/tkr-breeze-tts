@@ -1,6 +1,6 @@
 product:
   name: breeze-tts-demo
-  status: draft
+  status: done
   version: 0.1.0
   schema_version: 1
   problem: "Breeze-TTS-2 is a 3B open-weight bilingual (EN/ZH) TTS model whose
@@ -40,3 +40,6 @@ product:
     the gateway and UI against measured latency rather than published H100
     benchmarks. Build both playback transports so the demo stays usable while
     the streaming path is made to behave.
+  evidence:
+    kind: commit
+    ref: d4b5f0c

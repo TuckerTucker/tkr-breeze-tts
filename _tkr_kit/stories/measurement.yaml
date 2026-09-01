@@ -1,7 +1,7 @@
 capability: measurement
 stories:
   - name: measure-first-audio-latency
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Know what this deployment actually does, rather than what a benchmark on
@@ -29,8 +29,11 @@ stories:
         when: the operator looks for the numbers
         then: they are in a file the brief and plan can cite by path
     feature: latency-harness
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - name: probe-the-cfg-fast-path
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Settle empirically whether the UI can offer a continuous CFG slider, or
@@ -56,3 +59,6 @@ stories:
         then: the finding states plainly whether a continuous slider is viable, and the
           open decision can be closed by citing it
     feature: cfg-falloff-probe
+    evidence:
+      kind: commit
+      ref: 183a1a0

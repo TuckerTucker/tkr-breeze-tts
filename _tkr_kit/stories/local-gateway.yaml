@@ -1,7 +1,7 @@
 capability: local-gateway
 stories:
   - name: keep-the-token-off-the-client
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Use the demo in a browser without the Modal credential ever being
@@ -32,8 +32,11 @@ stories:
         when: the gateway starts
         then: it fails immediately naming the remedy, not at first synthesis
     feature: credential-proxy
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: switch-playback-transport
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Move between streamed PCM and a buffered WAV with one setting, to
@@ -64,8 +67,11 @@ stories:
         then: the request contract is identical, so the switch is invisible to the
           caller
     feature: dual-transport
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: record-a-reference-voice
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Clone a voice recorded in the browser without hand-converting an audio
@@ -94,8 +100,11 @@ stories:
         when: the gateway starts
         then: it reports this with the install command, rather than failing on first use
     feature: reference-intake
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: keep-every-clip
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Re-hear anything already generated instantly and for free, including
@@ -121,8 +130,11 @@ stories:
         when: a new clip is written
         then: the oldest is evicted rather than growth continuing unbounded
     feature: clip-cache
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: keep-a-named-voice
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Have a voice I made survive as a named thing I can reuse, rather than as
@@ -160,8 +172,11 @@ stories:
         when: voices are listed
         then: every saved voice is present with its name and origin intact
     feature: voice-library
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: run-a-script-cue-by-cue
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Voice a whole multi-line script in one run, with a different voice per
@@ -198,3 +213,6 @@ stories:
         then: they are the generated durations computed as bytes / 2 / 24000, never the
           imported targets
     feature: script-runner
+    evidence:
+      kind: commit
+      ref: 69103a2
