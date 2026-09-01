@@ -85,7 +85,7 @@ def test_the_shim_still_loads_when_enter_has_not_run() -> None:
 def test_the_service_is_decorated_from_the_single_config_surface() -> None:
     assert SERVICE_CONFIG.requires_proxy_auth is True
     assert SERVICE_CONFIG.min_containers is None
-    assert SERVICE_CONFIG.scaledown_window_s == 300
+    assert SERVICE_CONFIG.scaledown_window_s == 600
 
 
 def test_no_concurrency_decorator_is_applied() -> None:

@@ -20,7 +20,7 @@ def test_defaults_are_the_documented_posture() -> None:
     config = ServiceConfig()
     assert config.gpu == "H100"
     assert config.gpu_spec == "H100!"
-    assert config.scaledown_window_s == 300
+    assert config.scaledown_window_s == 600
     assert config.min_containers is None
     assert config.requires_proxy_auth is True
     assert config.fast.enabled is True
@@ -53,7 +53,7 @@ def test_out_of_range_scaledown_is_rejected_with_its_bound(value: int) -> None:
     assert str(MAX_SCALEDOWN_WINDOW_S) in str(excinfo.value)
 
 
-@pytest.mark.parametrize("value", [MIN_SCALEDOWN_WINDOW_S, 300, MAX_SCALEDOWN_WINDOW_S])
+@pytest.mark.parametrize("value", [MIN_SCALEDOWN_WINDOW_S, 600, MAX_SCALEDOWN_WINDOW_S])
 def test_in_range_scaledown_is_accepted(value: int) -> None:
     assert ServiceConfig(scaledown_window_s=value).scaledown_window_s == value
 

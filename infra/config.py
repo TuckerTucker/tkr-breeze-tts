@@ -105,7 +105,18 @@ class ServiceConfig:
             an H100 request is never auto-upgraded to an H200. Measurements
             taken on one part are not claims about the other.
         scaledown_window_s: Idle seconds before Modal scales the container to
-            zero. 300 is session-warm: one cold start per sitting.
+            zero. 600 is session-warm: one cold start per sitting, sized
+            against a *measured* 166s cold start rather than a guess.
+
+            The arithmetic is not a cost optimisation and should not be read
+            as one. An H100 idles at $0.066/min and a cold start costs $0.182,
+            so idle time overtakes cold-start cost at 2.8 minutes — on dollars
+            alone the right window is *shorter* than this, not longer. What a
+            10-minute window buys is the 2.8 minutes of operator attention a
+            cold start costs, at a worst-case idle tail of $0.66. For a demo
+            whose whole claim is sub-second latency, a wake that lands in the
+            middle of a sitting is the failure that matters more than the
+            cents. Lower it if the credit is the binding constraint.
         min_containers: Containers kept resident. ``None`` scales to zero. An
             always-on H100 is roughly $3.95/hr against ~$0.003 for the
             generation it serves, so this is an escape hatch, not a default.
@@ -120,7 +131,7 @@ class ServiceConfig:
 
     gpu: str = "H100"
     pin_gpu: bool = True
-    scaledown_window_s: int = 300
+    scaledown_window_s: int = 600
     min_containers: int | None = None
     requires_proxy_auth: bool = True
     timeout_s: int = 900
@@ -196,7 +207,7 @@ def config_from_env(env: dict[str, str] | None = None) -> ServiceConfig:
     config = ServiceConfig(
         gpu=source.get("BREEZE_GPU", "H100"),
         pin_gpu=source.get("BREEZE_PIN_GPU", "1") not in {"0", "false", "False"},
-        scaledown_window_s=300 if scaledown is None else scaledown,
+        scaledown_window_s=600 if scaledown is None else scaledown,
         min_containers=min_containers,
         requires_proxy_auth=source.get("BREEZE_REQUIRES_PROXY_AUTH", "1")
         not in {"0", "false", "False"},
