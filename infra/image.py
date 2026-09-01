@@ -99,6 +99,13 @@ def build_image() -> modal.Image:
         # The final build step, so an ABI or version mismatch fails the build
         # rather than the first inference.
         .run_commands("python /opt/breeze-smoke/smoke_check.py")
+        # Ship this package into the container. Modal stopped auto-mounting local
+        # Python packages in 1.0: without this the entrypoint arrives as a flat
+        # /root/weights.py, its sibling modules are simply absent, and the first
+        # `from infra.config import ...` raises ModuleNotFoundError *inside the
+        # container* — after the image has built and the GPU has been requested.
+        # Declared last so it mounts at runtime and never invalidates a build layer.
+        .add_local_python_source("infra")
     )
 
 

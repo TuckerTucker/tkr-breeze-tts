@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import re
+from pathlib import Path
 
 from infra.image import (
     FLASH_ATTN_WHEEL,
@@ -66,3 +68,30 @@ def test_the_vendor_clone_is_pinned_to_a_commit() -> None:
 def test_the_image_builds_as_a_definition_without_network_access() -> None:
     image = build_image()
     assert image is not None
+
+
+def test_the_infra_package_is_shipped_into_the_container() -> None:
+    """The image must carry this package, not just the entrypoint file.
+
+    Modal stopped auto-mounting local Python packages in 1.0. Without an
+    explicit `add_local_python_source`, the entrypoint arrives as a flat
+    `/root/weights.py` with its siblings absent, and `from infra.config import
+    ...` raises ModuleNotFoundError *inside the container* — after the image
+    has built and the GPU has been requested. This is asserted on the image
+    definition because nothing else in this suite can reach it: the failure
+    lives on the far side of a deploy.
+    """
+    source = (Path(__file__).parent.parent / "image.py").read_text()
+    module = ast.parse(source)
+    calls = [
+        node.func.attr
+        for node in ast.walk(module)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    ]
+    assert "add_local_python_source" in calls
+
+    # And it must be the last layer: a local-file layer above a build step
+    # would invalidate the 2.5 GB of wheels below it on every source edit.
+    assert calls.index("add_local_python_source") == 0, (
+        "add_local_python_source must be the outermost call in the chain"
+    )
