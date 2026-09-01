@@ -352,3 +352,27 @@ def test_a_cold_sample_too_fast_to_be_cold_is_discarded(
     # from the discarded sample.
     assert results.warmup_ms == pytest.approx(154667.72)
     assert COLD_FLOOR_MS == 5_000.0
+
+
+def test_every_modal_cli_call_is_non_interactive() -> None:
+    """Modal's destructive CLI commands prompt and abort without a TTY.
+
+    Observed live twice: `app stop` and then `container stop` both silently
+    did nothing, and the second one made the drain-wait time out and the cold
+    sample land on a container that was never terminated. A missing --yes here
+    does not fail loudly, it fails as a wrong measurement.
+    """
+    import ast
+    import pathlib
+
+    module = ast.parse((pathlib.Path(__file__).parent.parent / "harness.py").read_text())
+    for node in ast.walk(module):
+        if not isinstance(node, ast.List):
+            continue
+        literals = [
+            element.value
+            for element in node.elts
+            if isinstance(element, ast.Constant) and isinstance(element.value, str)
+        ]
+        if literals[:1] == ["modal"] and "stop" in literals:
+            assert "--yes" in literals, f"non-interactive stop missing --yes: {literals}"

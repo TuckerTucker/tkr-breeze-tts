@@ -540,7 +540,12 @@ def stop_app(app_name: str = "breeze-tts") -> bool:
 
         for target in targets:
             subprocess.run(
-                ["modal", "container", "stop", target],
+                # --yes for the same reason as everywhere else in this file:
+                # the CLI prompts for confirmation and aborts in a
+                # non-interactive shell. Without it the stop silently does
+                # nothing, the drain-wait times out, and the "cold" request
+                # reaches the container that was never terminated.
+                ["modal", "container", "stop", "--yes", target],
                 capture_output=True,
                 text=True,
                 timeout=60,
