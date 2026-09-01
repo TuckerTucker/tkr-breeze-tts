@@ -1,0 +1,175 @@
+/*
+ * Swiss: a 12-column grid, one grotesk, one saturated accent.
+ *
+ * Tokens are taken from _tkr_kit/design-systems/swiss.json. Square corners and
+ * hairline rules are the grammar, not a shortcut — there is no radius scale
+ * here because the system does not have one.
+ */
+
+:root {
+  --ink: #000000;
+  --ink-muted: #666666;
+  --surface: #ffffff;
+  --surface-inset: #f5f5f5;
+  --accent: #e3000b;
+  --accent-on: #ffffff;
+  --outline: #e0e0e0;
+  --outline-strong: #000000;
+
+  --space-xs: 8px;
+  --space-sm: 16px;
+  --space-md: 24px;
+  --space-lg: 32px;
+  --space-xl: 48px;
+
+  --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { height: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--ink);
+  background: var(--surface);
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, textarea, select { font: inherit; color: inherit; }
+
+.caption {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+  margin: 0 0 var(--space-xs);
+}
+
+.caption--ink { color: var(--ink); }
+.caption--accent { color: var(--accent); }
+
+.app {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: var(--space-xl);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-md) var(--space-xl) var(--space-xl);
+}
+
+.masthead {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  border-bottom: 2px solid var(--outline-strong);
+  padding-bottom: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.masthead h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+
+.status-pill { display: flex; align-items: center; gap: var(--space-xs); }
+.status-dot { width: 8px; height: 8px; background: var(--ink-muted); }
+.status-dot--warm { background: var(--accent); }
+.status-dot--cold { background: var(--ink); }
+.status-dot--unknown { background: var(--outline); border: 1px solid var(--ink-muted); }
+
+.panel { border-top: 1px solid var(--outline-strong); padding-top: var(--space-sm); margin-bottom: var(--space-lg); }
+.panel--inset { background: var(--surface-inset); padding: var(--space-sm); border-top: none; }
+
+.tabs { display: flex; gap: 0; border: 1px solid var(--outline-strong); width: fit-content; }
+.tab {
+  appearance: none;
+  background: var(--surface);
+  border: none;
+  border-right: 1px solid var(--outline-strong);
+  padding: var(--space-xs) var(--space-md);
+  cursor: pointer;
+}
+.tab:last-child { border-right: none; }
+.tab[aria-pressed='true'] { background: var(--ink); color: var(--surface); }
+
+.field { display: block; margin-bottom: var(--space-sm); }
+.field textarea,
+.field input[type='text'],
+.field input[type='number'] {
+  width: 100%;
+  border: 1px solid var(--outline-strong);
+  background: var(--surface);
+  padding: var(--space-xs);
+  border-radius: 0;
+}
+.field textarea { min-height: 96px; resize: vertical; }
+.field textarea:focus-visible,
+.field input:focus-visible,
+.tab:focus-visible,
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.row { display: flex; align-items: center; gap: var(--space-xs); flex-wrap: wrap; }
+.row--between { justify-content: space-between; }
+
+.chip {
+  appearance: none;
+  border: 1px solid var(--outline-strong);
+  background: var(--surface);
+  padding: 2px var(--space-xs);
+  cursor: pointer;
+  border-radius: 0;
+}
+.chip[aria-pressed='true'] { background: var(--ink); color: var(--surface); }
+.chip:disabled { color: var(--ink-muted); border-color: var(--outline); cursor: not-allowed; }
+
+.generate {
+  appearance: none;
+  width: 100%;
+  border: none;
+  background: var(--accent);
+  color: var(--accent-on);
+  padding: var(--space-sm);
+  font-weight: 700;
+  cursor: pointer;
+  border-radius: 0;
+}
+.generate:disabled { background: var(--surface-inset); color: var(--ink-muted); cursor: not-allowed; }
+
+.reason { margin: var(--space-xs) 0 0; }
+
+.meter { font-variant-numeric: tabular-nums; }
+.meter--over { color: var(--accent); font-weight: 700; }
+
+.wake { border: 2px solid var(--accent); padding: var(--space-sm); }
+.wake__elapsed { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+
+.metric { display: flex; align-items: baseline; gap: 4px; }
+.metric__value { font-size: 32px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.metric__unit { color: var(--ink-muted); }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.list__item { border-bottom: 1px solid var(--outline); padding: var(--space-xs) 0; }
+.list__item[aria-selected='true'] { background: var(--surface-inset); }
+.list__index { color: var(--ink-muted); font-variant-numeric: tabular-nums; margin-right: var(--space-xs); }
+
+.cue-table { width: 100%; border-collapse: collapse; }
+.cue-table th { text-align: left; font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-muted); border-bottom: 1px solid var(--outline-strong); padding: var(--space-xs) 4px; }
+.cue-table td { border-bottom: 1px solid var(--outline); padding: 4px; vertical-align: top; }
+.cue-table input[type='text'] { width: 100%; border: 1px solid transparent; background: transparent; padding: 2px; }
+.cue-table input[type='text']:focus { border-color: var(--outline-strong); background: var(--surface); }
+.cue-state { font-size: 9px; letter-spacing: 0.16em; text-transform: uppercase; }
+.cue-state--drifted, .cue-state--failed, .cue-state--unrunnable { color: var(--accent); }
+
+.blocked { border-left: 2px solid var(--accent); padding-left: var(--space-xs); }
+.muted { color: var(--ink-muted); }
+.dropzone { border: 1px dashed var(--outline-strong); padding: var(--space-md); text-align: center; }
+.dropzone--over { border-color: var(--accent); background: var(--surface-inset); }
+.sidebar { border-left: 1px solid var(--outline-strong); padding-left: var(--space-md); }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); padding: var(--space-sm); }
+  .sidebar { border-left: none; border-top: 1px solid var(--outline-strong); padding-left: 0; padding-top: var(--space-sm); }
+}
