@@ -125,7 +125,7 @@ stories:
       kind: commit
       ref: 183a1a0
   - name: transcribe-a-reference-recording
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Get the exact words of a recording, timed, without typing them.
@@ -153,3 +153,6 @@ stories:
         when: the recogniser runs
         then: it detects the language and names it in the response
     feature: speech-recognition
+    evidence:
+      kind: commit
+      ref: b7bd704

@@ -107,7 +107,7 @@ slice_specs:
       kind: commit
       ref: 183a1a0
   - slice: 5
-    status: draft
+    status: done
     title: Whisper ASR service
     purpose: Derive a reference transcript from its audio, with the per-word times
       that let a trimmed window carry its own transcript.
@@ -140,3 +140,6 @@ slice_specs:
       monotonic and lie within the reported duration. No request field carries a
       language. The ASR required-file list is checked the way weights.py's
       already is, and asr_weights.py imports the Volume without redefining it."
+    evidence:
+      kind: commit
+      ref: b7bd704

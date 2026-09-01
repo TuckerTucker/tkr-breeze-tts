@@ -120,7 +120,7 @@ features:
       kind: commit
       ref: 997f0e0
   - name: speech-recognition
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - infra/asr.py
@@ -151,3 +151,6 @@ features:
         reference-staging).
       - Any change to the Breeze serving class — the two apps share a Volume and
         a token pair, nothing else.
+    evidence:
+      kind: commit
+      ref: b7bd704

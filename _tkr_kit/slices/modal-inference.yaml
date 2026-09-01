@@ -152,6 +152,11 @@ slices:
       - infra/asr_image.py
       - infra/asr_weights.py
       - infra/tests/test_asr.py
+      - infra/config.py
+      - infra/asr_smoke_check.py
+      - infra/tests/test_config.py
+      - .env.example
+      - README.md
     delivers:
       - A second Modal app rather than a second class on the serving one. The
         two workloads want opposite warm profiles — TTS is interactive and holds
@@ -180,4 +185,7 @@ slices:
         convention rather than something invented here.
     title: Whisper ASR as a sibling app, with word timestamps
     layer: service
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: b7bd704
