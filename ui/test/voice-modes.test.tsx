@@ -19,6 +19,21 @@ import {
   type ModeState,
 } from '../src/state/mode.js';
 import type { Voice } from '../src/state/voices.js';
+import type { StagedReferenceSelection } from '../src/state/reference.js';
+
+const STAGED_REFERENCE: StagedReferenceSelection = {
+  referenceId: 'reference-1',
+  name: 'a.wav',
+  durationSeconds: 4,
+  sampleRate: 24_000,
+  peaks: [0.2, 0.8, 0.4],
+  words: [{ word: 'words', start: 0, end: 1 }],
+  language: 'en',
+  start: 0,
+  end: 1,
+  transcript: 'words',
+  transcriptEdited: false,
+};
 
 const VOICES: Voice[] = [
   {
@@ -64,6 +79,20 @@ function Harness(props: {
       recordDisabledReason={
         props.canRecord === false ? 'ffmpeg is not installed.' : null
       }
+      onStageReference={async (file, source) => {
+        setState((current) => ({
+          ...current,
+          reference: { ...STAGED_REFERENCE, source, name: file.name },
+        }));
+      }}
+      referenceMaxSeconds={10}
+      referenceMaxMeasured={false}
+      referenceBranchLimits={null}
+      referenceTokenCeiling={512}
+      referenceAudioUrl={(id, start, end) =>
+        `/api/reference/${id}/audio?start=${start}&end=${end}`
+      }
+      asrRemedy={null}
     />
   );
 }
@@ -109,14 +138,7 @@ describe('reference and transcript appear together, never one alone', () => {
       modeBlocker({
         ...INITIAL_MODE,
         mode: 'clone',
-        refText: 'words',
-      }),
-    ).toMatch(/Add the reference recording/i);
-    expect(
-      modeBlocker({
-        ...INITIAL_MODE,
-        mode: 'clone',
-        reference: { source: 'upload', name: 'a.wav', durationSeconds: null },
+        reference: { ...STAGED_REFERENCE, source: 'upload', transcript: '' },
       }),
     ).toMatch(/Add the exact transcript/i);
   });
@@ -131,8 +153,7 @@ describe('reference and transcript appear together, never one alone', () => {
       modeBlocker({
         ...INITIAL_MODE,
         mode: 'direction',
-        reference: { source: 'upload', name: 'a.wav', durationSeconds: null },
-        refText: 'words',
+        reference: { ...STAGED_REFERENCE, source: 'upload' },
       }),
     ).toMatch(/how the line should be delivered/i);
   });
@@ -164,12 +185,12 @@ describe('upload and capture are peers, and the library is a third', () => {
     expect(screen.getByRole('status').textContent).toMatch(/script\.sh/);
   });
 
-  it('shows an accepted file by name', () => {
+  it('shows a staged file by name', async () => {
     render(<Harness initial={{ mode: 'clone' }} />);
     fireEvent.change(screen.getByLabelText('Upload a reference file'), {
       target: { files: [new File(['RIFF'], 'narrator.wav', { type: 'audio/wav' })] },
     });
-    expect(screen.getByText(/narrator\.wav/)).toBeInTheDocument();
+    expect(await screen.findAllByText(/narrator\.wav/)).not.toHaveLength(0);
   });
 
   it('fills reference and transcript together from a saved voice', () => {
@@ -253,27 +274,44 @@ describe('switching modes', () => {
     const state: ModeState = {
       ...INITIAL_MODE,
       mode: 'clone',
-      reference: { source: 'library', voiceId: 'v1', name: 'Narrator', durationSeconds: 12 },
-      refText: 'exact words',
+      reference: {
+        source: 'library',
+        voiceId: 'v1',
+        name: 'Narrator',
+        durationSeconds: 12,
+        transcript: 'exact words',
+      },
     };
     // It is the same reference either way.
     const directed = switchMode(state, 'direction');
-    expect(directed.reference?.voiceId).toBe('v1');
-    expect(directed.refText).toBe('exact words');
+    expect(directed.reference?.source).toBe('library');
+    expect(directed.reference?.transcript).toBe('exact words');
   });
 
   it('drops a reference on the way to Design, which cannot send one', () => {
     const state: ModeState = {
       ...INITIAL_MODE,
       mode: 'clone',
-      reference: { source: 'upload', name: 'a.wav', durationSeconds: null },
-      refText: 'words',
+      reference: { ...STAGED_REFERENCE, source: 'upload' },
     };
     expect(switchMode(state, 'design').reference).toBeNull();
   });
 
   it('never touches the console text, which is not a property of the mode', () => {
-    render(<Harness initial={{ mode: 'clone', refText: 'kept' }} />);
+    render(
+      <Harness
+        initial={{
+          mode: 'clone',
+          reference: {
+            source: 'library',
+            voiceId: 'v1',
+            name: 'Narrator',
+            durationSeconds: 12,
+            transcript: 'kept',
+          },
+        }}
+      />,
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Direction' }));
     expect((screen.getByLabelText('Reference transcript') as HTMLInputElement).value).toBe(
       'kept',

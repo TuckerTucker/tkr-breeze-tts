@@ -15,13 +15,14 @@
 import { useRef, useState, type JSX } from 'react';
 
 import { CfgControl } from './CfgControl.js';
+import { ReferenceTrimmer } from './ReferenceTrimmer.js';
 import {
   CFG_LABEL,
   MODE_BLURB,
   needsReference,
   type CfgControl as CfgControlShape,
   type ModeState,
-  type Reference,
+  type ReferenceSource,
   type VoiceMode,
 } from '../state/mode.js';
 import { EMPTY_LIBRARY_COPY, isSelectable, type Voice } from '../state/voices.js';
@@ -37,6 +38,20 @@ export interface VoiceModesProps {
   /** False when ffmpeg is absent, which is the one thing that disables capture. */
   readonly canRecord: boolean;
   readonly recordDisabledReason: string | null;
+  /** Stage one upload or recording through normalisation and ASR. */
+  readonly onStageReference: (
+    file: File,
+    source: Exclude<ReferenceSource, 'library'>,
+  ) => Promise<void>;
+  readonly referenceMaxSeconds: number;
+  readonly referenceMaxMeasured: boolean;
+  readonly referenceBranchLimits: {
+    readonly noCfg: number;
+    readonly singleCfg: number;
+  } | null;
+  readonly referenceTokenCeiling: number;
+  readonly referenceAudioUrl: (id: string, start: number, end: number) => string;
+  readonly asrRemedy: string | null;
 }
 
 const MODES: readonly VoiceMode[] = ['design', 'clone', 'direction'];
@@ -52,9 +67,17 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
   const fileInput = useRef<HTMLInputElement>(null);
   const [fileProblem, setFileProblem] = useState<string | null>(null);
   const [recording, setRecording] = useState(false);
+  const [staging, setStaging] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
+  const stagedReference =
+    state.reference?.source === 'upload' || state.reference?.source === 'record'
+      ? state.reference
+      : null;
 
-  const acceptFile = (file: File | undefined): void => {
+  const acceptFile = async (
+    file: File | undefined,
+    source: Exclude<ReferenceSource, 'library'> = 'upload',
+  ): Promise<void> => {
     if (!file) return;
     // Rejected at the point of drop, with the reason shown — not on submit.
     if (!file.type.startsWith('audio/') && !/\.(wav|mp3|m4a|ogg|flac|webm)$/i.test(file.name)) {
@@ -62,13 +85,18 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
       return;
     }
     setFileProblem(null);
-    const reference: Reference = {
-      source: 'upload',
-      file,
-      name: file.name,
-      durationSeconds: null,
-    };
-    onChange({ ...state, reference });
+    setStaging(true);
+    try {
+      await props.onStageReference(file, source);
+    } catch (error) {
+      setFileProblem(
+        error instanceof Error
+          ? error.message
+          : 'The reference could not be prepared. The current reference is unchanged.',
+      );
+    } finally {
+      setStaging(false);
+    }
   };
 
   const startRecording = async (): Promise<void> => {
@@ -82,15 +110,10 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
         const blob = new Blob(chunks, { type: media.mimeType || 'audio/webm' });
         // WebM/Opus out of the browser; the gateway transcodes it. The
         // operator never learns that happened.
-        onChange({
-          ...state,
-          reference: {
-            source: 'record',
-            file: new File([blob], 'recording.webm', { type: blob.type }),
-            name: 'recording.webm',
-            durationSeconds: null,
-          },
-        });
+        void acceptFile(
+          new File([blob], 'recording.webm', { type: blob.type }),
+          'record',
+        );
         setRecording(false);
       };
       recorder.current = media;
@@ -111,8 +134,8 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
         voiceId: voice.id,
         name: voice.name,
         durationSeconds: voice.durationSeconds,
+        transcript: voice.transcript,
       },
-      refText: voice.transcript,
       direction:
         state.mode === 'direction' && !state.direction
           ? (voice.defaultDirection ?? '')
@@ -129,6 +152,7 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
             key={mode}
             type="button"
             className="tab"
+            disabled={staging}
             aria-pressed={state.mode === mode}
             onClick={() => props.onModeChange(mode)}
           >
@@ -145,13 +169,18 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
           <p className="caption caption--ink">Reference voice — three peer options</p>
 
           <div className="row">
-            <button type="button" className="chip" onClick={() => fileInput.current?.click()}>
-              Upload a file
+            <button
+              type="button"
+              className="chip"
+              disabled={staging}
+              onClick={() => fileInput.current?.click()}
+            >
+              {staging ? 'Preparing reference…' : 'Upload a file'}
             </button>
             <button
               type="button"
               className="chip"
-              disabled={!props.canRecord}
+              disabled={!props.canRecord || staging}
               onClick={recording ? () => recorder.current?.stop() : startRecording}
             >
               {recording ? 'Stop recording' : 'Record'}
@@ -164,8 +193,18 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
             accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac,.webm"
             aria-label="Upload a reference file"
             style={{ display: 'none' }}
-            onChange={(event) => acceptFile(event.target.files?.[0])}
+            disabled={staging}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = '';
+              void acceptFile(file);
+            }}
           />
+          {staging && (
+            <p className="caption" role="status" style={{ marginTop: 8 }}>
+              Normalising audio, drawing its waveform, and transcribing it…
+            </p>
+          )}
           {!props.canRecord && props.recordDisabledReason && (
             <p className="caption blocked" style={{ marginTop: 8 }}>
               {props.recordDisabledReason} Uploads of existing files still work.
@@ -188,12 +227,15 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
                 <li
                   key={voice.id}
                   className="list__item"
-                  aria-selected={state.reference?.voiceId === voice.id}
+                  aria-selected={
+                    state.reference?.source === 'library' &&
+                    state.reference.voiceId === voice.id
+                  }
                 >
                   <button
                     type="button"
                     className="chip"
-                    disabled={!isSelectable(voice)}
+                    disabled={staging || !isSelectable(voice)}
                     onClick={() => selectVoice(voice)}
                   >
                     {voice.name}
@@ -211,23 +253,47 @@ export function VoiceModes(props: VoiceModesProps): JSX.Element {
           {state.reference && (
             <p className="caption caption--ink" style={{ marginTop: 16 }} role="status">
               {state.reference.name}
-              {state.reference.durationSeconds !== null
-                ? ` — ${state.reference.durationSeconds.toFixed(1)}s`
-                : ''}{' '}
-              accepted
+              {` — ${state.reference.durationSeconds.toFixed(1)}s`} accepted
             </p>
           )}
 
-          {/* Revealed with the reference, never without it. */}
-          <label className="field" style={{ marginTop: 8 }}>
-            <p className="caption caption--ink">Reference transcript — must be exact</p>
-            <input
-              type="text"
-              aria-label="Reference transcript"
-              value={state.refText}
-              onChange={(event) => onChange({ ...state, refText: event.target.value })}
+          {stagedReference ? (
+            <ReferenceTrimmer
+              reference={stagedReference}
+              maxSeconds={props.referenceMaxSeconds}
+              maxMeasured={props.referenceMaxMeasured}
+              cfgScale={state.cfgScale}
+              branchLimits={props.referenceBranchLimits}
+              tokenCeiling={props.referenceTokenCeiling}
+              audioUrl={(start, end) =>
+                props.referenceAudioUrl(stagedReference.referenceId, start, end)
+              }
+              asrRemedy={props.asrRemedy}
+              onChange={(reference) =>
+                onChange({
+                  ...state,
+                  reference: { ...reference, source: stagedReference.source },
+                })
+              }
             />
-          </label>
+          ) : (
+            <label className="field" style={{ marginTop: 8 }}>
+              <p className="caption caption--ink">Reference transcript — must be exact</p>
+              <input
+                type="text"
+                aria-label="Reference transcript"
+                disabled={state.reference === null}
+                readOnly={state.reference?.source === 'library'}
+                value={state.reference?.transcript ?? ''}
+              />
+              {state.reference?.source === 'library' && (
+                <span className="caption">Saved with this voice and sent as one pair.</span>
+              )}
+              {state.reference === null && (
+                <span className="caption blocked">Choose or prepare a reference first.</span>
+              )}
+            </label>
+          )}
 
           {state.mode === 'direction' && (
             <label className="field">

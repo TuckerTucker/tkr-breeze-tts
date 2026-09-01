@@ -26,6 +26,23 @@ export interface MeasuredLatency {
   readonly rtf: number | null;
 }
 
+/** Optional speech-recognition intake reported without waking its GPU. */
+export interface AsrHealth {
+  readonly available: boolean;
+  readonly configured: boolean;
+  readonly remedy: string | null;
+  readonly lastError: string | null;
+}
+
+/** Measured reference-audio ceilings for unbranched and branched inference. */
+export interface ReferenceCeiling {
+  readonly maxReferenceSeconds: number;
+  readonly ceilingByBranchMode: {
+    readonly noCfg: number;
+    readonly singleCfg: number;
+  };
+}
+
 /** The gateway's health payload, as the UI reads it. */
 export interface Health {
   readonly readiness: Readiness;
@@ -33,9 +50,15 @@ export interface Health {
   readonly scaledownWindowMs: number;
   readonly transport: 'streaming' | 'buffered';
   readonly ffmpeg: { available: boolean; remedy: string | null };
+  readonly asr: AsrHealth;
   readonly cache: { enabled: boolean; clips: number; bytes: number };
   readonly voices: number;
-  readonly limits: { maxTokens: number };
+  readonly references: { staged: number; maxAgeMs: number };
+  readonly limits: {
+    readonly maxTokens: number;
+    readonly tokenCeilingByBatch: Readonly<Record<string, number>>;
+    readonly referenceSeconds: ReferenceCeiling | null;
+  };
   readonly measured: MeasuredLatency | null;
 }
 

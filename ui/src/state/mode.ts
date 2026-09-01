@@ -10,30 +10,35 @@
  * @module
  */
 
+import type { StagedReferenceSelection } from './reference.js';
+
 /** How the operator is specifying the voice. */
 export type VoiceMode = 'design' | 'clone' | 'direction';
 
 /** Where the reference audio came from. Three peer options, not a fallback chain. */
 export type ReferenceSource = 'upload' | 'record' | 'library';
 
-/** A reference attached to the console. */
-export interface Reference {
-  readonly source: ReferenceSource;
-  /** The file itself, for upload and recording. */
-  readonly file?: File;
-  /** The library voice, when one was picked. */
-  readonly voiceId?: string;
+/** A saved voice supplies a durable audio/transcript pair server-side. */
+export interface LibraryReference {
+  readonly source: 'library';
+  readonly voiceId: string;
   readonly name: string;
-  /** Duration in seconds, once known. */
-  readonly durationSeconds: number | null;
+  readonly durationSeconds: number;
+  readonly transcript: string;
 }
+
+/** An upload or recording staged once, then addressed and trimmed by id. */
+export type StagedReference = StagedReferenceSelection & {
+  readonly source: Exclude<ReferenceSource, 'library'>;
+};
+
+/** A valid reference attached to the console. */
+export type Reference = LibraryReference | StagedReference;
 
 /** The mode-dependent half of the console's state. */
 export interface ModeState {
   mode: VoiceMode;
   reference: Reference | null;
-  /** The exact transcript of the reference audio. */
-  refText: string;
   /** How the line should be delivered, in Direction. */
   direction: string;
   cfgScale: number;
@@ -43,7 +48,6 @@ export interface ModeState {
 export const INITIAL_MODE: ModeState = {
   mode: 'design',
   reference: null,
-  refText: '',
   direction: '',
   cfgScale: 1.0,
 };
@@ -89,12 +93,11 @@ export function needsReference(mode: VoiceMode): boolean {
 export function modeBlocker(state: ModeState): string | null {
   if (!needsReference(state.mode)) return null;
   const hasReference = state.reference !== null;
-  const hasTranscript = state.refText.trim().length > 0;
+  const hasTranscript = (state.reference?.transcript ?? '').trim().length > 0;
 
-  if (!hasReference && !hasTranscript) {
+  if (!hasReference) {
     return 'Add a reference voice and its exact transcript.';
   }
-  if (!hasReference) return 'Add the reference recording the transcript belongs to.';
   if (!hasTranscript) return 'Add the exact transcript of the reference recording.';
   if (state.mode === 'direction' && !state.direction.trim()) {
     return 'Say how the line should be delivered.';
@@ -117,7 +120,7 @@ export function modeBlocker(state: ModeState): string | null {
 export function switchMode(state: ModeState, next: VoiceMode): ModeState {
   if (next === state.mode) return state;
   if (next === 'design') {
-    return { ...state, mode: next, reference: null, refText: '' };
+    return { ...state, mode: next, reference: null };
   }
   return { ...state, mode: next };
 }

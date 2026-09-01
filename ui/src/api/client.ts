@@ -11,6 +11,7 @@
 
 import type { Clip } from '../state/history.js';
 import type { Health } from '../state/readiness.js';
+import type { StagedReferenceResource } from '../state/reference.js';
 import type { Script } from '../state/script.js';
 import type { Voice } from '../state/voices.js';
 
@@ -65,6 +66,10 @@ export interface SpeechRequest {
   readonly mode: 'design' | 'clone' | 'direction';
   /** A recorded or uploaded reference. */
   readonly refAudio?: File | Blob;
+  /** A reference staged once through the gateway, with a selected window. */
+  readonly referenceId?: string;
+  readonly refStart?: number;
+  readonly refEnd?: number;
   readonly refText?: string;
   /** A library voice, which supplies both halves server-side. */
   readonly voiceId?: string;
@@ -90,6 +95,9 @@ export function speechForm(request: SpeechRequest): FormData {
   form.set('seed', String(request.seed));
   form.set('mode', request.mode);
   if (request.voiceId) form.set('voice_id', request.voiceId);
+  if (request.referenceId) form.set('reference_id', request.referenceId);
+  if (request.refStart !== undefined) form.set('ref_start', String(request.refStart));
+  if (request.refEnd !== undefined) form.set('ref_end', String(request.refEnd));
   if (request.refText) form.set('ref_text', request.refText);
   if (request.refAudio) form.set('ref_audio', request.refAudio, 'reference.wav');
   return form;
@@ -123,6 +131,42 @@ export class GatewayClient {
   }
 
   /**
+   * Normalise, transcribe, and stage a reference recording once.
+   *
+   * @param audio - An uploaded file or microphone recording.
+   * @returns The staged resource and its precomputed waveform/transcript data.
+   */
+  async stageReference(audio: File | Blob): Promise<StagedReferenceResource> {
+    const form = new FormData();
+    const filename = audio instanceof File ? audio.name : 'reference.wav';
+    form.set('file', audio, filename);
+    return unwrap<StagedReferenceResource>(
+      await this.#fetch('/api/reference', {
+        method: 'POST',
+        body: form,
+      }),
+    );
+  }
+
+  /** The exact selected window of a staged reference as playable WAV audio. */
+  referenceAudioUrl(id: string, start: number, end: number): string {
+    const query = new URLSearchParams({
+      start: String(start),
+      end: String(end),
+    });
+    return `/api/reference/${encodeURIComponent(id)}/audio?${query.toString()}`;
+  }
+
+  /** Remove transient staged reference audio and its sidecar. */
+  async deleteReference(id: string): Promise<{ removed: boolean }> {
+    return unwrap<{ removed: boolean }>(
+      await this.#fetch(`/api/reference/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      }),
+    );
+  }
+
+  /**
    * Send one synthesis request.
    *
    * @param request - The console's state.
@@ -146,6 +190,13 @@ export class GatewayClient {
   /** The URL a clip replays and downloads from. */
   clipUrl(id: string): string {
     return `/api/clips/${id}`;
+  }
+
+  /** Read one cached clip for promotion through staged reference intake. */
+  async clipAudio(id: string): Promise<Blob> {
+    const response = await this.#fetch(this.clipUrl(id));
+    if (!response.ok) return unwrap<Blob>(response);
+    return response.blob();
   }
 
   /** List saved voices. */

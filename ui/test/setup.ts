@@ -13,6 +13,17 @@ if (typeof globalThis.HTMLMediaElement !== 'undefined') {
   globalThis.HTMLMediaElement.prototype.pause = function pause(): void {};
 }
 
+if (typeof globalThis.HTMLCanvasElement !== 'undefined') {
+  globalThis.HTMLCanvasElement.prototype.getContext = (() => {
+    return {
+      clearRect: () => {},
+      fillRect: () => {},
+      fillStyle: '',
+      setTransform: () => {},
+    } as unknown as CanvasRenderingContext2D;
+  }) as unknown as typeof globalThis.HTMLCanvasElement.prototype.getContext;
+}
+
 // jsdom's File does not implement `text()`. The component relies on it, and a
 // real browser provides it, so it is filled in here rather than worked around
 // in the component.

@@ -19,9 +19,15 @@ const HEALTH = {
   scaledownWindowMs: 300_000,
   transport: 'streaming',
   ffmpeg: { available: true, remedy: null },
+  asr: { available: true, configured: true, remedy: null, lastError: null },
   cache: { enabled: true, clips: 0, bytes: 0 },
   voices: 0,
-  limits: { maxTokens: 512 },
+  references: { staged: 0, maxAgeMs: 86_400_000 },
+  limits: {
+    maxTokens: 512,
+    tokenCeilingByBatch: { 1: 256, 2: 512, 4: 512 },
+    referenceSeconds: null,
+  },
   measured: { warmupMs: 41_234, coldTtfaMs: 45_000, warmTtfaMs: 38, rtf: 0.32 },
 };
 
@@ -135,6 +141,110 @@ function stubFetch(overrides: Record<string, unknown> = {}): typeof fetch {
 describe('the app shell', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('shows contextual activity until synthesis and its refresh are complete', async () => {
+    let resolveSpeech: ((response: Response) => void) | null = null;
+    const pendingSpeech = new Promise<Response>((resolve) => {
+      resolveSpeech = resolve;
+    });
+    const base = stubFetch();
+    const delayedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/speech') return pendingSpeech;
+      return base(input, init);
+    }) as typeof fetch;
+
+    render(
+      <App
+        client={new GatewayClient(delayedFetch)}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Application activity' }))
+        .not.toBeInTheDocument(),
+    );
+
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'Show activity while this is generated.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+    expect(await screen.findByRole('status', { name: 'Application activity' }))
+      .toHaveTextContent('Generating speech…');
+    expect(document.querySelector('.app')).toHaveAttribute('aria-busy', 'true');
+
+    resolveSpeech!(new Response(new Uint8Array(48_000), {
+      headers: {
+        'content-type': 'audio/pcm',
+        'x-sample-rate': '24000',
+        'x-sample-format': 's16le',
+        'x-clip-id': 'clip-activity',
+      },
+    }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Application activity' }))
+        .not.toBeInTheDocument(),
+    );
+    expect(document.querySelector('.app')).toHaveAttribute('aria-busy', 'false');
+  });
+
+  it('shows reference preparation as activity while intake and ASR are pending', async () => {
+    let resolveReference: ((response: Response) => void) | null = null;
+    const pendingReference = new Promise<Response>((resolve) => {
+      resolveReference = resolve;
+    });
+    const base = stubFetch();
+    const delayedFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/reference') return pendingReference;
+      return base(input, init);
+    }) as typeof fetch;
+
+    render(
+      <App
+        client={new GatewayClient(delayedFetch)}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    fireEvent.change(screen.getByLabelText('Upload a reference file'), {
+      target: {
+        files: [new File(['RIFF'], 'narrator.wav', { type: 'audio/wav' })],
+      },
+    });
+
+    expect(await screen.findByRole('status', { name: 'Application activity' }))
+      .toHaveTextContent('Preparing reference…');
+
+    resolveReference!(new Response(JSON.stringify({
+      id: 'reference-activity',
+      createdAt: Date.now(),
+      bytes: 96_044,
+      durationSeconds: 2,
+      sampleRate: 24_000,
+      format: 's16le',
+      channels: 1,
+      peaks: [0.2, 0.8, 0.4],
+      words: [
+        { word: 'Hello', start: 0, end: 0.8 },
+        { word: 'there', start: 0.8, end: 1.6 },
+      ],
+      transcript: 'Hello there',
+      language: 'en',
+    }), { headers: { 'content-type': 'application/json' } }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Reference trimmer' })).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Application activity' }))
+        .not.toBeInTheDocument(),
+    );
+  });
+
   it('shows readiness before anything is submitted', async () => {
     render(
       <App
@@ -160,6 +270,82 @@ describe('the app shell', () => {
     await waitFor(() =>
       expect(screen.getByText(/has not run against this deployment/i)).toBeInTheDocument(),
     );
+  });
+
+  it('stages, trims, and sends a reference window without re-uploading audio', async () => {
+    let speechBody: FormData | null = null;
+    const base = stubFetch({
+      '/api/findings': {
+        measured: true,
+        cfgControl: { kind: 'presets', values: [1, 4], default: 1 },
+        referenceCeiling: {
+          measured: true,
+          maxReferenceSeconds: 2,
+          ceilingByBranchMode: { noCfg: 2, singleCfg: 4 },
+        },
+      },
+      '/api/reference': {
+        id: 'reference-staged',
+        createdAt: Date.now(),
+        bytes: 192_044,
+        durationSeconds: 4,
+        sampleRate: 24_000,
+        format: 's16le',
+        channels: 1,
+        peaks: [0.1, 0.8, 0.4, 0.6],
+        words: [
+          { word: 'One', start: 0, end: 1 },
+          { word: 'two', start: 1, end: 2 },
+          { word: 'three', start: 2, end: 3 },
+        ],
+        transcript: 'One two three',
+        language: 'en',
+      },
+    });
+    const recordingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/speech') speechBody = init?.body as FormData;
+      return base(input, init);
+    }) as typeof fetch;
+
+    render(
+      <App
+        client={new GatewayClient(recordingFetch)}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'A newly cloned line.' },
+    });
+    fireEvent.change(screen.getByLabelText('Upload a reference file'), {
+      target: {
+        files: [new File(['RIFF'], 'narrator.wav', { type: 'audio/wav' })],
+      },
+    });
+
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Reference trimmer' })).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(screen.getByLabelText('Reference transcript')).toHaveValue('One two'),
+    );
+    expect(screen.queryByText(/past the 2\.00s limit/i)).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('slider', { name: 'Reference selection position' }), {
+      target: { value: '1' },
+    });
+    const generate = screen.getByRole('button', { name: /generate/i });
+    expect(generate).toBeEnabled();
+    expect(screen.getByLabelText('Reference transcript')).toHaveValue('two three');
+    fireEvent.click(generate);
+
+    await waitFor(() => expect(speechBody).not.toBeNull());
+    expect(speechBody!.get('reference_id')).toBe('reference-staged');
+    expect(speechBody!.get('ref_start')).toBe('1');
+    expect(speechBody!.get('ref_end')).toBe('3');
+    expect(speechBody!.get('ref_text')).toBe('two three');
+    expect(speechBody!.has('ref_audio')).toBe(false);
   });
 
   it('generates, plays through the fallback, and reports the measured first audio', async () => {

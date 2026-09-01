@@ -65,14 +65,58 @@ button, input, textarea, select { font: inherit; color: inherit; }
 .masthead {
   grid-column: 1 / -1;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   border-bottom: 2px solid var(--outline-strong);
   padding-bottom: var(--space-sm);
   margin-bottom: var(--space-md);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--surface);
 }
 
 .masthead h1 { font-size: 22px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+.masthead__signals {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.activity-indicator {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.activity-indicator .caption { margin: 0; }
+
+.activity-indicator__rail {
+  position: relative;
+  display: block;
+  flex: 0 0 48px;
+  width: 48px;
+  height: 3px;
+  overflow: hidden;
+  background: var(--outline);
+}
+
+.activity-indicator__rail::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 -40%;
+  width: 40%;
+  background: var(--accent);
+  animation: activity-scan 1.1s ease-in-out infinite;
+}
+
+@keyframes activity-scan {
+  from { transform: translateX(0); }
+  to { transform: translateX(350%); }
+}
 
 .status-pill { display: flex; align-items: center; gap: var(--space-xs); }
 .status-dot { width: 8px; height: 8px; background: var(--ink-muted); }
@@ -169,7 +213,98 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .dropzone--over { border-color: var(--accent); background: var(--surface-inset); }
 .sidebar { border-left: 1px solid var(--outline-strong); padding-left: var(--space-md); }
 
+.reference-trimmer {
+  border-top: 1px solid var(--outline-strong);
+  margin-top: var(--space-sm);
+  padding-top: var(--space-sm);
+}
+
+.reference-trimmer__waveform {
+  position: relative;
+  height: 112px;
+  margin: var(--space-sm) 0 var(--space-xs);
+  border: 1px solid var(--outline-strong);
+  background: var(--surface-inset);
+  overflow: hidden;
+}
+
+.reference-trimmer__canvas {
+  display: block;
+  width: 100%;
+  height: 112px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.reference-trimmer__selection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border: 2px solid var(--ink);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  pointer-events: none;
+}
+
+.reference-trimmer__selection::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 24px;
+  height: 3px;
+  background: var(--ink);
+  box-shadow: 0 -6px 0 var(--ink), 0 6px 0 var(--ink);
+  transform: translate(-50%, -50%);
+}
+
+.reference-trimmer__position { display: block; }
+.reference-trimmer__position input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.reference-trimmer__position input[type='range']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.reference-trimmer__audio {
+  display: block;
+  width: 100%;
+  height: 36px;
+  margin: var(--space-sm) 0;
+  border-radius: 0;
+}
+
+.reference-trimmer__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-xs) var(--space-sm);
+}
+
+.reference-trimmer__metrics .caption,
+.reference-trimmer__measurement { margin-bottom: var(--space-xs); }
+.reference-trimmer__transcript { margin-top: var(--space-sm); }
+.reference-trimmer__transcript textarea { min-height: 72px; }
+.reference-trimmer__divergence { margin-top: calc(var(--space-xs) * -1); }
+.reference-trimmer__divergence .caption { margin-bottom: var(--space-xs); }
+
 @media (max-width: 900px) {
   .app { grid-template-columns: minmax(0, 1fr); padding: var(--space-sm); }
   .sidebar { border-left: none; border-top: 1px solid var(--outline-strong); padding-left: 0; padding-top: var(--space-sm); }
+}
+
+@media (max-width: 560px) {
+  .masthead { align-items: flex-start; }
+  .masthead__signals { flex-direction: column; align-items: flex-end; gap: 4px; }
+  .activity-indicator { justify-content: flex-end; }
+  .activity-indicator .caption { text-align: right; }
+  .reference-trimmer__metrics { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-indicator__rail::after {
+    inset: 0;
+    width: 100%;
+    animation: none;
+  }
 }
