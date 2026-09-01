@@ -1,7 +1,7 @@
 meta:
   fmt: 14
   name: breeze-tts-demo
-  ts: "2026-09-01T03:20:00Z"
+  ts: "2026-09-01T06:22:00Z"
   what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
     Modal; a local gateway holds the credential and absorbs audio chores; a browser
     UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
@@ -19,9 +19,10 @@ capabilities:
   - id: modal-inference
     state: done
     dir: infra/
-    evidence: "commit 183a1a0; deployed and serving on an H100"
-    provides: "Modal image, weights Volume, warm serving class, deployment config"
-    verified: "41 tests; image built, flash-attn ABI check passed, 7.68GB on the Volume"
+    evidence: "commit d4b5f0c; deployed and serving on an H100"
+    provides: "Modal image, weights Volume, warm serving class, deployment config,
+      build-time warmup-profile extension"
+    verified: "43 tests; image built, flash-attn ABI check passed, 7.68GB on the Volume"
   - id: measurement
     state: done
     dir: bench/
@@ -33,13 +34,13 @@ capabilities:
     dir: gateway/
     evidence: "commit 69103a2"
     provides: "credential proxy, dual transport, reference intake, clip cache, voice library, script runner"
-    verified: "104 tests + end-to-end against a stub upstream"
+    verified: "106 tests + end-to-end against a stub upstream"
   - id: demo-ui
     state: done
     dir: ui/
     evidence: "commit 3372dec"
     provides: "console, three voice modes, streaming playback, wake state, history, voice library, script editor"
-    verified: "131 tests + real AudioWorklet driven in Chrome"
+    verified: "132 tests + real AudioWorklet driven in Chrome"
 
 state:
   built:
@@ -57,6 +58,10 @@ state:
   deferred:
     - "Cold TTFA is unmeasured client-side; the figure is known from container
        logs only, so the UI's wake state says 'not yet measured'."
+    - "bench/findings/latency.json predates the warmup extension — its warmup_ms
+       is the pre-extension 148.6s. The current 162.6s/69-graph figures live in
+       docs/audits/2026-08-31-cfg-branch-batch.md. Only cfg-falloff.json is read
+       by the gateway, so nothing user-facing is stale."
   do_not_assume:
     - "cfg is NOT graph-keyed. warmup_profile.py maps it to a binary mode, so a
        continuous slider is viable — for Design. The brief says otherwise; the
@@ -104,14 +109,15 @@ deps:
   external: { ffmpeg: "required for reference intake; checked at startup, degrades to WAV-only uploads" }
 
 struct:
-  infra:     { n: 6,  lines: 840,  tests: 5, role: "Modal deployment surface" }
-  bench:     { n: 3,  lines: 1094, tests: 4, role: "measurement clients + findings/" }
-  gateway/src: { n: 12, lines: 3888, tests: 7, role: "local Node service" }
-  ui/src:    { n: 21, lines: 3366, tests: 9, role: "React browser surface" }
+  infra:     { n: 7,  lines: 981,  tests: 5, role: "Modal deployment surface" }
+  bench:     { n: 3,  lines: 1331, tests: 4, role: "measurement clients + findings/" }
+  gateway/src: { n: 12, lines: 3933, tests: 7, role: "local Node service" }
+  ui/src:    { n: 21, lines: 3402, tests: 9, role: "React browser surface" }
   ui/public: { n: 1, role: "pcm-processor.js — served untransformed, deliberately not bundled" }
 
 nav:
-  read_first: [_tkr_kit/breeze-tts-2-modal-brief.md, README.md]
+  read_first: [_tkr_kit/breeze-tts-2-modal-brief.md, README.md,
+               docs/audits/2026-08-31-cfg-branch-batch.md]
   entry_points:
     modal: infra/service.py
     gateway: gateway/src/index.ts
@@ -138,9 +144,11 @@ config:
   env_file: ".env at the repo root — one copy, because the gateway and bench
     authenticate to the same endpoint (.env.example is the template)"
   gateway: [MODAL_ENDPOINT_URL, MODAL_KEY, MODAL_SECRET, GATEWAY_PORT, GATEWAY_TRANSPORT,
-            CLIP_CACHE_DIR, CLIP_CACHE_MAX_BYTES, VOICE_STORE_DIR, SCRIPT_STORE_DIR]
+            GATEWAY_SCALEDOWN_WINDOW_S, GATEWAY_UPSTREAM_TIMEOUT_MS,
+            CLIP_CACHE_DIR, CLIP_CACHE_MAX_BYTES, VOICE_STORE_DIR, SCRIPT_STORE_DIR,
+            BENCH_FINDINGS_DIR, UI_DIST_DIR]
   modal: [BREEZE_GPU, BREEZE_PIN_GPU, BREEZE_SCALEDOWN_WINDOW_S, BREEZE_MIN_CONTAINERS,
-          BREEZE_REQUIRES_PROXY_AUTH]
+          BREEZE_TIMEOUT_S, BREEZE_REQUIRES_PROXY_AUTH]
   defaults: { port: 8787, transport: streaming, gpu: "H100!", scaledown_s: 600, cache_max: 2GiB }
   tokens: "MODAL_KEY/MODAL_SECRET are proxy tokens (wk-/ws-). An ak-/as- API token
     authenticates to nothing here and is refused at startup by both the gateway and bench."
