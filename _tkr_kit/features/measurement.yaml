@@ -59,7 +59,7 @@ features:
       kind: commit
       ref: 432dd1f
   - name: reference-ceiling-probe
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - bench/__init__.py
@@ -84,3 +84,6 @@ features:
       - Transcript token length, which the text encoder governs and the cfg
         probe already measured.
       - Enforcing the ceiling anywhere (local-gateway, demo-ui).
+    evidence:
+      kind: commit
+      ref: 76fa942

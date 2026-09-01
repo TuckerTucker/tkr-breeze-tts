@@ -58,7 +58,7 @@ slice_specs:
       kind: commit
       ref: 183a1a0
   - slice: 3
-    status: draft
+    status: done
     title: Reference-duration ceiling probe
     purpose: Establish, by measurement, the longest reference audio the frozen
       backbone_prefill graphs will serve — so the trim control's maximum is
@@ -83,3 +83,6 @@ slice_specs:
       refusal is distinguished from a timeout and from a 409. The finding
       records a per-mode ceiling, never a single number. The finding is written
       at a stable path that the gateway's findings reader already resolves.
+    evidence:
+      kind: commit
+      ref: 76fa942

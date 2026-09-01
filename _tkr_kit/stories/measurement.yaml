@@ -63,7 +63,7 @@ stories:
       kind: commit
       ref: 183a1a0
   - name: measure-the-reference-duration-wall
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Know how long a reference may be before the frozen graphs refuse it,
@@ -93,3 +93,6 @@ stories:
         when: the UI needs a maximum for its trim control
         then: it reads the measured figure from findings rather than carrying a constant
     feature: reference-ceiling-probe
+    evidence:
+      kind: commit
+      ref: 76fa942

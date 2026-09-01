@@ -72,6 +72,8 @@ slices:
       - bench/reference_probe.py
       - bench/tests/test_reference_probe.py
       - bench/findings/reference-ceiling.json
+      - bench/harness.py
+      - bench/tests/test_harness.py
     delivers:
       - The number the trim control is sized against. backbone_prefill is frozen
         at the same 24 shapes as the text encoder, keyed on sequence_length —
@@ -90,4 +92,7 @@ slices:
         picked.
     title: Reference-duration ceiling probe
     layer: integration
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 76fa942
