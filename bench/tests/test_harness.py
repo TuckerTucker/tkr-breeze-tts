@@ -222,8 +222,13 @@ def test_the_results_file_is_written_at_a_stable_path(tmp_path: Path) -> None:
 def test_a_run_forces_cold_then_takes_warm_samples(
     credentials: Credentials, clock
 ) -> None:
+    # The cold response ticks at a realistic cold-start duration: a sample
+    # faster than COLD_FLOOR_MS is discarded as not having paid one.
     transport = FakeTransport(
-        [FakeResponse(chunks=(b"\x00" * 4800,), tick_s=0.02, clock=clock)]
+        [
+            FakeResponse(chunks=(b"\x00" * 4800,), tick_s=166.0, clock=clock),
+            FakeResponse(chunks=(b"\x00" * 4800,), tick_s=0.15, clock=clock),
+        ]
     )
     stopped: list[str] = []
     results = run(
@@ -235,6 +240,7 @@ def test_a_run_forces_cold_then_takes_warm_samples(
     )
     assert stopped == ["breeze-tts"]
     assert len(results.of_class("cold")) == 1
+    assert results.of_class("cold")[0].ttfa_ms == pytest.approx(166_000.0)
     assert len(results.of_class("warm")) == 3
     assert results.warmup_ms == pytest.approx(41234.50)
 
@@ -286,3 +292,63 @@ def test_dotenv_parsing_ignores_comments_and_strips_quotes(tmp_path: Path) -> No
     values = load_env(env_file)
     assert values["MODAL_KEY"] == "wk-quoted"
     assert values["MODAL_SECRET"] == "ws-quoted"
+
+
+def test_a_warm_sample_that_took_cold_time_is_discarded(
+    credentials: Credentials, clock
+) -> None:
+    """A 90-second 'warm' sample is a cold start that was misclassified.
+
+    Observed live: Modal answered 303 while the container was starting, the
+    cold request was discarded as a non-200, and the cold start then landed on
+    the first warm request — putting a 90569ms outlier in a set whose median
+    was 156ms.
+    """
+    from bench.harness import COLD_CONTAMINATION_MS
+
+    transport = FakeTransport(
+        [FakeResponse(chunks=(b"\x00" * 4800,), tick_s=95.0, clock=clock)]
+    )
+    results = run(
+        LatencyHarness(credentials, transport, clock=clock),
+        warm_runs=1,
+        measure_cold=False,
+        stopper=lambda _name: True,
+        log_reader=lambda _name: "",
+    )
+    assert results.of_class("warm") == []
+    assert "cold-start time" in (results.samples[0].discard_reason or "")
+    assert COLD_CONTAMINATION_MS == 10_000.0
+
+
+def test_the_real_transport_follows_redirects() -> None:
+    """Modal answers 303 while a container starts; not following it discards
+    the cold sample the harness exists to take."""
+    source = (Path(__file__).parent.parent / "harness.py").read_text()
+    assert "follow_redirects=True" in source
+
+
+def test_a_cold_sample_too_fast_to_be_cold_is_discarded(
+    credentials: Credentials, clock
+) -> None:
+    """Observed live: `modal container stop` returns before the container is
+    gone, so the 'cold' request reached a draining container and measured
+    372ms. Recording that would put 'cold start, about 373ms' in the UI."""
+    from bench.harness import COLD_FLOOR_MS
+
+    transport = FakeTransport(
+        [FakeResponse(chunks=(b"\x00" * 4800,), tick_s=0.37, clock=clock)]
+    )
+    results = run(
+        LatencyHarness(credentials, transport, clock=clock),
+        warm_runs=0,
+        measure_cold=True,
+        stopper=lambda _name: True,
+        log_reader=lambda _name: "fast warmup: 154667.72 ms\n",
+    )
+    assert results.of_class("cold") == []
+    assert "too fast" in (results.samples[0].discard_reason or "")
+    # The scraped warmup figure survives — it came from the container log, not
+    # from the discarded sample.
+    assert results.warmup_ms == pytest.approx(154667.72)
+    assert COLD_FLOOR_MS == 5_000.0

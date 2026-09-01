@@ -47,7 +47,11 @@ class FakeResponse:
                 self.clock.advance(self.tick_s)
             yield chunk
 
-    def read_text(self) -> str:
+    def read(self) -> bytes:
+        return self.body_text.encode()
+
+    @property
+    def text(self) -> str:
         return self.body_text
 
 

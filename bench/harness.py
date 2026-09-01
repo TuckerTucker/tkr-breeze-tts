@@ -48,6 +48,19 @@ WARMUP_LINE: Final[re.Pattern[str]] = re.compile(r"fast warmup:\s*([0-9.]+)\s*ms
 BUSY_RETRY_DELAY_S: Final[float] = 2.0
 BUSY_MAX_RETRIES: Final[int] = 5
 
+# A "warm" sample slower than this took cold-start time and is not a warm
+# sample. Warm first-audio is measured in hundreds of milliseconds; a cold one
+# is measured in minutes. Averaging the two describes neither.
+COLD_CONTAMINATION_MS: Final[float] = 10_000.0
+
+# A "cold" sample faster than this did not pay a cold start. Container startup
+# plus a 7.7GB load plus 53 graph captures cannot complete in under a second,
+# so a sub-second cold sample means the request reached a container that was
+# still draining rather than one that had gone. Recording it would put a
+# 373ms figure behind the UI's "cold start, about …" copy, which is precisely
+# the dishonesty the wake state exists to avoid.
+COLD_FLOOR_MS: Final[float] = 5_000.0
+
 DEFAULT_TEXT: Final[str] = (
     "It is good to hear your voice again after all this time."
 )
@@ -161,8 +174,15 @@ class StreamResponse(Protocol):
     def iter_bytes(self) -> Iterator[bytes]:
         """Yield body chunks as they arrive."""
 
-    def read_text(self) -> str:
-        """Read the whole body as text, for error reporting."""
+    def read(self) -> bytes:
+        """Buffer the whole body. httpx requires this before `.text` on a
+        streaming response, and this protocol mirrors httpx rather than
+        inventing a friendlier shape — a seam the real library does not
+        implement is a seam only the test double can satisfy."""
+
+    @property
+    def text(self) -> str:
+        """The buffered body, for error reporting."""
 
 
 class Transport(Protocol):
@@ -185,10 +205,15 @@ class Transport(Protocol):
 class HttpxTransport:
     """The real transport. Speaks HTTP directly, never through ``modal curl``."""
 
-    def __init__(self, timeout_s: float = 600.0) -> None:
+    def __init__(self, timeout_s: float = 900.0) -> None:
         import httpx
 
-        self._client = httpx.Client(timeout=timeout_s)
+        # follow_redirects: Modal answers 303 while a container is still
+        # starting. httpx does not follow redirects by default, so without this
+        # the cold request — the one measurement exists to capture — is
+        # discarded as a non-200 and the cold start lands on the *next* request
+        # instead, contaminating a warm sample with a 90-second outlier.
+        self._client = httpx.Client(timeout=timeout_s, follow_redirects=True)
 
     def stream(
         self, url: str, *, headers: Mapping[str, str], data: Mapping[str, str]
@@ -369,10 +394,11 @@ class LatencyHarness:
                     )
                     return sample
                 if response.status_code != 200:
+                    response.read()
                     sample.ok = False
                     sample.discard_reason = (
                         f"upstream returned {response.status_code}: "
-                        f"{response.read_text()[:200]}"
+                        f"{response.text[:200]}"
                     )
                     return sample
 
@@ -468,29 +494,85 @@ def fetch_app_logs(app_name: str = "breeze-tts", lines: int = 500) -> str:
 
 
 def stop_app(app_name: str = "breeze-tts") -> bool:
-    """Force the next request to be a cold start.
+    """Force the next request to be a cold start, without breaking the app.
 
-    Idling past ``scaledown_window`` also works but takes five minutes and is
-    not deterministic. ``modal app stop`` is.
+    Deliberately **not** ``modal app stop``. That stops the whole *deployment*:
+    the web endpoint goes invalid and every subsequent request returns
+    ``404 modal-http: invalid function call``, so the harness measures nothing
+    and leaves the service down. ``modal container stop`` terminates the
+    running container while the deployment stays up, which is the actual thing
+    wanted here — the next request finds no warm container and cold-starts.
+
+    Idling past ``scaledown_window`` has the same effect but takes as long as
+    the window and is not deterministic.
 
     Args:
-        app_name: The deployed app to stop.
+        app_name: The deployed app whose containers should be terminated.
 
     Returns:
-        Whether the stop command succeeded.
+        Whether at least one container was terminated, or none was running.
+        Either way the next request is cold.
     """
     try:
-        result = subprocess.run(
-            ["modal", "app", "stop", app_name],
+        listed = subprocess.run(
+            ["modal", "container", "list", "--json"],
             capture_output=True,
             text=True,
             timeout=60,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired) as exc:
+        if listed.returncode != 0:
+            log.warning("harness.container_list_failed", stderr=listed.stderr[:200])
+            return False
+
+        containers = json.loads(listed.stdout or "[]")
+        targets = [
+            entry.get("Container ID") or entry.get("container_id") or entry.get("id")
+            for entry in containers
+            if app_name in json.dumps(entry)
+        ]
+        targets = [target for target in targets if target]
+
+        if not targets:
+            # Nothing running: the next request is already a cold start.
+            log.info("harness.no_warm_container", app=app_name)
+            return True
+
+        for target in targets:
+            subprocess.run(
+                ["modal", "container", "stop", target],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+        log.info("harness.containers_stopped", count=len(targets))
+
+        # Termination is asynchronous. Issuing the cold request immediately
+        # routes it to a container that is still draining, which measures a
+        # warm request and labels it cold.
+        for _ in range(60):
+            time.sleep(2)
+            still = subprocess.run(
+                ["modal", "container", "list", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+            remaining = [
+                entry
+                for entry in json.loads(still.stdout or "[]")
+                if app_name in json.dumps(entry)
+            ]
+            if not remaining:
+                log.info("harness.containers_drained")
+                return True
+        log.warning("harness.containers_still_running")
+        return False
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
         log.warning("harness.stop_failed", error=str(exc))
         return False
-    return result.returncode == 0
 
 
 @dataclass
@@ -608,11 +690,28 @@ def run(
         if not stopper(app_name):
             log.warning("harness.cold_not_forced", app=app_name)
         cold = harness.measure(speech, request_class="cold")
+        if cold.ok and cold.ttfa_ms is not None and cold.ttfa_ms < COLD_FLOOR_MS:
+            cold.ok = False
+            cold.discard_reason = (
+                f"{cold.ttfa_ms:.0f}ms is far too fast to have paid a cold start; "
+                "the request reached a container that had not finished draining"
+            )
         results.samples.append(cold)
         results.warmup_ms = scrape_warmup_ms(log_reader(app_name))
 
     for _ in range(warm_runs):
-        results.samples.append(harness.measure(speech, request_class="warm"))
+        sample = harness.measure(speech, request_class="warm")
+        if (
+            sample.ok
+            and sample.ttfa_ms is not None
+            and sample.ttfa_ms > COLD_CONTAMINATION_MS
+        ):
+            sample.ok = False
+            sample.discard_reason = (
+                f"took {sample.ttfa_ms / 1000:.1f}s — cold-start time on a request "
+                "classified warm; discarded rather than averaged into the warm set"
+            )
+        results.samples.append(sample)
 
     return results
 
