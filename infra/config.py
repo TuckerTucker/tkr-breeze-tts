@@ -28,6 +28,13 @@ ALLOWED_GPUS: Final[frozenset[str]] = frozenset(
     {"H100", "H200", "L40S", "A100-40GB", "A100-80GB", "A10G", "L4"}
 )
 
+# CTranslate2 quantisation modes this project will run. Restricted on purpose:
+# a typo like "fp16" is accepted by nobody and would surface as a load failure
+# inside the container, after the GPU has been requested.
+ALLOWED_COMPUTE_TYPES: Final[frozenset[str]] = frozenset(
+    {"float32", "float16", "bfloat16", "int8", "int8_float16", "int8_bfloat16"}
+)
+
 # Modal's own bounds for `scaledown_window`, in seconds.
 MIN_SCALEDOWN_WINDOW_S: Final[int] = 2
 MAX_SCALEDOWN_WINDOW_S: Final[int] = 20 * 60
@@ -46,6 +53,16 @@ MODEL_REPO: Final[str] = "BreezeBlue/Breeze-TTS-2"
 VOLUME_NAME: Final[str] = "breeze-tts-weights"
 MODEL_MOUNT_PATH: Final[str] = "/weights"
 MODEL_DIR: Final[str] = f"{MODEL_MOUNT_PATH}/{MODEL_REPO.split('/')[-1]}"
+
+# Speech recognition, deployed as a sibling app. It shares this Volume and the
+# workspace's proxy token pair; it shares no image, no GPU and no warm window,
+# because a once-per-sitting transcription and an interactive synthesis want
+# opposite postures and a ServiceConfig is frozen per service.
+ASR_APP_NAME: Final[str] = f"{APP_NAME}-asr"
+ASR_MODEL_REPO: Final[str] = "Systran/faster-whisper-large-v3"
+ASR_MODEL_DIR: Final[str] = (
+    f"{MODEL_MOUNT_PATH}/{ASR_MODEL_REPO.split('/')[-1]}"
+)
 
 
 class ConfigError(ValueError):
@@ -173,6 +190,120 @@ class ServiceConfig:
         return replace(self, **changes)  # type: ignore[arg-type]
 
 
+@dataclass(frozen=True)
+class AsrConfig:
+    """Everything the recognition class needs at decoration time.
+
+    Attributes:
+        gpu: A member of `ALLOWED_GPUS`. An L4 transcribes far faster than
+            real time and costs a fraction of the H100 the synthesis service
+            needs; transcription is not the latency claim this demo makes.
+        pin_gpu: As `ServiceConfig.pin_gpu`.
+        scaledown_window_s: Idle seconds before the container scales to zero.
+            Short on purpose, and the opposite of the synthesis service's
+            reasoning: a reference is transcribed once at the start of a
+            sitting, so a long window would idle a GPU through the whole
+            session it is not wanted for. A second cold start here costs a
+            wait; it does not misrepresent the model.
+        min_containers: Containers kept resident. ``None`` scales to zero.
+        requires_proxy_auth: As the synthesis service. Whisper's weights are
+            permissive, but this endpoint reads audio the operator supplied
+            and an open URL that transcribes anything is a service, not a demo.
+        timeout_s: Per-request ceiling. Generous, because the first request
+            after a scale-to-zero absorbs the weight load.
+        compute_type: CTranslate2 quantisation. ``float16`` is the accuracy
+            baseline on any supported GPU; ``int8_float16`` halves memory at a
+            small cost and is the fallback where memory is the constraint.
+        beam_size: Decoder beam width. Whisper's own default.
+    """
+
+    gpu: str = "L4"
+    pin_gpu: bool = True
+    scaledown_window_s: int = 120
+    min_containers: int | None = None
+    requires_proxy_auth: bool = True
+    timeout_s: int = 900
+    compute_type: str = "float16"
+    beam_size: int = 5
+
+    def __post_init__(self) -> None:
+        if self.gpu not in ALLOWED_GPUS:
+            raise ConfigError(
+                f"unknown gpu {self.gpu!r}; allowed values are "
+                f"{', '.join(sorted(ALLOWED_GPUS))}"
+            )
+        if not (
+            MIN_SCALEDOWN_WINDOW_S
+            <= self.scaledown_window_s
+            <= MAX_SCALEDOWN_WINDOW_S
+        ):
+            raise ConfigError(
+                f"scaledown_window_s {self.scaledown_window_s} is outside Modal's "
+                f"permitted range {MIN_SCALEDOWN_WINDOW_S}..{MAX_SCALEDOWN_WINDOW_S} "
+                "seconds"
+            )
+        if self.compute_type not in ALLOWED_COMPUTE_TYPES:
+            raise ConfigError(
+                f"unknown compute_type {self.compute_type!r}; allowed values are "
+                f"{', '.join(sorted(ALLOWED_COMPUTE_TYPES))}"
+            )
+        if self.beam_size < 1:
+            raise ConfigError("beam_size must be at least 1")
+
+    @property
+    def gpu_spec(self) -> str:
+        """The string handed to Modal's ``gpu=`` argument."""
+        return f"{self.gpu}!" if self.pin_gpu else self.gpu
+
+
+def asr_config_from_env(env: dict[str, str] | None = None) -> AsrConfig:
+    """Build an `AsrConfig`, letting the environment override defaults.
+
+    Args:
+        env: Environment mapping to read. Defaults to `os.environ`.
+
+    Returns:
+        The validated configuration.
+
+    Raises:
+        ConfigError: If any supplied value is outside its permitted range.
+    """
+    source = os.environ if env is None else env
+
+    def _int(name: str) -> int | None:
+        raw = source.get(name)
+        if raw is None or raw.strip() == "":
+            return None
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
+
+    scaledown = _int("BREEZE_ASR_SCALEDOWN_WINDOW_S")
+    min_containers = _int("BREEZE_ASR_MIN_CONTAINERS")
+    beam = _int("BREEZE_ASR_BEAM_SIZE")
+
+    config = AsrConfig(
+        gpu=source.get("BREEZE_ASR_GPU", "L4"),
+        pin_gpu=source.get("BREEZE_ASR_PIN_GPU", "1") not in {"0", "false", "False"},
+        scaledown_window_s=120 if scaledown is None else scaledown,
+        min_containers=min_containers,
+        requires_proxy_auth=source.get("BREEZE_ASR_REQUIRES_PROXY_AUTH", "1")
+        not in {"0", "false", "False"},
+        compute_type=source.get("BREEZE_ASR_COMPUTE_TYPE", "float16"),
+        beam_size=5 if beam is None else beam,
+    )
+    log.info(
+        "asr_config.resolved",
+        gpu=config.gpu_spec,
+        scaledown_window_s=config.scaledown_window_s,
+        min_containers=config.min_containers,
+        requires_proxy_auth=config.requires_proxy_auth,
+        compute_type=config.compute_type,
+    )
+    return config
+
+
 def config_from_env(env: dict[str, str] | None = None) -> ServiceConfig:
     """Build a `ServiceConfig`, letting the environment override defaults.
 
@@ -273,3 +404,4 @@ def validate_proxy_token_pair(key: str | None, secret: str | None) -> None:
 
 
 SERVICE_CONFIG: Final[ServiceConfig] = config_from_env()
+ASR_CONFIG: Final[AsrConfig] = asr_config_from_env()

@@ -53,6 +53,21 @@ modal run   infra/weights.py       # one-off: fills the Volume with 7.7 GB of we
 modal deploy infra/service.py      # prints the endpoint URL → MODAL_ENDPOINT_URL
 ```
 
+Transcription is a **separate app**, so that reference audio can be transcribed
+rather than typed. It is optional — without it, intake still works and you type
+the transcript yourself:
+
+```bash
+modal run   infra/asr_weights.py   # one-off: 3.1 GB onto the *same* Volume
+modal deploy infra/asr.py          # prints the endpoint URL → MODAL_ASR_URL
+```
+
+Separate because the two want opposite postures. Synthesis is interactive and
+holds a 10-minute warm window on an H100; transcription fires once at the start
+of a sitting, so it takes an L4 and a 2-minute window — a long one would idle a
+GPU through the whole session it is not wanted for. Both read the same proxy
+token pair, which is workspace-wide.
+
 GPU type, warm window and auth are one configuration surface in
 `infra/config.py`, overridable by environment:
 
