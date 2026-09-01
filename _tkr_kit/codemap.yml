@@ -43,7 +43,7 @@ capabilities:
 
 state:
   built:
-    - "All four capabilities' source and tests: 320 tests, all passing offline."
+    - "All four capabilities' source and tests: 323 tests, all passing offline."
     - "DEPLOYED. Image built, 7.68GB checkpoint on the Volume, service live at
        tuckertucker--breeze-tts-breezeservice-serve.modal.run, proxy auth enforced."
     - "Measured on an H100: warm TTFA 161ms, RTF 0.39, graph-capture warmup 162.6s
@@ -156,7 +156,7 @@ relations:
      rather than tracked and one edit costs one GPU request."
 
 testing:
-  totals: { infra: 41, bench: 42, gateway: 106, ui: 132, all: 321 }
+  totals: { infra: 43, bench: 42, gateway: 106, ui: 132, all: 323 }
   runners: { python: pytest, gateway: vitest, ui: "vitest + jsdom + testing-library" }
   principle: "No test needs a GPU, a network, or a deployed service — the Modal SDK
     is only constructed, and every HTTP/audio boundary is injected."
