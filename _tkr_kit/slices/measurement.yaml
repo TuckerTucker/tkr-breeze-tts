@@ -23,13 +23,13 @@ slices:
       - Results written to a file the brief and plan can cite by path.
       - The capability's own dependency and test manifest
         (bench/pyproject.toml), so the harness can be installed and its own
-        checks run inside its territory rather than against a manifest no
-        slice owns.
+        checks run inside its territory rather than against a manifest no slice
+        owns.
     title: "Latency harness: first-audio, real-time factor, cold versus warm"
     number: 1
     layer: integration
     feature: latency-harness
-    status: draft
+    status: in_progress
   - paths:
       - bench/cfg_probe.py
       - bench/findings
@@ -55,4 +55,4 @@ slices:
     number: 2
     layer: integration
     feature: cfg-falloff-probe
-    status: draft
+    status: in_progress

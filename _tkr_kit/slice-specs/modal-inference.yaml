@@ -1,7 +1,7 @@
 capability: modal-inference
 slice_specs:
   - title: Runtime image
-    status: draft
+    status: in_progress
     purpose: Produce a container image in which the vendor Breeze runtime imports
       and runs, with no GPU-architecture assumption baked in.
     interface: modal.Image — consumed by the serving class and the volume-fill function.
@@ -21,7 +21,7 @@ slice_specs:
       and that torch reports CUDA availability inside a GPU container.
     slice: 1
   - title: Weights volume
-    status: draft
+    status: in_progress
     purpose: Hold the 7.7GB checkpoint so it is downloaded once and every later
       deploy reuses it.
     interface: modal.Volume mounted read-only at a fixed path; a fill entrypoint
@@ -41,7 +41,7 @@ slice_specs:
       audio_tokenizer and names it.
     slice: 2
   - title: Serving class
-    status: draft
+    status: in_progress
     purpose: Serve the vendor FastAPI app from a Modal container that is fully
       loaded and warmed before it receives any traffic.
     interface: A modal.Cls with @modal.enter() and @modal.asgi_app(); exposes the
@@ -64,7 +64,7 @@ slice_specs:
       container log.
     slice: 3
   - title: Deployment configuration
-    status: draft
+    status: in_progress
     purpose: Express GPU, warm behaviour, authentication and fast-path posture as
       one configuration surface rather than decorator arguments spread through
       the service.

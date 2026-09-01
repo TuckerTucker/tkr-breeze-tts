@@ -1,0 +1,12 @@
+canonicalId: mem-Jv15zA4T
+sourceId: find-l8X-prBt
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: 85c80052-aba8-4539-9a95-b111124cbe77
+  sourceHash: aa1cee5b639ef380fc142ba8e6222e26efc65a53405f6a37d81c6d6b0fe7fcb1
+  snapshotAt: 2026-09-01T01:03:40.136Z
+rationale: null
+who: connect@tucker.sh
+when: 2026-09-01T01:03:40.136Z

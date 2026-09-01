@@ -1,7 +1,7 @@
 capability: measurement
 slice_specs:
   - title: Latency harness
-    status: draft
+    status: in_progress
     purpose: Replace published H100 benchmark figures with numbers measured against
       this deployment.
     interface: "A CLI producing a results file: per-request time-to-first-audio,
@@ -32,7 +32,7 @@ slice_specs:
       curl`.
     slice: 1
   - title: CFG fall-off probe
-    status: draft
+    status: in_progress
     purpose: Determine empirically whether an uncaptured cfg_scale leaves the
       CUDA-graph fast path, closing the plan's one open decision.
     interface: "A CLI producing a finding: time-to-first-audio per cfg_scale, plus a
