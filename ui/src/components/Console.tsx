@@ -19,6 +19,7 @@ import {
   type Draft,
   type EventLanguage,
 } from '../state/draft.js';
+import type { VoiceMode } from '../state/mode.js';
 
 /** What the console needs from its parent. */
 export interface ConsoleProps {
@@ -30,8 +31,10 @@ export interface ConsoleProps {
   /** The status line beside the control — readiness, or what is happening. */
   readonly statusLine: string;
   readonly onRerollSeed: () => void;
-  /** Decides the token ceiling: exactly 1.0 caps at 256, anything else at 512. */
+  /** With the mode, decides the token ceiling. */
   readonly cfgScale: number;
+  /** With the cfg, decides the token ceiling: Design at 1.0 is the only 256. */
+  readonly mode: VoiceMode;
 }
 
 /**
@@ -43,8 +46,10 @@ export interface ConsoleProps {
 export function Console(props: ConsoleProps): JSX.Element {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const { draft, onDraftChange } = props;
-  const tokens = estimateTokens(draft.text);
-  const ceiling = tokenCeilingFor(props.cfgScale);
+  // The instruction shares the spoken segment with the text, so the readout
+  // counts what will actually be sent rather than the box in front of you.
+  const tokens = estimateTokens(`${draft.instruction} ${draft.text}`);
+  const ceiling = tokenCeilingFor(props.mode, props.cfgScale);
   const over = tokens > ceiling;
 
   const insertEvent = (marker: string): void => {
@@ -77,8 +82,8 @@ export function Console(props: ConsoleProps): JSX.Element {
           role="status"
           aria-label="Input length"
         >
-          {tokens} / {ceiling} tokens
-          {over ? ` — ${tokens - ceiling} past the limit at CFG ${props.cfgScale}` : ''}
+          {tokens} / {ceiling} tokens — line and instruction together
+          {over ? `, ${tokens - ceiling} past the limit` : ''}
         </p>
       </div>
 

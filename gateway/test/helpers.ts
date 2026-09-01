@@ -57,6 +57,12 @@ export interface StubUpstream {
   chunks?: Uint8Array[];
   /** Milliseconds between chunks, to exercise streaming timing. */
   delayMs?: number;
+  /**
+   * Close the stream with an error after this many chunks, reproducing an
+   * upstream that answers 200 and then fails while generating. Zero aborts
+   * before any audio, which is the shape a warmup-profile miss takes.
+   */
+  abortAfter?: number;
   body?: string;
 }
 
@@ -83,11 +89,24 @@ export function stubFetch(
 
     const chunks = spec.chunks ?? [new Uint8Array(4800)];
     const delayMs = spec.delayMs ?? 0;
+    const abortAfter = spec.abortAfter;
     const stream = new ReadableStream<Uint8Array>({
       async start(controller) {
-        for (const chunk of chunks) {
+        for (const [index, chunk] of chunks.entries()) {
+          // The delay precedes the abort as well as the chunk, so a test can
+          // let earlier audio reach the socket before the failure lands — the
+          // difference between a reply Fastify can still retract and one it
+          // cannot.
           if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+          if (abortAfter !== undefined && index >= abortAfter) {
+            controller.error(new Error('terminated: other side closed'));
+            return;
+          }
           controller.enqueue(chunk);
+        }
+        if (abortAfter !== undefined) {
+          controller.error(new Error('terminated: other side closed'));
+          return;
         }
         controller.close();
       },

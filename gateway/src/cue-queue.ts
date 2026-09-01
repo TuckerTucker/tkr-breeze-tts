@@ -18,9 +18,11 @@ import type { Logger } from 'pino';
 import type { ClipCache } from './cache.js';
 import { GatewayError } from './proxy.js';
 import {
+  ceilingRefusal,
   clipIdFor,
-  estimateTokens,
-  tokenCeilingFor,
+  cueCeilingInput,
+  cueMode,
+  findCeilingBreach,
   type Cue,
   type ScriptRecord,
 } from './script.js';
@@ -83,13 +85,13 @@ export interface RunSummary {
 export async function runScript(options: {
   script: ScriptRecord;
   cache: ClipCache;
-  availableVoiceIds: ReadonlySet<string>;
+  voiceTranscripts: ReadonlyMap<string, string>;
   synthesize: SynthesizeCue;
   logger: Logger;
   onProgress?: (progress: RunProgress) => void;
   signal?: AbortSignal;
 }): Promise<RunSummary> {
-  const { script, cache, availableVoiceIds, synthesize, logger, onProgress } = options;
+  const { script, cache, voiceTranscripts, synthesize, logger, onProgress } = options;
   const log = logger.child({ component: 'cue-queue', scriptId: script.id });
 
   const results: CueResult[] = [];
@@ -115,7 +117,7 @@ export async function runScript(options: {
 
     cue.clipId = clipIdFor(cue);
 
-    if (cue.voiceId && !availableVoiceIds.has(cue.voiceId)) {
+    if (cue.voiceId && !voiceTranscripts.has(cue.voiceId)) {
       cue.state = 'unrunnable';
       cue.problem = `the voice “${cue.voiceName ?? cue.voiceId}” is no longer in the library`;
       unrunnable += 1;
@@ -130,15 +132,14 @@ export async function runScript(options: {
       continue;
     }
 
-    const tokens = estimateTokens(cue.text);
-    const ceiling = tokenCeilingFor(cue.cfgScale);
-    if (tokens > ceiling) {
+    const breach = findCeilingBreach(cueCeilingInput(cue, voiceTranscripts));
+    if (breach) {
       // Refused before dispatch. Past the ceiling the vendor's frozen graph
       // cache raises and the connection aborts with no audio, so dispatching
       // would burn a GPU request to produce nothing.
       cue.state = 'unrunnable';
-      cue.problem =
-        `about ${tokens} tokens, past the ${ceiling}-token ceiling at cfg ${cue.cfgScale}`;
+      const refusal = ceilingRefusal(breach, cueMode(cue));
+      cue.problem = `${refusal.message}. ${refusal.remedy}`;
       unrunnable += 1;
       results.push({
         cueId: cue.id,

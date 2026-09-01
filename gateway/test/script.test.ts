@@ -159,7 +159,7 @@ describe('the cue list is the document', () => {
 
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
     });
     expect(refreshed.cues[0]!.state).toBe('unrunnable');
     expect(refreshed.cues[0]!.problem).toMatch(/Narrator — calm/);
@@ -172,7 +172,7 @@ describe('the cue list is the document', () => {
 
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
     });
     expect(refreshed.cues[0]!.state).toBe('unrunnable');
     // Default cfg is 1.0, so the single-branch ceiling of 256 applies.
@@ -185,9 +185,9 @@ describe('the cue list is the document', () => {
     // Measured live: ~299 tokens fails at cfg 1.0 and serves at cfg 2.5/4.0.
     // A flat 512 would let the cfg-1.0 case through to a hard failure that
     // produces no audio at all.
-    expect(tokenCeilingFor(1.0)).toBe(256);
-    expect(tokenCeilingFor(2.5)).toBe(512);
-    expect(tokenCeilingFor(4.0)).toBe(512);
+    expect(tokenCeilingFor('design', 1.0)).toBe(256);
+    expect(tokenCeilingFor('design', 2.5)).toBe(512);
+    expect(tokenCeilingFor('design', 4.0)).toBe(512);
 
     const script = await scripts.importFile({ source: SAMPLE_VTT });
     const midLength = 'word '.repeat(300); // ~375 tokens: over 256, under 512
@@ -196,14 +196,14 @@ describe('the cue list is the document', () => {
     await scripts.patchCue(script.id, cueId, { text: midLength, cfgScale: 1.0 });
     let refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
     });
     expect(refreshed.cues[0]!.state).toBe('unrunnable');
 
     await scripts.patchCue(script.id, cueId, { cfgScale: 4.0 });
     refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
     });
     expect(refreshed.cues[0]!.state).not.toBe('unrunnable');
   });
@@ -246,7 +246,7 @@ describe('running a script', () => {
     const summary = await runScript({
       script: scripts.require(script.id),
       cache,
-      availableVoiceIds: new Set(voiceIds),
+      voiceTranscripts: new Map(voiceIds.map((id) => [id, 'a short transcript'])),
       synthesize: synthesizerFor(calls),
       logger: silentLogger(),
     });
@@ -266,7 +266,7 @@ describe('running a script', () => {
     await runScript({
       script: scripts.require(script.id),
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
       synthesize: synthesizerFor(first),
       logger: silentLogger(),
     });
@@ -278,7 +278,7 @@ describe('running a script', () => {
     const summary = await runScript({
       script: scripts.require(script.id),
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
       synthesize: synthesizerFor(second),
       logger: silentLogger(),
     });
@@ -299,7 +299,7 @@ describe('running a script', () => {
     await runScript({
       script: scripts.require(script.id),
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
       logger: silentLogger(),
       synthesize: async (cue) => {
         concurrent += 1;
@@ -341,7 +341,7 @@ describe('running a script', () => {
     const summary = await runScript({
       script: scripts.require(script.id),
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
       synthesize: synthesizerFor(calls),
       logger: silentLogger(),
     });
@@ -358,7 +358,7 @@ describe('running a script', () => {
     await runScript({
       script: scripts.require(script.id),
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
       synthesize: synthesizerFor([]),
       logger: silentLogger(),
       onProgress: (progress) => states.push(progress.state),
@@ -383,7 +383,7 @@ describe('drift is measured and reported, never corrected', () => {
 
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
     });
     expect(refreshed.cues[0]!.actualSeconds).toBeCloseTo(4.1, 3);
     expect(refreshed.cues[0]!.driftSeconds).toBeCloseTo(0.7, 3);
@@ -402,7 +402,7 @@ describe('drift is measured and reported, never corrected', () => {
 
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
     });
     expect(refreshed.cues[0]!.actualSeconds).toBeCloseTo(1, 6);
     expect(refreshed.cues[0]!.driftSeconds).toBeNull();
@@ -432,7 +432,7 @@ describe('export', () => {
     await generateAll(script, [4.1, 1.6, 2.3]);
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
     });
 
     const vtt = exportVtt(refreshed);
@@ -444,7 +444,7 @@ describe('export', () => {
 
   it('refuses to export timings for cues that were never generated', async () => {
     const script = await scripts.importFile({ source: SAMPLE_VTT });
-    const refreshed = refreshScript(script, { cache, availableVoiceIds: new Set() });
+    const refreshed = refreshScript(script, { cache, voiceTranscripts: new Map() });
     expect(() => exportVtt(refreshed)).toThrowError(/have not been generated/);
   });
 
@@ -454,7 +454,7 @@ describe('export', () => {
     await generateAll(script, seconds);
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      availableVoiceIds: new Set(),
+      voiceTranscripts: new Map(),
     });
 
     const wav = await concatenateScript(refreshed, cache);

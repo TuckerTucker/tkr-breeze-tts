@@ -23,7 +23,7 @@ import { randomUUID } from 'node:crypto';
 import type { Logger } from 'pino';
 
 import type { ClipCache } from './cache.js';
-import { cueCacheKey } from './cache-index.js';
+import { cueCacheKey, type VoiceMode } from './cache-index.js';
 import { GatewayError } from './proxy.js';
 import { frameWav, type AudioFormat } from './transport.js';
 import { emitVtt, parseScriptFile, type CueProblem } from './vtt.js';
@@ -38,50 +38,267 @@ export type CueState =
   | 'unrunnable';
 
 /**
- * The captured input-length ceiling, **per branch-batch mode**.
+ * How many text segments each template contributes, per branch.
  *
- * Measured, not assumed. `configs/fast.json` captures the text encoder and
- * backbone prefill at batch 1 → 32..256 and batch 2 → 32..512, and
- * `warmup_profile.py` maps cfg to a binary mode — `no_cfg` for exactly 1.0,
- * `single_cfg` otherwise. So cfg 1.0 runs a single branch capped at 256
- * tokens and any other cfg runs dual branches capped at 512.
- *
- * Beyond the ceiling the request does **not** degrade to a slower path.
- * `freeze_after_warmup` makes the graph cache raise
- * `RuntimeError: text encoder CUDA graph (b, n) was not declared in the warmup
- * profile`, the connection aborts, and no audio is produced. Verified live:
- * ~299 tokens fails at cfg 1.0 and serves at cfg 2.5 and 4.0.
+ * `infra/extend_warmup_profile.py` records the vendor's two templates:
+ * `tts_instruction` is one text segment, `ref_edit_tata` — the template behind
+ * both Clone and Direction — is two. Design uses the first; Clone and
+ * Direction use the second.
  */
-export const TOKEN_CEILING_BY_MODE = { noCfg: 256, singleCfg: 512 } as const;
-
-/** The higher of the two, for display where the mode is not yet known. */
-export const MAX_CUE_TOKENS = TOKEN_CEILING_BY_MODE.singleCfg;
+export const SEGMENTS_BY_MODE = { design: 1, clone: 2, direction: 2 } as const;
 
 /**
- * The token ceiling a given cfg value actually gets.
+ * The declared text-encoder ceiling at each batch size.
  *
- * @param cfgScale - The requested guidance scale.
- * @returns Maximum input tokens that will succeed.
+ * From `configs/fast.json`, recorded in the brief: batch 1 → 32..256, batch 2
+ * → 32..512. Batch 4 exists only because `extend_warmup_profile.py` declares
+ * it at build time, also to 512. There is no batch 3: the batch is segments ×
+ * branches, and both factors are 1 or 2.
  */
-export function tokenCeilingFor(cfgScale: number): number {
-  return cfgScale === 1.0
-    ? TOKEN_CEILING_BY_MODE.noCfg
-    : TOKEN_CEILING_BY_MODE.singleCfg;
+export const CEILING_BY_BATCH = { 1: 256, 2: 512, 4: 512 } as const;
+
+/** The highest ceiling any mode reaches, for display before a mode is known. */
+export const MAX_CUE_TOKENS = 512;
+
+/**
+ * The text-encoder batch a request will produce.
+ *
+ * Segments × branches. `warmup_profile.py` maps cfg to a binary branch mode —
+ * exactly 1.0 is a single branch, anything else is dual — so the batch is the
+ * template's segment count doubled at any cfg but 1.0.
+ *
+ * Keying the ceiling on cfg alone, as this once did, is right for Design and
+ * wrong for the other two: Clone at cfg 1.0 carries two segments and so
+ * reaches batch 2, where 512 is available, not the 256 a single branch
+ * suggests.
+ *
+ * @param mode - Which template the request will use.
+ * @param cfgScale - The requested guidance scale.
+ * @returns The batch size the text-encoder graph will be keyed on.
+ */
+export function textEncoderBatch(mode: VoiceMode, cfgScale: number): 1 | 2 | 4 {
+  const segments = SEGMENTS_BY_MODE[mode];
+  const branches = cfgScale === 1.0 ? 1 : 2;
+  return (segments * branches) as 1 | 2 | 4;
+}
+
+/**
+ * The captured input-length ceiling this request actually gets.
+ *
+ * Beyond it the request does **not** degrade to a slower path.
+ * `freeze_after_warmup` makes the graph cache raise
+ * `RuntimeError: text encoder CUDA graph (b, n) was not declared in the warmup
+ * profile`, the connection aborts, and no audio is produced.
+ *
+ * @param mode - Which template the request will use.
+ * @param cfgScale - The requested guidance scale.
+ * @returns Maximum tokens in any single text segment.
+ */
+export function tokenCeilingFor(mode: VoiceMode, cfgScale: number): number {
+  return CEILING_BY_BATCH[textEncoderBatch(mode, cfgScale)];
+}
+
+/**
+ * Characters per token for Latin-script text.
+ *
+ * Four is the usual English approximation, and it survived the one input that
+ * has been checked against the real tokenizer: 2707 characters produced a
+ * `(2, 640)` graph, so between 4.2 and 4.5 characters per token, against the
+ * 677 this estimate returned. Slightly pessimistic, which is the intended
+ * direction.
+ */
+const LATIN_CHARS_PER_TOKEN = 4;
+
+/**
+ * Tokens per CJK character. **Unmeasured, and deliberately pessimistic.**
+ *
+ * Dividing by four is an English average, and this is a bilingual EN/ZH model.
+ * A Han character is three UTF-8 bytes, so a tokenizer with byte fallback and
+ * no merge for it costs three tokens; one with good Chinese merges costs one.
+ * Two is chosen between those bounds rather than measured, because the
+ * tokenizer lives in the image and nothing here can read it.
+ *
+ * Over-estimating refuses input that would have served — visible, and
+ * recoverable by shortening. Under-estimating spends a cold start to earn a
+ * RuntimeError. That asymmetry is why this leans high, and why replacing it
+ * with a probe figure is worth doing.
+ */
+const CJK_TOKENS_PER_CHAR = 2;
+
+/**
+ * Whether a code point is CJK, and so tokenizes far worse than Latin text.
+ *
+ * @param codePoint - A Unicode code point.
+ * @returns True for Han, kana, Hangul, and the CJK punctuation and fullwidth
+ *   blocks that travel with them.
+ */
+function isCjk(codePoint: number): boolean {
+  return (
+    (codePoint >= 0x3000 && codePoint <= 0x30ff) ||
+    (codePoint >= 0x3400 && codePoint <= 0x4dbf) ||
+    (codePoint >= 0x4e00 && codePoint <= 0x9fff) ||
+    (codePoint >= 0xac00 && codePoint <= 0xd7af) ||
+    (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+    (codePoint >= 0xff00 && codePoint <= 0xffef) ||
+    (codePoint >= 0x20000 && codePoint <= 0x2ebef)
+  );
 }
 
 /**
  * Estimate token count from characters.
  *
- * Deliberately an estimate, and deliberately conservative: the exact count
- * needs the model's tokenizer, which lives on the GPU. Four characters per
- * token is the usual English approximation, and being slightly pessimistic
- * costs a warning where being optimistic costs a silent fall-off.
+ * Deliberately an estimate: the exact count needs the model's tokenizer, which
+ * lives on the GPU. Counted by code point rather than by UTF-16 unit, so an
+ * astral ideograph counts once rather than twice.
  *
- * @param text - The line to be spoken.
+ * @param text - The string that will become a text segment.
  * @returns Approximate token count.
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.trim().length / 4);
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return 0;
+  let cjk = 0;
+  let other = 0;
+  for (const char of trimmed) {
+    if (isCjk(char.codePointAt(0) ?? 0)) cjk += 1;
+    else other += 1;
+  }
+  return Math.ceil(cjk * CJK_TOKENS_PER_CHAR + other / LATIN_CHARS_PER_TOKEN);
+}
+
+/** A field whose estimated length exceeds the ceiling its batch carries. */
+export interface CeilingBreach {
+  /** Which input was too long, named as the operator knows it. */
+  readonly field: 'text' | 'instruction' | 'transcript';
+  readonly tokens: number;
+  readonly ceiling: number;
+  readonly batch: number;
+}
+
+/** Every string a request will send that becomes part of a text segment. */
+export interface CeilingInput {
+  readonly mode: VoiceMode;
+  readonly cfgScale: number;
+  readonly text: string;
+  readonly instruction?: string;
+  /** The reference transcript, in Clone and Direction. */
+  readonly refText?: string;
+}
+
+/**
+ * Find the input that will not fit, or null when every one of them will.
+ *
+ * The graph's `token_length` is the **padded maximum** across the batch, so one
+ * long segment sets the bucket for every row and the largest segment decides.
+ * Measuring `text` alone — which this once did — is what let a 2707-character
+ * reference transcript reach the GPU and raise `(2, 640)` after a 170s cold
+ * start.
+ *
+ * Segment composition is inferred, not read: the vendor runtime is not in this
+ * repo, so what is known is the segment *count* per template. `tts_instruction`
+ * is one segment, which must therefore carry the instruction and the text
+ * together, so Design sums them. `ref_edit_tata` is two, read here as the
+ * reference transcript in one and the instruction with the text in the other.
+ * Both readings are the conservative one consistent with the counts.
+ *
+ * @param input - The mode, the cfg, and every string that will be sent.
+ * @returns The largest offending field, or null.
+ */
+export function findCeilingBreach(input: CeilingInput): CeilingBreach | null {
+  const ceiling = tokenCeilingFor(input.mode, input.cfgScale);
+  const batch = textEncoderBatch(input.mode, input.cfgScale);
+  const instruction = input.instruction ?? '';
+
+  const spoken = estimateTokens(`${instruction} ${input.text}`);
+  const candidates: Array<{ field: CeilingBreach['field']; tokens: number }> = [
+    // The instruction shares its segment with the text, so an over-long pair is
+    // reported against whichever half is doing the damage.
+    {
+      field: estimateTokens(instruction) > estimateTokens(input.text) ? 'instruction' : 'text',
+      tokens: spoken,
+    },
+  ];
+  if (input.refText) {
+    candidates.push({ field: 'transcript', tokens: estimateTokens(input.refText) });
+  }
+
+  const worst = candidates.reduce((a, b) => (b.tokens > a.tokens ? b : a));
+  if (worst.tokens <= ceiling) return null;
+  return { field: worst.field, tokens: worst.tokens, ceiling, batch };
+}
+
+/** How each field is named in a refusal. */
+const FIELD_LABEL: Record<CeilingBreach['field'], string> = {
+  text: 'the line',
+  instruction: 'the instruction',
+  transcript: 'the reference transcript',
+};
+
+/**
+ * Say what is too long and what to do about it.
+ *
+ * Three inputs can each be the cause, so a refusal that says only "shorten it"
+ * leaves the operator to guess which box.
+ *
+ * @param breach - What the check found.
+ * @param mode - The mode in force, which decides whether raising CFG helps.
+ * @returns A message and a remedy.
+ */
+export function ceilingRefusal(
+  breach: CeilingBreach,
+  mode: VoiceMode,
+): { message: string; remedy: string } {
+  const message =
+    `${FIELD_LABEL[breach.field]} is about ${breach.tokens} tokens, past the ` +
+    `${breach.ceiling}-token ceiling this request carries`;
+  // Raising CFG moves Design from batch 1 to batch 2 and so from 256 to 512.
+  // For Clone and Direction it changes the batch but not the ceiling, so
+  // offering it there would be advice that does not work.
+  const remedy =
+    mode === 'design' && breach.ceiling === CEILING_BY_BATCH[1]
+      ? `Shorten ${FIELD_LABEL[breach.field]}, or raise CFG above 1.0 — dual-branch ` +
+        `Design carries a ${CEILING_BY_BATCH[2]}-token ceiling.`
+      : `Shorten ${FIELD_LABEL[breach.field]}. Every CFG value carries the same ` +
+        `${breach.ceiling}-token ceiling in this mode.`;
+  return { message, remedy };
+}
+
+/**
+ * Which template a cue will use.
+ *
+ * A cue carries a library voice or it does not, and that is exactly the
+ * difference between `ref_edit_tata` and `tts_instruction` — so the mode is
+ * derived rather than stored, and cannot drift from the request it describes.
+ *
+ * @param cue - The cue.
+ * @returns The voice mode its request will take.
+ */
+export function cueMode(cue: Pick<Cue, 'voiceId'>): VoiceMode {
+  return cue.voiceId ? 'clone' : 'design';
+}
+
+/**
+ * Everything about a cue the ceiling check needs.
+ *
+ * The reference transcript comes from the library rather than the cue, because
+ * a cue stores only the voice id — and the transcript is the field that
+ * silently blew the ceiling before this check existed.
+ *
+ * @param cue - The cue.
+ * @param transcripts - Library transcripts by voice id.
+ * @returns The check's input.
+ */
+export function cueCeilingInput(
+  cue: Pick<Cue, 'voiceId' | 'text' | 'cfgScale'>,
+  transcripts: ReadonlyMap<string, string>,
+): CeilingInput {
+  const refText = cue.voiceId ? transcripts.get(cue.voiceId) : undefined;
+  return {
+    mode: cueMode(cue),
+    cfgScale: cue.cfgScale,
+    text: cue.text,
+    ...(refText ? { refText } : {}),
+  };
 }
 
 /** One line of a script. */
@@ -160,22 +377,21 @@ export function clipIdFor(cue: Pick<Cue, 'text' | 'voiceId' | 'cfgScale' | 'seed
  */
 export function refreshScript(
   script: ScriptRecord,
-  context: { cache: ClipCache; availableVoiceIds: ReadonlySet<string> },
+  context: { cache: ClipCache; voiceTranscripts: ReadonlyMap<string, string> },
 ): ScriptRecord {
   for (const cue of script.cues) {
     cue.clipId = clipIdFor(cue);
 
-    if (cue.voiceId && !context.availableVoiceIds.has(cue.voiceId)) {
+    if (cue.voiceId && !context.voiceTranscripts.has(cue.voiceId)) {
       cue.state = 'unrunnable';
       cue.problem = `the voice “${cue.voiceName ?? cue.voiceId}” is no longer in the library`;
       continue;
     }
-    const ceiling = tokenCeilingFor(cue.cfgScale);
-    if (estimateTokens(cue.text) > ceiling) {
+    const breach = findCeilingBreach(cueCeilingInput(cue, context.voiceTranscripts));
+    if (breach) {
       cue.state = 'unrunnable';
-      cue.problem =
-        `about ${estimateTokens(cue.text)} tokens, past the ${ceiling}-token ceiling ` +
-        `at cfg ${cue.cfgScale} — this fails outright rather than running slowly`;
+      const { message, remedy } = ceilingRefusal(breach, cueMode(cue));
+      cue.problem = `${message} — this fails outright rather than running slowly. ${remedy}`;
       continue;
     }
 

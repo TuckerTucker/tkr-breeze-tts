@@ -118,6 +118,38 @@ export function formatSeconds(ms: number): string {
 }
 
 /**
+ * What to say when the stream ended before the clip did.
+ *
+ * Upstream answers `200`, streams, and then closes the connection, so a fault
+ * raised while generating never crosses the wire — the gateway sees a socket
+ * close and nothing more, and the reason stays in the service's own log. That
+ * is a hard limit, not an omission, so this names what was observed and
+ * declines to invent a cause. Silence with no explanation is what this
+ * replaces: the response is a `200` carrying too few bytes, so nothing in the
+ * request path reads as a failure at all.
+ *
+ * @param playback - What the player managed to receive.
+ * @returns The message and remedy to show beside the control.
+ */
+export function incompleteStreamFailure(playback: {
+  readonly bytes: number;
+}): { message: string; remedy: string } {
+  if (playback.bytes === 0) {
+    return {
+      message: 'the service accepted the request and then closed the stream without sending audio',
+      remedy:
+        'Nothing came back with the fault, so try again to tell a transient close from a ' +
+        'repeatable one. If it repeats, shorten the line or change CFG — an input the ' +
+        'warmup profile has no captured graph for fails in exactly this shape.',
+    };
+  }
+  return {
+    message: 'the stream ended early, so this clip is incomplete rather than fast',
+    remedy: 'What played is what arrived. Generate again for a complete clip.',
+  };
+}
+
+/**
  * Whether the wake state should be shown for this request.
  *
  * Warm requests show none at all — that is what makes the cold one legible.

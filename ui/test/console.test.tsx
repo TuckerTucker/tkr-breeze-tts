@@ -19,11 +19,17 @@ import {
   rollSeed,
   saveDraft,
   tokenCeilingFor,
-  TOKEN_CEILING_BY_MODE,
+  CEILING_BY_BATCH,
   type Draft,
 } from '../src/state/draft.js';
+import type { VoiceMode } from '../src/state/mode.js';
 
-function Harness(props: { initial?: Partial<Draft>; onGenerate?: () => void }): JSX.Element {
+function Harness(props: {
+  initial?: Partial<Draft>;
+  onGenerate?: () => void;
+  cfgScale?: number;
+  mode?: VoiceMode;
+}): JSX.Element {
   const [draft, setDraft] = useState<Draft>({ ...INITIAL_DRAFT, ...props.initial });
   return (
     <Console
@@ -35,10 +41,12 @@ function Harness(props: { initial?: Partial<Draft>; onGenerate?: () => void }): 
         busy: false,
         generating: false,
         modeBlocker: null,
-        cfgScale: 1.0,
+        mode: props.mode ?? 'design',
+        cfgScale: props.cfgScale ?? 1.0,
       })}
       statusLine="Warm — expected 38ms to first audio"
-      cfgScale={1.0}
+      cfgScale={props.cfgScale ?? 1.0}
+      mode={props.mode ?? 'design'}
       onGenerate={props.onGenerate ?? (() => {})}
       onRerollSeed={() => setDraft({ ...draft, seed: 999 })}
     />
@@ -59,6 +67,7 @@ describe('Generate is never enabled into a failure', () => {
       busy: false,
       generating: false,
       modeBlocker: null,
+      mode: 'design' as const,
       cfgScale: 1.0,
     });
     // Not enabled into a failure — the reason names what is wrong.
@@ -73,6 +82,7 @@ describe('Generate is never enabled into a failure', () => {
         busy: true,
         generating: false,
         modeBlocker: null,
+        mode: 'design' as const,
         cfgScale: 1.0,
       }),
     ).toMatch(/Disabled while a request is running/i);
@@ -88,16 +98,20 @@ describe('Generate is never enabled into a failure', () => {
     render(<Harness initial={{ text: long }} />);
     expect(screen.getByRole('button', { name: /generate/i })).toBeDisabled();
     // The harness renders at CFG 1.0, whose ceiling is 256, not 512.
-    expect(screen.getByText(/past the limit at CFG 1/i)).toBeInTheDocument();
+    expect(screen.getByText(/past the limit/i)).toBeInTheDocument();
   });
 
   it('applies the ceiling of the current CFG mode, not a flat one', () => {
     // Measured live: ~299 tokens fails at CFG 1.0 and serves at 2.5 and 4.0,
     // and past the ceiling the request produces no audio at all rather than
     // running slowly — so the reason names the way out.
-    expect(tokenCeilingFor(1.0)).toBe(256);
-    expect(tokenCeilingFor(2.5)).toBe(512);
-    expect(TOKEN_CEILING_BY_MODE).toEqual({ noCfg: 256, singleCfg: 512 });
+    expect(tokenCeilingFor('design', 1.0)).toBe(256);
+    expect(tokenCeilingFor('design', 2.5)).toBe(512);
+    // Clone carries two text segments, so it reaches batch 2 even at cfg 1.0
+    // and gets 512 there. Keying on cfg alone said 256 and was wrong for it.
+    expect(tokenCeilingFor('clone', 1.0)).toBe(512);
+    expect(tokenCeilingFor('direction', 1.0)).toBe(512);
+    expect(CEILING_BY_BATCH).toEqual({ 1: 256, 2: 512, 4: 512 });
 
     const midLength = 'x'.repeat(300 * 4); // ~300 tokens
     const gate = {
@@ -106,6 +120,7 @@ describe('Generate is never enabled into a failure', () => {
       busy: false,
       generating: false,
       modeBlocker: null,
+      mode: 'design' as const,
     };
     expect(generateBlockedReason({ ...gate, cfgScale: 1.0 })).toMatch(/raise CFG/);
     expect(generateBlockedReason({ ...gate, cfgScale: 4.0 })).toBeNull();
@@ -119,6 +134,7 @@ describe('Generate is never enabled into a failure', () => {
         busy: false,
         generating: false,
         modeBlocker: 'Add the exact transcript of the reference recording.',
+        mode: 'design' as const,
         cfgScale: 1.0,
       }),
     ).toMatch(/exact transcript/);
@@ -126,15 +142,30 @@ describe('Generate is never enabled into a failure', () => {
 });
 
 describe('length feedback tracks input live', () => {
-  it('updates the meter as text is typed', () => {
+  it('updates the meter as text is typed, counting what will actually be sent', () => {
     render(<Harness />);
+    const meter = (): string =>
+      screen.getByRole('status', { name: 'Input length' }).textContent ?? '';
+
+    // The instruction alone, before a word is typed. It is not decoration: it
+    // shares one text segment with the line, and the segment is what meets the
+    // ceiling — so a meter counting only the box in front of you would read
+    // comfortably while the request failed.
+    const instructionOnly = estimateTokens(INITIAL_DRAFT.instruction);
+    expect(instructionOnly).toBeGreaterThan(0);
+    expect(meter()).toContain(`${instructionOnly} / 256`);
+
+    const line = 'a'.repeat(40);
     const textarea = screen.getByLabelText('Text to speak');
-    fireEvent.change(textarea, { target: { value: 'a'.repeat(40) } });
-    // The meter shows the ceiling that actually applies: the harness renders
-    // at CFG 1.0, so 256 rather than a flat 512.
-    expect(screen.getByRole('status', { name: 'Input length' }).textContent).toContain(
-      '10 / 256',
-    );
+    fireEvent.change(textarea, { target: { value: line } });
+
+    // Counted as one joined segment, which is how it is sent — not as two
+    // estimates added, since rounding each half separately would under-count
+    // exactly where the ceiling matters.
+    const joined = estimateTokens(`${INITIAL_DRAFT.instruction} ${line}`);
+    expect(meter()).toContain(`${joined} / 256`);
+    expect(joined).toBeGreaterThan(estimateTokens(line));
+    expect(meter()).toMatch(/line and instruction together/);
   });
 
   it('estimates tokens from characters, matching the gateway', () => {

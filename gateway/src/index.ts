@@ -54,10 +54,10 @@ import { suggestNameFromInstruction } from './voices-index.js';
 import {
   MAX_CUE_TOKENS,
   ScriptStore,
-  TOKEN_CEILING_BY_MODE,
-  tokenCeilingFor,
+  CEILING_BY_BATCH,
+  ceilingRefusal,
+  findCeilingBreach,
   concatenateScript,
-  estimateTokens,
   exportVtt,
   refreshScript,
   type Cue,
@@ -132,7 +132,83 @@ export async function readFinding(
   }
 }
 
-function sendError(reply: FastifyReply, error: unknown, config: GatewayConfig): void {
+/**
+ * Name a mid-generation upstream abort.
+ *
+ * Upstream commits to a `200`, streams, and then closes: the reason stays in
+ * the service's own log and nothing about it crosses the wire. What arrives
+ * here is undici's `terminated`, which describes the socket rather than the
+ * failure — passing it through put the bare word "terminated" in front of an
+ * operator as the whole explanation.
+ *
+ * Deliverable only while the reply is still retractable, which is the common
+ * case: the vendor raises while building its branch batch, before any audio.
+ * Once audio is on the wire this becomes the truncation the player reports.
+ *
+ * @param received - Audio bytes that did arrive before the close.
+ * @returns A typed failure naming what was observed, and no more.
+ */
+function streamAbortError(received: number): GatewayError {
+  if (received === 0) {
+    return new GatewayError(
+      'upstream',
+      'the service accepted the request and then closed the stream without sending audio',
+      {
+        remedy:
+          'The fault stayed upstream and only its own log carries the reason. This shape is ' +
+          'usually an input with no captured CUDA graph behind it — shorten the line, or ' +
+          'change CFG, then try again.',
+      },
+    );
+  }
+  return new GatewayError(
+    'upstream',
+    `the service closed the stream after ${received} bytes, so this clip is incomplete`,
+    {
+      remedy:
+        'The partial audio was discarded rather than cached as though it were a whole clip. ' +
+        'Generate again.',
+    },
+  );
+}
+
+/**
+ * Deliver a typed failure, or sever the connection when one can no longer be
+ * delivered.
+ *
+ * `POST /api/speech` commits its reply to `audio/pcm` and hands Fastify a
+ * stream, so a fault raised after that point has no body left to occupy.
+ * Answering it with a JSON object earns `FST_ERR_REP_INVALID_PAYLOAD_TYPE` and
+ * serves the client a second, misleading failure stacked on the first — which
+ * is what a mid-flight upstream abort used to produce. Once bytes are on the
+ * wire the only signal still available is to destroy the socket, and it is a
+ * true one: the client's read throws, and the player reports the clip as
+ * incomplete rather than short.
+ *
+ * @param reply - The reply to answer on.
+ * @param error - What went wrong.
+ * @param config - Supplies the redaction that keeps the endpoint out of the
+ *   message.
+ * @param log - Records a severed connection, which leaves no response to read.
+ */
+function sendError(
+  reply: FastifyReply,
+  error: unknown,
+  config: GatewayConfig,
+  log?: Logger,
+): void {
+  if (reply.raw.headersSent) {
+    log?.warn(
+      { err: error },
+      'response already committed; severing the connection instead of a typed error',
+    );
+    reply.raw.destroy();
+    return;
+  }
+  // A route may have already declared an audio content type without having sent
+  // anything under it. A JSON failure cannot be serialised beneath that
+  // declaration, so it is withdrawn here rather than at each throw site.
+  reply.type('application/json');
   if (error instanceof GatewayError) {
     reply.code(error.statusCode).send(error.toJSON());
     return;
@@ -169,9 +245,21 @@ export function createServer(deps: ServerDeps): GatewayServer {
     limits: { fileSize: 64 * 1024 * 1024, files: 1 },
   });
 
-  app.setErrorHandler((error, _request, reply) => {
-    sendError(reply, error, config);
+  app.setErrorHandler((error, request, reply) => {
+    sendError(reply, error, config, request.log as Logger);
   });
+
+  /**
+   * Library transcripts by voice id.
+   *
+   * One lookup serves both questions a cue asks — whether its voice still
+   * exists, and what that voice's reference transcript is — so the two can
+   * never be answered from different reads of the store.
+   *
+   * @returns Transcript by voice id, for every visible voice.
+   */
+  const voiceTranscripts = (): ReadonlyMap<string, string> =>
+    new Map(voices.list().map((voice) => [voice.id, voice.transcript]));
 
   // ── Health and readiness ─────────────────────────────────────────────────
   //
@@ -192,7 +280,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
       },
       cache: { enabled: cache.enabled, clips: cache.list().length, bytes: cache.totalBytes() },
       voices: voices.list().length,
-      limits: { maxTokens: MAX_CUE_TOKENS, tokenCeilingByMode: TOKEN_CEILING_BY_MODE },
+      limits: { maxTokens: MAX_CUE_TOKENS, tokenCeilingByBatch: CEILING_BY_BATCH },
       // Null rather than a placeholder: the UI says "not yet measured".
       measured: summary
         ? {
@@ -243,21 +331,6 @@ export function createServer(deps: ServerDeps): GatewayServer {
     if (!fields.text.trim()) {
       throw new GatewayError('validation', 'there is nothing to speak');
     }
-    const ceiling = tokenCeilingFor(fields.cfgScale);
-    if (estimateTokens(fields.text) > ceiling) {
-      throw new GatewayError(
-        'validation',
-        `about ${estimateTokens(fields.text)} tokens, past the ${ceiling}-token ceiling ` +
-          `at cfg ${fields.cfgScale}`,
-        {
-          remedy:
-            fields.cfgScale === 1.0
-              ? `Shorten the line, or raise CFG above 1.0 — dual-branch mode carries a ${TOKEN_CEILING_BY_MODE.singleCfg}-token ceiling.`
-              : 'Shorten the line, or split it across two generations.',
-        },
-      );
-    }
-
     let refAudio: Buffer | undefined;
     let refText = fields.refText;
 
@@ -274,6 +347,21 @@ export function createServer(deps: ServerDeps): GatewayServer {
     }
 
     validateReferencePair({ hasAudio: Boolean(refAudio), refText });
+
+    // After the reference is resolved, not before: a library voice supplies the
+    // transcript, and the transcript is a text segment. Checking ahead of this
+    // is what let a 2707-character one through to raise `(2, 640)` on the GPU.
+    const breach = findCeilingBreach({
+      mode: fields.mode,
+      cfgScale: fields.cfgScale,
+      text: fields.text,
+      instruction: fields.instruction,
+      ...(refText ? { refText } : {}),
+    });
+    if (breach) {
+      const refusal = ceilingRefusal(breach, fields.mode);
+      throw new GatewayError('validation', refusal.message, { remedy: refusal.remedy });
+    }
 
     const startedAt = performance.now();
     const upstream = await proxy.speech({
@@ -340,6 +428,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
     reply.type('audio/pcm');
     const source = Readable.fromWeb(upstream.body as never);
     let ttfaMs: number | null = null;
+    let received = 0;
     const tee = new Readable({
       read(): void {},
     });
@@ -347,6 +436,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
       try {
         for await (const chunk of source) {
           if (ttfaMs === null) ttfaMs = performance.now() - startedAt;
+          received += (chunk as Uint8Array).byteLength;
           tee.push(chunk);
           writer.write(chunk as Uint8Array);
         }
@@ -363,8 +453,11 @@ export function createServer(deps: ServerDeps): GatewayServer {
         });
         tee.push(null);
       } catch (error) {
-        logger.warn({ err: error }, 'upstream stream aborted mid-flight');
-        tee.destroy(error as Error);
+        logger.warn({ err: error, received }, 'upstream stream aborted mid-flight');
+        // The socket-level cause is logged; what travels onward is the named
+        // condition, since undici's wording reaches an operator as an
+        // explanation and does not work as one.
+        tee.destroy(streamAbortError(received));
         await writer.abort();
       }
     })();
@@ -503,7 +596,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
   app.get<{ Params: { id: string } }>('/api/scripts/:id', async (request) =>
     refreshScript(scripts.require(request.params.id), {
       cache,
-      availableVoiceIds: new Set(voices.list().map((voice) => voice.id)),
+      voiceTranscripts: voiceTranscripts(),
     }),
   );
 
@@ -517,7 +610,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
       );
       return refreshScript(updated, {
         cache,
-        availableVoiceIds: new Set(voices.list().map((voice) => voice.id)),
+        voiceTranscripts: voiceTranscripts(),
       });
     },
   );
@@ -527,7 +620,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
     const updated = await scripts.replaceCues(request.params.id, body.cues ?? []);
     return refreshScript(updated, {
       cache,
-      availableVoiceIds: new Set(voices.list().map((voice) => voice.id)),
+      voiceTranscripts: voiceTranscripts(),
     });
   });
 
@@ -537,7 +630,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
 
   app.post<{ Params: { id: string } }>('/api/scripts/:id/run', async (request, reply) => {
     const script = scripts.require(request.params.id);
-    const availableVoiceIds = new Set(voices.list().map((voice) => voice.id));
+    const transcripts = voiceTranscripts();
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -548,7 +641,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
     const summary = await runScript({
       script,
       cache,
-      availableVoiceIds,
+      voiceTranscripts: transcripts,
       logger,
       onProgress: (progress) => {
         reply.raw.write(`event: progress\ndata: ${JSON.stringify(progress)}\n\n`);
@@ -565,7 +658,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
   app.get<{ Params: { id: string } }>('/api/scripts/:id/export.vtt', async (request, reply) => {
     const script = refreshScript(scripts.require(request.params.id), {
       cache,
-      availableVoiceIds: new Set(voices.list().map((voice) => voice.id)),
+      voiceTranscripts: voiceTranscripts(),
     });
     reply.type('text/vtt');
     reply.header(
@@ -578,7 +671,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
   app.get<{ Params: { id: string } }>('/api/scripts/:id/export.wav', async (request, reply) => {
     const script = refreshScript(scripts.require(request.params.id), {
       cache,
-      availableVoiceIds: new Set(voices.list().map((voice) => voice.id)),
+      voiceTranscripts: voiceTranscripts(),
     });
     reply.type('audio/wav');
     reply.header(

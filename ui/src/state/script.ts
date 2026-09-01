@@ -8,7 +8,7 @@
  * @module
  */
 
-import { MAX_TOKENS, estimateTokens } from './draft.js';
+import { estimateTokens, tokenCeilingFor } from './draft.js';
 
 /** Where a cue stands, shown in place on its row. */
 export type CueState = 'queued' | 'generating' | 'done' | 'stale' | 'failed' | 'unrunnable';
@@ -102,9 +102,14 @@ export function cueBlocker(
   if (cue.voiceId && !availableVoiceIds.has(cue.voiceId)) {
     return `The voice “${cue.voiceName ?? cue.voiceId}” is no longer in the library.`;
   }
+  // A cue carrying a library voice is a Clone request and so reaches batch 2
+  // even at cfg 1.0; one without is Design and caps at 256 there. The gateway
+  // is still authoritative — it can also see the reference transcript, which
+  // this row cannot — but a row that will certainly fail says so here first.
   const tokens = estimateTokens(cue.text);
-  if (tokens > MAX_TOKENS) {
-    return `About ${tokens} tokens, past the ${MAX_TOKENS}-token ceiling.`;
+  const ceiling = tokenCeilingFor(cue.voiceId ? 'clone' : 'design', cue.cfgScale);
+  if (tokens > ceiling) {
+    return `About ${tokens} tokens, past the ${ceiling}-token ceiling.`;
   }
   if (!cue.text.trim()) return 'This row has no text.';
   return null;

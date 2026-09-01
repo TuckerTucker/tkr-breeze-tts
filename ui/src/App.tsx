@@ -35,7 +35,12 @@ import {
   type VoiceMode,
 } from './state/mode.js';
 import { promoteToReference, restoreFromClip, type Clip } from './state/history.js';
-import { readinessSummary, shouldShowWake, type Health } from './state/readiness.js';
+import {
+  incompleteStreamFailure,
+  readinessSummary,
+  shouldShowWake,
+  type Health,
+} from './state/readiness.js';
 import { applyDelete, applyUndo, type PendingUndo, type Voice } from './state/voices.js';
 import { suggestName } from './state/name.js';
 import type { Script } from './state/script.js';
@@ -126,6 +131,8 @@ export function App(props: AppProps): JSX.Element {
     generating,
     modeBlocker: blocker,
     cfgScale: mode.cfgScale,
+    mode: mode.mode,
+    ...(mode.refText ? { refText: mode.refText } : {}),
   });
 
   const statusLine = failure
@@ -166,6 +173,10 @@ export function App(props: AppProps): JSX.Element {
       });
       setPlayback(result);
       setSelectedClipId(result.clipId);
+      // A truncated stream arrives as a `200` with too few bytes, so nothing
+      // above throws and nothing below would say so. The player is the only
+      // layer that can see it, and this is where it becomes visible.
+      if (result.incomplete) setFailure(incompleteStreamFailure(result));
     } catch (error) {
       const failureBody = error instanceof ApiError ? error.failure : null;
       if (failureBody?.type === 'busy') setBusy(true);
@@ -270,11 +281,12 @@ export function App(props: AppProps): JSX.Element {
           blockedReason={blockedReason}
           statusLine={statusLine}
           cfgScale={mode.cfgScale}
+          mode={mode.mode}
           onGenerate={() => void generate()}
           onRerollSeed={() => setDraft({ ...draft, seed: rollSeed() })}
         />
 
-        {playback && (
+        {playback && playback.bytes > 0 && (
           <FirstAudioReadout
             ttfaMs={playback.ttfaMs}
             rtf={health?.measured?.rtf ?? null}

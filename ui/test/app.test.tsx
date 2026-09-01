@@ -6,7 +6,7 @@
  * covered rather than only the panels themselves.
  */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 
 import { App } from '../src/App.js';
@@ -51,6 +51,59 @@ function stubAudio(): AudioBackend {
   };
 }
 
+/** A worklet node that swallows everything, so the streaming path can run. */
+class FakeWorkletNode {
+  readonly port = { postMessage: (): void => {}, onmessage: null };
+  connect(): void {}
+  disconnect(): void {}
+}
+
+/** A backend whose worklet loads, so playback takes the streaming path. */
+function streamingAudio(): AudioBackend {
+  return {
+    workletUrl: 'about:blank',
+    createContext: () =>
+      ({
+        destination: {},
+        audioWorklet: { addModule: async () => {} },
+        close: async () => {},
+      }) as unknown as AudioContext,
+  };
+}
+
+/**
+ * A `/api/speech` response that delivers `chunks` chunks and then breaks.
+ *
+ * This is what a mid-generation upstream fault looks like from the browser: a
+ * 200 with audio headers, and a body that stops early. Nothing in the request
+ * path reads as a failure, which is why the player has to say so.
+ */
+function truncatedSpeech(chunks: number): typeof fetch {
+  const base = stubFetch();
+  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+    if (String(input) !== '/api/speech') return base(input, init);
+    let sent = 0;
+    const body = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent < chunks) {
+          sent += 1;
+          controller.enqueue(new Uint8Array(4800));
+          return;
+        }
+        controller.error(new Error('terminated: other side closed'));
+      },
+    });
+    return new Response(body, {
+      headers: {
+        'content-type': 'audio/pcm',
+        'x-sample-rate': '24000',
+        'x-sample-format': 's16le',
+        'x-clip-id': 'clip-truncated',
+      },
+    });
+  }) as typeof fetch;
+}
+
 function stubFetch(overrides: Record<string, unknown> = {}): typeof fetch {
   const routes: Record<string, unknown> = {
     '/api/health': HEALTH,
@@ -80,6 +133,8 @@ function stubFetch(overrides: Record<string, unknown> = {}): typeof fetch {
 }
 
 describe('the app shell', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   it('shows readiness before anything is submitted', async () => {
     render(
       <App
@@ -129,6 +184,64 @@ describe('the app shell', () => {
     // is exactly what it exists for.
     expect(screen.getByText(/could not start, so this played through the buffered path/i))
       .toBeInTheDocument();
+  });
+
+  it('says so when the stream ends early, rather than reporting a short clip as fast', async () => {
+    // The failure the gateway cannot describe: upstream answered 200 and then
+    // stopped. The response is a 200 carrying too few bytes, so nothing above
+    // the player throws — and before this, nothing below it spoke either. The
+    // clip simply played short and the readout quoted a proud first-audio
+    // figure for it.
+    vi.stubGlobal('AudioWorkletNode', FakeWorkletNode);
+    render(
+      <App
+        client={new GatewayClient(truncatedSpeech(1))}
+        audio={streamingAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'It is good to hear your voice again.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Generate status' }).textContent).toMatch(
+        /stream ended early/i,
+      ),
+    );
+    expect(screen.getByRole('status', { name: 'Generate status' }).textContent).toMatch(
+      /incomplete rather than fast/i,
+    );
+  });
+
+  it('names the no-audio case separately, and quotes no latency for it', async () => {
+    // Nothing arrived at all, so there is no first-audio figure to show and a
+    // readout with an em dash in it would be noise. The status carries the
+    // whole story instead.
+    vi.stubGlobal('AudioWorkletNode', FakeWorkletNode);
+    render(
+      <App
+        client={new GatewayClient(truncatedSpeech(0))}
+        audio={streamingAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'It is good to hear your voice again.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status', { name: 'Generate status' }).textContent).toMatch(
+        /closed the stream without sending audio/i,
+      ),
+    );
+    expect(screen.queryByLabelText('Measured latency')).not.toBeInTheDocument();
   });
 
   it('keeps the console usable when the gateway is unreachable', async () => {

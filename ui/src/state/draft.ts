@@ -17,34 +17,56 @@
  */
 export type EventLanguage = 'en' | 'zh';
 
+import type { VoiceMode } from './mode.js';
+
 /**
- * The captured input-length ceiling, **per branch-batch mode**.
+ * How many text segments each template contributes, per branch.
  *
- * Mirrors the gateway's. `configs/fast.json` captures batch 1 at 32..256 and
- * batch 2 at 32..512, and the vendor maps cfg to a binary mode — exactly 1.0
- * runs a single branch, anything else runs dual branches. Past the ceiling the
- * request does not run slowly, it **fails**: the frozen graph cache raises and
- * no audio arrives. Verified live at ~299 tokens, which failed at cfg 1.0 and
- * served at cfg 2.5 and 4.0.
+ * Mirrors the gateway's `SEGMENTS_BY_MODE`. Design uses `tts_instruction`, one
+ * segment; Clone and Direction use `ref_edit_tata`, two.
  */
-export const TOKEN_CEILING_BY_MODE = { noCfg: 256, singleCfg: 512 } as const;
-
-/** The higher of the two, for display before a cfg value is known. */
-export const MAX_TOKENS = TOKEN_CEILING_BY_MODE.singleCfg;
+export const SEGMENTS_BY_MODE = { design: 1, clone: 2, direction: 2 } as const;
 
 /**
- * The ceiling a given cfg value actually gets.
+ * The declared text-encoder ceiling at each batch size.
  *
+ * Mirrors the gateway's `CEILING_BY_BATCH`, so the number shown while typing is
+ * the number the request is judged against. Two copies that disagree would be
+ * worse than one that is wrong, so a test asserts they match.
+ */
+export const CEILING_BY_BATCH = { 1: 256, 2: 512, 4: 512 } as const;
+
+/** The highest ceiling any mode reaches, for display before a mode is known. */
+export const MAX_TOKENS = 512;
+
+/**
+ * The text-encoder batch a request will produce: segments × branches.
+ *
+ * @param mode - The voice mode in force.
  * @param cfgScale - The current guidance scale.
- * @returns Maximum input tokens that will succeed.
+ * @returns The batch the graph will be keyed on.
  */
-export function tokenCeilingFor(cfgScale: number): number {
-  return cfgScale === 1.0
-    ? TOKEN_CEILING_BY_MODE.noCfg
-    : TOKEN_CEILING_BY_MODE.singleCfg;
+export function textEncoderBatch(mode: VoiceMode, cfgScale: number): 1 | 2 | 4 {
+  return (SEGMENTS_BY_MODE[mode] * (cfgScale === 1.0 ? 1 : 2)) as 1 | 2 | 4;
 }
 
-/** The vendor's default instruction, used as a sensible pre-fill. */
+/**
+ * The ceiling this mode and cfg actually get.
+ *
+ * Past it the request does not run slowly, it **fails**: the frozen graph cache
+ * raises and no audio arrives. Clone at cfg 1.0 already carries two segments,
+ * so it reaches batch 2 and gets 512 — keying on cfg alone said 256 and was
+ * wrong for both reference modes.
+ *
+ * @param mode - The voice mode in force.
+ * @param cfgScale - The current guidance scale.
+ * @returns Maximum tokens in any single text segment.
+ */
+export function tokenCeilingFor(mode: VoiceMode, cfgScale: number): number {
+  return CEILING_BY_BATCH[textEncoderBatch(mode, cfgScale)];
+}
+
+/** What the instruction field starts as, and falls back to when cleared. */
 export const DEFAULT_INSTRUCTION = 'Speak clearly and naturally.';
 
 /** Vocal events the model recognises, per language. */
@@ -85,19 +107,56 @@ export const INITIAL_DRAFT: Draft = {
 const STORAGE_KEY = 'breeze.draft.v1';
 
 /**
+ * Characters per token for Latin-script text, and tokens per CJK character.
+ *
+ * Mirrors the gateway's estimator exactly — including the CJK weighting, which
+ * is unmeasured and deliberately high. Four characters per token is an English
+ * average, and this is a bilingual EN/ZH model whose 中文 palette invites
+ * Chinese input; a Han character is three UTF-8 bytes, so byte fallback costs
+ * three tokens and good merges cost one. Over-estimating shows a limit early;
+ * under-estimating spends a cold start to earn a RuntimeError.
+ */
+const LATIN_CHARS_PER_TOKEN = 4;
+const CJK_TOKENS_PER_CHAR = 2;
+
+/**
+ * Whether a code point tokenizes far worse than Latin text.
+ *
+ * @param codePoint - A Unicode code point.
+ * @returns True for Han, kana, Hangul, and the blocks that travel with them.
+ */
+function isCjk(codePoint: number): boolean {
+  return (
+    (codePoint >= 0x3000 && codePoint <= 0x30ff) ||
+    (codePoint >= 0x3400 && codePoint <= 0x4dbf) ||
+    (codePoint >= 0x4e00 && codePoint <= 0x9fff) ||
+    (codePoint >= 0xac00 && codePoint <= 0xd7af) ||
+    (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+    (codePoint >= 0xff00 && codePoint <= 0xffef) ||
+    (codePoint >= 0x20000 && codePoint <= 0x2ebef)
+  );
+}
+
+/**
  * Estimate token count from characters.
  *
  * Matches the gateway's estimate exactly, so the number shown while typing is
- * the number the request is judged against. Deliberately approximate — the
- * exact count needs the model's tokenizer, which lives on the GPU — and
- * deliberately pessimistic, because a warning that arrives early costs less
- * than a fall-off nobody was told about.
+ * the number the request is judged against. Counted by code point, so an
+ * astral ideograph counts once rather than twice.
  *
- * @param text - The line to be spoken.
+ * @param text - The string that will become a text segment.
  * @returns Approximate token count.
  */
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.trim().length / 4);
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return 0;
+  let cjk = 0;
+  let other = 0;
+  for (const char of trimmed) {
+    if (isCjk(char.codePointAt(0) ?? 0)) cjk += 1;
+    else other += 1;
+  }
+  return Math.ceil(cjk * CJK_TOKENS_PER_CHAR + other / LATIN_CHARS_PER_TOKEN);
 }
 
 /**
@@ -136,8 +195,12 @@ export interface GateInput {
   readonly generating: boolean;
   /** Set when the current mode still needs something. */
   readonly modeBlocker: string | null;
-  /** The current guidance scale, which decides the token ceiling. */
+  /** The current guidance scale. With the mode, it decides the ceiling. */
   readonly cfgScale: number;
+  /** The voice mode, which decides how many text segments are sent. */
+  readonly mode: VoiceMode;
+  /** The reference transcript in Clone and Direction — itself a text segment. */
+  readonly refText?: string;
 }
 
 /**
@@ -155,14 +218,21 @@ export function generateBlockedReason(input: GateInput): string | null {
   if (input.generating) return 'Generating…';
   if (input.busy) return 'Disabled while a request is running.';
   if (!input.draft.text.trim()) return 'Enter some text to enable.';
-  const tokens = estimateTokens(input.draft.text);
-  const ceiling = tokenCeilingFor(input.cfgScale);
-  if (tokens > ceiling) {
+  const ceiling = tokenCeilingFor(input.mode, input.cfgScale);
+  // Every string that becomes a text segment, because the graph bucket is the
+  // padded maximum across the batch — one long segment sets it for every row.
+  // The instruction shares the spoken segment; the transcript is its own.
+  const spoken = estimateTokens(`${input.draft.instruction} ${input.draft.text}`);
+  const transcript = estimateTokens(input.refText ?? '');
+  if (spoken > ceiling || transcript > ceiling) {
     // Not a latency warning: past the ceiling the request produces no audio at
     // all, so the remedy names the way out rather than just the limit.
-    return input.cfgScale === 1.0
-      ? `About ${tokens} tokens — past the ${ceiling}-token limit at CFG 1.0. Shorten it, or raise CFG for a ${TOKEN_CEILING_BY_MODE.singleCfg}-token limit.`
-      : `About ${tokens} tokens — past the ${ceiling}-token limit. Shorten it to generate.`;
+    const overTranscript = transcript > spoken;
+    const field = overTranscript ? 'The reference transcript' : 'The line';
+    const tokens = overTranscript ? transcript : spoken;
+    return input.mode === 'design' && ceiling === CEILING_BY_BATCH[1]
+      ? `${field} is about ${tokens} tokens — past the ${ceiling}-token limit at CFG 1.0. Shorten it, or raise CFG for a ${CEILING_BY_BATCH[2]}-token limit.`
+      : `${field} is about ${tokens} tokens — past the ${ceiling}-token limit. Shorten it to generate.`;
   }
   if (input.modeBlocker) return input.modeBlocker;
   return null;
