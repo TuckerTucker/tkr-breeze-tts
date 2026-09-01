@@ -1,0 +1,12 @@
+canonicalId: mem-cM4H1iJq
+sourceId: find-ECh0zOqA
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: abf5af44-de28-4c3d-a5f5-c58238791a91
+  sourceHash: 51ede8334103b39f733fc17e051b5e9cbbcdc4e5bb988a5fce4155f6d2f042db
+  snapshotAt: 2026-09-01T04:04:30.133Z
+rationale: null
+who: tucker
+when: 2026-09-01T04:04:30.133Z

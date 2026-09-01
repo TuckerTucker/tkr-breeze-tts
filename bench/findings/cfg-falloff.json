@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-09-01T02:14:00Z",
+  "verdict": "slider",
+  "rationale": "every uncaptured cfg value served successfully. CUDA graphs are keyed (batch_size, max_length) and branch_batch_size; warmup_profile.py maps cfg to a binary mode, 'no_cfg' for exactly 1.0 and 'single_cfg' otherwise. No graph is keyed on the cfg number, so service.cfg_scales [1.0, 4.0] are two representative values that exercise both modes \u2014 not a whitelist of servable values.",
+  "cfg_control": {
+    "kind": "slider",
+    "min": 1.0,
+    "max": 4.0,
+    "step": 0.5,
+    "default": 1.0
+  },
+  "captured_cfg_scales": [
+    1.0,
+    4.0
+  ],
+  "viability": {
+    "all_served": true,
+    "results": [
+      {
+        "cfg_scale": 2.5,
+        "mode": "single_cfg",
+        "served": true,
+        "ttfa_ms": 154.56,
+        "reason": null
+      }
+    ],
+    "mechanism": "CUDA graphs are keyed (batch_size, max_length) and branch_batch_size; warmup_profile.py maps cfg to a binary mode, 'no_cfg' for exactly 1.0 and 'single_cfg' otherwise. No graph is keyed on the cfg number, so service.cfg_scales [1.0, 4.0] are two representative values that exercise both modes \u2014 not a whitelist of servable values."
+  },
+  "token_ceiling_by_mode": {
+    "no_cfg": 256,
+    "single_cfg": 512
+  },
+  "conditions": [
+    {
+      "label": "cfg=1.0",
+      "cfg_scale": 1.0,
+      "captured": true,
+      "text_chars": 56,
+      "n": 5,
+      "ttfa_ms_median": 420.09,
+      "ttfa_ms_min": 399.72,
+      "ttfa_ms_max": 485.77
+    },
+    {
+      "label": "cfg=4.0",
+      "cfg_scale": 4.0,
+      "captured": true,
+      "text_chars": 56,
+      "n": 5,
+      "ttfa_ms_median": 412.46,
+      "ttfa_ms_min": 408.85,
+      "ttfa_ms_max": 568.14
+    },
+    {
+      "label": "cfg=2.5 (uncaptured)",
+      "cfg_scale": 2.5,
+      "captured": false,
+      "text_chars": 56,
+      "n": 5,
+      "ttfa_ms_median": 406.28,
+      "ttfa_ms_min": 158.32,
+      "ttfa_ms_max": 685.7
+    }
+  ],
+  "token_ceiling": {
+    "by_mode": {
+      "no_cfg": 256,
+      "single_cfg": 512
+    },
+    "results": [
+      {
+        "cfg_scale": 1.0,
+        "mode": "no_cfg",
+        "ceiling": 256,
+        "approx_tokens": 153,
+        "text_chars": 627,
+        "served": true,
+        "ttfa_ms": 414.2,
+        "reason": null
+      },
+      {
+        "cfg_scale": 1.0,
+        "mode": "no_cfg",
+        "ceiling": 256,
+        "approx_tokens": 358,
+        "text_chars": 1425,
+        "served": false,
+        "ttfa_ms": null,
+        "reason": "stream aborted: peer closed connection without sending complete message body (incomplete chunked read)"
+      },
+      {
+        "cfg_scale": 4.0,
+        "mode": "single_cfg",
+        "ceiling": 512,
+        "approx_tokens": 307,
+        "text_chars": 1254,
+        "served": true,
+        "ttfa_ms": 699.09,
+        "reason": null
+      },
+      {
+        "cfg_scale": 4.0,
+        "mode": "single_cfg",
+        "ceiling": 512,
+        "approx_tokens": 716,
+        "text_chars": 2850,
+        "served": false,
+        "ttfa_ms": null,
+        "reason": "stream aborted: peer closed connection without sending complete message body (incomplete chunked read)"
+      }
+    ],
+    "under_ceiling_all_served": true,
+    "over_ceiling_all_failed": true,
+    "failure_is_hard": true,
+    "rationale": "Past the captured ceiling the request does not degrade to a slower path. freeze_after_warmup makes text_encoder_graph.py raise RuntimeError, the connection aborts, and no audio is produced. The UI must therefore refuse over-length input before dispatch rather than warn about latency."
+  },
+  "samples": [
+    {
+      "request_class": "warm",
+      "ttfa_ms": 439.6515409462154,
+      "wall_ms": 1489.3989579286426,
+      "audio_bytes": 157440,
+      "sample_rate": 24000,
+      "duration_s": 3.28,
+      "rtf": 0.45408504814897643,
+      "cfg_scale": 1.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 399.7230420354754,
+      "wall_ms": 1403.1647499650717,
+      "audio_bytes": 157440,
+      "sample_rate": 24000,
+      "duration_s": 3.28,
+      "rtf": 0.4277941310869121,
+      "cfg_scale": 1.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 420.0854590162635,
+      "wall_ms": 1416.7396670673043,
+      "audio_bytes": 157440,
+      "sample_rate": 24000,
+      "duration_s": 3.28,
+      "rtf": 0.4319328253253977,
+      "cfg_scale": 1.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 416.79120901972055,
+      "wall_ms": 1420.2396671753377,
+      "audio_bytes": 157440,
+      "sample_rate": 24000,
+      "duration_s": 3.28,
+      "rtf": 0.4329998985290664,
+      "cfg_scale": 1.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 485.76733306981623,
+      "wall_ms": 1407.1608330123127,
+      "audio_bytes": 157440,
+      "sample_rate": 24000,
+      "duration_s": 3.28,
+      "rtf": 0.42901244908911973,
+      "cfg_scale": 1.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 412.4636671040207,
+      "wall_ms": 1214.50937516056,
+      "audio_bytes": 119040,
+      "sample_rate": 24000,
+      "duration_s": 2.48,
+      "rtf": 0.4897215222421613,
+      "cfg_scale": 4.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 476.6139171551913,
+      "wall_ms": 1219.4056671578437,
+      "audio_bytes": 119040,
+      "sample_rate": 24000,
+      "duration_s": 2.48,
+      "rtf": 0.49169583353138857,
+      "cfg_scale": 4.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 568.1392920669168,
+      "wall_ms": 1220.0656249187887,
+      "audio_bytes": 119040,
+      "sample_rate": 24000,
+      "duration_s": 2.48,
+      "rtf": 0.49196194553176964,
+      "cfg_scale": 4.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 408.8514579925686,
+      "wall_ms": 1212.091000052169,
+      "audio_bytes": 119040,
+      "sample_rate": 24000,
+      "duration_s": 2.48,
+      "rtf": 0.4887463709887778,
+      "cfg_scale": 4.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 410.3972080629319,
+      "wall_ms": 189435.45266613364,
+      "audio_bytes": 119040,
+      "sample_rate": 24000,
+      "duration_s": 2.48,
+      "rtf": 76.38526317182809,
+      "cfg_scale": 4.0,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 685.7013329863548,
+      "wall_ms": 1589.8507910314947,
+      "audio_bytes": 130560,
+      "sample_rate": 24000,
+      "duration_s": 2.72,
+      "rtf": 0.5845039672909906,
+      "cfg_scale": 2.5,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 181.3557909335941,
+      "wall_ms": 1245.1007911004126,
+      "audio_bytes": 134400,
+      "sample_rate": 24000,
+      "duration_s": 2.8,
+      "rtf": 0.44467885396443313,
+      "cfg_scale": 2.5,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 406.2840831466019,
+      "wall_ms": 1310.9315000474453,
+      "audio_bytes": 130560,
+      "sample_rate": 24000,
+      "duration_s": 2.72,
+      "rtf": 0.4819601103115607,
+      "cfg_scale": 2.5,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 158.3218751475215,
+      "wall_ms": 1140.1303340680897,
+      "audio_bytes": 134400,
+      "sample_rate": 24000,
+      "duration_s": 2.8,
+      "rtf": 0.4071894050243178,
+      "cfg_scale": 2.5,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    },
+    {
+      "request_class": "warm",
+      "ttfa_ms": 409.3499998562038,
+      "wall_ms": 1308.9396248105913,
+      "audio_bytes": 130560,
+      "sample_rate": 24000,
+      "duration_s": 2.72,
+      "rtf": 0.48122780323918796,
+      "cfg_scale": 2.5,
+      "seed": 42,
+      "text_chars": 56,
+      "ok": true,
+      "discard_reason": null
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 capability: local-gateway
 slice_specs:
   - title: Credential proxy
-    status: draft
+    status: done
     purpose: Give the browser a same-origin endpoint to talk to, so the Modal
       credential stays server-side and CORS never arises.
     interface: POST /api/speech and GET /api/health on localhost; forwards to the
@@ -22,8 +22,11 @@ slice_specs:
       an absent variable fails with the remedy named. A stubbed upstream 409
       produces the typed busy shape. Logs contain no credential material.
     slice: 1
+    evidence:
+      kind: commit
+      ref: 69103a2
   - title: Dual transport
-    status: draft
+    status: done
     purpose: Offer buffered-WAV and streaming-PCM delivery behind one setting,
       without changing the contract the browser uses.
     interface: "One configuration value, transport: 'buffered' | 'streaming'. The
@@ -44,8 +47,11 @@ slice_specs:
       completion, asserted on first-byte timing. Both transports accept an
       identical request. A wrong-rate header is rejected, not silently accepted.
     slice: 2
+    evidence:
+      kind: commit
+      ref: 69103a2
   - title: Reference intake
-    status: draft
+    status: done
     purpose: Make browser-recorded audio usable for cloning without the operator
       converting anything by hand.
     interface: Multipart intake of ref_audio plus ref_text on the synthesis route;
@@ -74,8 +80,11 @@ slice_specs:
       refused with the missing half named. Temporary files are absent after both
       a success and a forced failure.
     slice: 3
+    evidence:
+      kind: commit
+      ref: 69103a2
   - title: Clip cache
-    status: draft
+    status: done
     purpose: Keep every generated clip on disk so replay is instant, free, and works
       while the GPU is scaled to zero.
     interface: GET /api/clips and GET /api/clips/:id served from disk; writes happen
@@ -107,8 +116,11 @@ slice_specs:
       oldest-first at the limit. A deliberately corrupted file is dropped from
       the index rather than served.
     slice: 4
+    evidence:
+      kind: commit
+      ref: 69103a2
   - title: Voice library store
-    status: draft
+    status: done
     purpose: Give a created voice a durable identity the model itself cannot
       provide, so reusing it is a lookup rather than a reconstruction.
     interface: GET /api/voices, POST /api/voices, PATCH /api/voices/:id, DELETE
@@ -139,8 +151,11 @@ slice_specs:
       source clips present. A duplicate name is disambiguated rather than
       rejected.
     slice: 5
+    evidence:
+      kind: commit
+      ref: 69103a2
   - title: Script runner
-    status: draft
+    status: done
     purpose: Turn a script into voiced audio cue by cue, cheaply re-runnable, with
       timing reported honestly rather than forced.
     interface: POST /api/scripts (import VTT or text), GET /api/scripts/:id, POST
@@ -174,3 +189,6 @@ slice_specs:
       leaves the run resumable. Concatenated export decodes as one continuous 24
       kHz mono WAV whose length equals the sum of cue durations.
     slice: 6
+    evidence:
+      kind: commit
+      ref: 69103a2

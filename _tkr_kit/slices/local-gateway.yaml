@@ -37,7 +37,10 @@ slices:
     number: 1
     layer: api
     feature: credential-proxy
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 69103a2
   - paths:
       - gateway/src/transport.ts
       - gateway/test/transport.test.ts
@@ -61,7 +64,10 @@ slices:
     number: 2
     layer: api
     feature: dual-transport
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 69103a2
   - paths:
       - gateway/src/reference.ts
       - gateway/test/reference.test.ts
@@ -87,7 +93,10 @@ slices:
     number: 3
     layer: api
     feature: reference-intake
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 69103a2
   - paths:
       - gateway/src/cache.ts
       - gateway/src/cache-index.ts
@@ -117,7 +126,10 @@ slices:
     number: 4
     layer: data
     feature: clip-cache
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 69103a2
   - paths:
       - gateway/src/voices.ts
       - gateway/src/voices-index.ts
@@ -147,7 +159,10 @@ slices:
     number: 5
     layer: data
     feature: voice-library
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 69103a2
   - paths:
       - gateway/src/script.ts
       - gateway/src/vtt.ts
@@ -183,4 +198,7 @@ slices:
     number: 6
     layer: api
     feature: script-runner
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 69103a2

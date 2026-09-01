@@ -1,7 +1,7 @@
 capability: demo-ui
 slice_specs:
   - title: Console shell
-    status: draft
+    status: done
     purpose: Give the operator one surface where typing a line and hearing it takes
       a single action.
     interface: "The root view: text area, instruction field, vocal-event affordance,
@@ -28,8 +28,11 @@ slice_specs:
       generation; reroll draws and displays a new one. The length indicator
       tracks input live. A reload restores draft, language and seed.
     slice: 1
+    evidence:
+      kind: commit
+      ref: 3372dec
   - title: Voice modes
-    status: draft
+    status: done
     purpose: Make the model's three ways of specifying a voice legible and usable
       without documentation.
     interface: Mode selector over design | clone | direction, driving which fields
@@ -71,8 +74,11 @@ slice_specs:
       the recorded finding, and falls back to presets when no finding is
       present.
     slice: 2
+    evidence:
+      kind: commit
+      ref: 3372dec
   - title: Streaming playback
-    status: draft
+    status: done
     purpose: Make the model's latency audible by playing audio before generation has
       finished.
     interface: A player accepting either a PCM stream or a WAV response, selected to
@@ -93,8 +99,11 @@ slice_specs:
       worklet failure falls back and still produces audio. Reported first-audio
       time matches an independent measurement of the same request.
     slice: 3
+    evidence:
+      kind: commit
+      ref: 3372dec
   - title: Wake state
-    status: draft
+    status: done
     purpose: Tell the truth about serverless cold start, so a slow first request
       reads as a waking container rather than a slow model.
     interface: A readiness indicator driven by gateway health, plus a distinct
@@ -116,8 +125,11 @@ slice_specs:
       is unknown, not warm. Expected and observed figures are both shown after a
       cold start.
     slice: 4
+    evidence:
+      kind: commit
+      ref: 3372dec
   - title: Clip history
-    status: draft
+    status: done
     purpose: Let the operator compare and iterate on generations without
       regenerating them.
     interface: A history list backed by the gateway clip cache, with replay and
@@ -143,8 +155,8 @@ slice_specs:
       operator initiating it. A save of any clip → framed as WAV before
       delivery, since the cache holds raw PCM whatever the transport, and bytes
       nothing outside the demo can open are not a saved file. A promotion while
-      in Design mode → switches to Clone rather than
-      silently attaching a reference the current mode cannot send.
+      in Design mode → switches to Clone rather than silently attaching a
+      reference the current mode cannot send.
     tests: Every generation appears with its settings including seed. Replay reaches
       no upstream, asserted with upstream unreachable. Replay leaves console
       contents intact. Load-into-console populates every field of the original
@@ -154,8 +166,11 @@ slice_specs:
       way upstream. A saved file decodes as a valid 24kHz mono WAV and is named
       from its source text. History survives reload.
     slice: 5
+    evidence:
+      kind: commit
+      ref: 3372dec
   - title: Voice library and picker
-    status: draft
+    status: done
     purpose: Make a voice something the operator picks by name, rather than
       something they rebuild from a clip each time.
     interface: A library panel listing saved voices with origin and default
@@ -184,8 +199,11 @@ slice_specs:
       immediately and undo restores the voice. An empty library explains itself
       instead of hiding. An unavailable voice is not selectable.
     slice: 6
+    evidence:
+      kind: commit
+      ref: 3372dec
   - title: Script editor
-    status: draft
+    status: done
     purpose: Make a multi-voice script something the operator edits line by line,
       where fixing one line costs one line.
     interface: "A cue list view: per-row text, assigned voice, state,
@@ -215,3 +233,6 @@ slice_specs:
       unrunnable with the reason. Export produces a VTT whose timings match the
       generated audio.
     slice: 7
+    evidence:
+      kind: commit
+      ref: 3372dec

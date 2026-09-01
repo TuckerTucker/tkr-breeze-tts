@@ -1,7 +1,7 @@
 capabilities:
   - name: modal-inference
     layer: service
-    status: draft
+    status: done
     paths:
       - infra
     depends_on: []
@@ -29,9 +29,12 @@ capabilities:
         (local-gateway).
       - Any modification to vendor inference logic — the runtime is used as
         shipped.
+    evidence:
+      kind: commit
+      ref: d4b5f0c
   - name: measurement
     layer: integration
-    status: draft
+    status: done
     paths:
       - bench
     depends_on:
@@ -56,9 +59,12 @@ capabilities:
       - Deploying or configuring the service under test (modal-inference).
       - Any production request path — the harness is a bench client, not a
         gateway.
+    evidence:
+      kind: commit
+      ref: d4b5f0c
   - name: local-gateway
     layer: api
-    status: draft
+    status: done
     paths:
       - gateway
     depends_on:
@@ -89,9 +95,12 @@ capabilities:
         (demo-ui).
       - GPU, warm window, and Modal-side configuration (modal-inference).
       - Latency benchmarking (measurement).
+    evidence:
+      kind: commit
+      ref: d4b5f0c
   - name: demo-ui
     layer: ui
-    status: draft
+    status: done
     paths:
       - ui
     depends_on:
@@ -121,3 +130,6 @@ capabilities:
         gateway.
       - "Multi-user concerns: accounts, sharing, concurrency beyond one
         operator."
+    evidence:
+      kind: commit
+      ref: d4b5f0c

@@ -1,7 +1,7 @@
 capability: modal-inference
 stories:
   - name: build-the-runtime-image
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Get a container image that runs the vendor TTS runtime correctly,
@@ -28,8 +28,11 @@ stories:
         then: the build fails with the failing import named, rather than succeeding into
           a runtime error
     feature: runtime-image
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - name: fill-the-weights-volume
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Put the 7.7GB checkpoint somewhere it is downloaded once and reused by
@@ -55,8 +58,11 @@ stories:
         then: the missing component is named in the failure rather than surfacing as a
           tokenizer error deep in the load
     feature: weights-volume
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - name: serve-warm-inference
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Have requests only ever reach a container that has finished loading and
@@ -85,8 +91,11 @@ stories:
         when: the client reads the response
         then: audio arrives incrementally rather than after completion
     feature: inference-service
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - name: tune-the-deployment
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Adjust the cost and latency posture of the deployment without editing
@@ -112,3 +121,6 @@ stories:
         when: the app is redeployed
         then: no image rebuild is required, because the wheel is multi-arch
     feature: service-config
+    evidence:
+      kind: commit
+      ref: 183a1a0

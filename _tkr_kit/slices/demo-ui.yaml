@@ -36,14 +36,17 @@ slices:
       - Draft persistence across reload, so nothing typed is lost.
       - The capability's build and test configuration (package.json,
         tsconfig.json, vite.config.ts), the Vite entry point, and the gateway
-        client every later slice calls through. Without these the console
-        cannot be built, served, or tested inside its own territory, and the
-        'gateway unreachable' state above has nothing to reach through.
+        client every later slice calls through. Without these the console cannot
+        be built, served, or tested inside its own territory, and the 'gateway
+        unreachable' state above has nothing to reach through.
     title: Console shell and utterance entry
     number: 1
     layer: ui
     feature: synthesis-console
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 3372dec
   - paths:
       - ui/src/components/VoiceModes.tsx
       - ui/src/components/CfgControl.tsx
@@ -77,7 +80,10 @@ slices:
     number: 2
     layer: ui
     feature: voice-modes
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 3372dec
   - paths:
       - ui/src/audio/worklet.ts
       - ui/src/audio/player.ts
@@ -105,7 +111,10 @@ slices:
     number: 3
     layer: ui
     feature: streaming-playback
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 3372dec
   - paths:
       - ui/src/components/WakeState.tsx
       - ui/src/state/readiness.ts
@@ -133,7 +142,10 @@ slices:
     number: 4
     layer: ui
     feature: wake-state
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 3372dec
   - paths:
       - ui/src/components/History.tsx
       - ui/src/state/history.ts
@@ -171,7 +183,10 @@ slices:
     number: 5
     layer: ui
     feature: clip-history
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 3372dec
   - paths:
       - ui/src/components/VoiceLibrary.tsx
       - ui/src/state/voices.ts
@@ -203,7 +218,10 @@ slices:
     number: 6
     layer: ui
     feature: voice-picker
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 3372dec
   - paths:
       - ui/src/components/ScriptEditor.tsx
       - ui/src/components/CueRow.tsx
@@ -238,4 +256,7 @@ slices:
     number: 7
     layer: ui
     feature: script-editor
-    status: draft
+    status: done
+    evidence:
+      kind: commit
+      ref: 3372dec

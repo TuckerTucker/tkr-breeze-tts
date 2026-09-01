@@ -1,0 +1,12 @@
+canonicalId: mem--S86pGzV
+sourceId: find-XFHrHBPR
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: 70dce054-bdb9-430c-b8bd-5d8b1df57b3e
+  sourceHash: eee6c576fd6aecb87e98079ec60dbc7cc0a8a52de1db99696e6e8c680e6c3449
+  snapshotAt: 2026-09-01T04:04:29.511Z
+rationale: null
+who: tucker
+when: 2026-09-01T04:04:29.511Z

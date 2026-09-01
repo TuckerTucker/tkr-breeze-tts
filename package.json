@@ -1,0 +1,16 @@
+{
+  "name": "breeze-tts-demo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A local demo of Breeze-TTS-2: GPU inference on Modal, a credential-holding local gateway, and a browser UI that plays PCM as it arrives.",
+  "scripts": {
+    "install:all": "npm --prefix gateway install && npm --prefix ui install",
+    "build": "npm --prefix ui run build",
+    "start": "npm --prefix ui run build && npm --prefix gateway start",
+    "dev:gateway": "npm --prefix gateway run dev",
+    "dev:ui": "npm --prefix ui run dev",
+    "test": "npm --prefix gateway test && npm --prefix ui test",
+    "test:python": "PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests -q",
+    "typecheck": "npm --prefix gateway run typecheck && npm --prefix ui run typecheck"
+  }
+}

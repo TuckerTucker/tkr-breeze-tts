@@ -1,7 +1,7 @@
 capability: modal-inference
 slice_specs:
   - title: Runtime image
-    status: draft
+    status: done
     purpose: Produce a container image in which the vendor Breeze runtime imports
       and runs, with no GPU-architecture assumption baked in.
     interface: modal.Image — consumed by the serving class and the volume-fill function.
@@ -20,8 +20,11 @@ slice_specs:
       qwen_tts and the vendor models package. Assert flash_attn version is 2.8.3
       and that torch reports CUDA availability inside a GPU container.
     slice: 1
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - title: Weights volume
-    status: draft
+    status: done
     purpose: Hold the 7.7GB checkpoint so it is downloaded once and every later
       deploy reuses it.
     interface: modal.Volume mounted read-only at a fixed path; a fill entrypoint
@@ -40,8 +43,11 @@ slice_specs:
       Re-running is a no-op. Verification detects a deliberately removed
       audio_tokenizer and names it.
     slice: 2
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - title: Serving class
-    status: draft
+    status: done
     purpose: Serve the vendor FastAPI app from a Modal container that is fully
       loaded and warmed before it receives any traffic.
     interface: A modal.Cls with @modal.enter() and @modal.asgi_app(); exposes the
@@ -63,8 +69,11 @@ slice_specs:
       concurrent request receives 409. Warmup milliseconds appear in the
       container log.
     slice: 3
+    evidence:
+      kind: commit
+      ref: 183a1a0
   - title: Deployment configuration
-    status: draft
+    status: done
     purpose: Express GPU, warm behaviour, authentication and fast-path posture as
       one configuration surface rather than decorator arguments spread through
       the service.
@@ -94,3 +103,6 @@ slice_specs:
       the wk-/ws- prefixes and authenticates against /health; an ak-/as- pair is
       refused with the reason named.
     slice: 4
+    evidence:
+      kind: commit
+      ref: 183a1a0
