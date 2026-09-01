@@ -87,12 +87,22 @@ class FakeTransport:
     calls: list[tuple[str, dict[str, str], dict[str, str]]] = field(
         default_factory=list
     )
+    #: Every ``files`` mapping issued, in call order — ``None`` where a request
+    #: carried no reference. Recorded separately so a test can assert the pair
+    #: rule without every existing assertion growing a fourth element.
+    file_parts: list[Mapping[str, Any] | None] = field(default_factory=list)
     get_status: int = 200
 
     def stream(
-        self, url: str, *, headers: Mapping[str, str], data: Mapping[str, str]
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        data: Mapping[str, str],
+        files: Mapping[str, Any] | None = None,
     ) -> FakeResponse:
         self.calls.append((url, dict(headers), dict(data)))
+        self.file_parts.append(files)
         if not self.responses:
             raise AssertionError("FakeTransport ran out of scripted responses")
         if len(self.responses) == 1:

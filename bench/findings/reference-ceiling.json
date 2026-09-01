@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-09-01T18:45:02Z",
+  "verdict": "measured",
+  "rationale": "reference duration was walked upward in each branch mode until the frozen graph cache raised. The figure recorded per mode is the longest reference that actually served \u2014 the first refusal is one rung above it and produced no audio at all, so nothing should treat this as a limit worth approaching. The stage that refused was: backbone prefill CUDA graph.",
+  "max_reference_seconds": 14.08,
+  "ceiling_by_branch_mode": {
+    "no_cfg": 14.08,
+    "single_cfg": 28.16
+  },
+  "bounded_by_refusal": {
+    "no_cfg": true,
+    "single_cfg": true
+  },
+  "refusing_stages": [
+    "backbone prefill CUDA graph"
+  ],
+  "seed_utterance": {
+    "text": "It is good to hear your voice again, after all this time.",
+    "duration_s": 3.52
+  },
+  "mechanism": "configs/fast.json captures backbone_prefill at the same 24 shapes as the text encoder, keyed branch_batch_size x sequence_length. The sequence carries the reference audio's frames as well as its text, and the transcript must be exact \u2014 so a longer reference pushes on two frozen stages at once. freeze_after_warmup makes an uncaptured shape raise rather than fall back, so this is a hard failure that produces no audio, not a slower path.",
+  "walks": [
+    {
+      "cfg_scale": 1.0,
+      "branch_mode": "no_cfg",
+      "longest_served_s": 14.08,
+      "first_refused_s": 17.6,
+      "ceiling_s": 14.08,
+      "rungs": [
+        {
+          "repeats": 1,
+          "cfg_scale": 1.0,
+          "duration_s": 3.52,
+          "transcript_chars": 57,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 494.4116249680519
+        },
+        {
+          "repeats": 2,
+          "cfg_scale": 1.0,
+          "duration_s": 7.04,
+          "transcript_chars": 115,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 467.0740000437945
+        },
+        {
+          "repeats": 3,
+          "cfg_scale": 1.0,
+          "duration_s": 10.56,
+          "transcript_chars": 173,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 387.73995894007385
+        },
+        {
+          "repeats": 4,
+          "cfg_scale": 1.0,
+          "duration_s": 14.08,
+          "transcript_chars": 231,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 1590.6519158743322
+        },
+        {
+          "repeats": 5,
+          "cfg_scale": 1.0,
+          "duration_s": 17.6,
+          "transcript_chars": 289,
+          "served": false,
+          "reason": "stream aborted: peer closed connection without sending complete message body (incomplete chunked read)",
+          "graph": {
+            "stage": "backbone prefill CUDA graph",
+            "batch": 1,
+            "length": 320,
+            "verbatim": "RuntimeError: backbone prefill CUDA graph (1, 320) was not declared in the warmup profile"
+          },
+          "ttfa_ms": null
+        }
+      ]
+    },
+    {
+      "cfg_scale": 4.0,
+      "branch_mode": "single_cfg",
+      "longest_served_s": 28.16,
+      "first_refused_s": 35.2,
+      "ceiling_s": 28.16,
+      "rungs": [
+        {
+          "repeats": 1,
+          "cfg_scale": 4.0,
+          "duration_s": 3.52,
+          "transcript_chars": 57,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 783.7547501549125
+        },
+        {
+          "repeats": 2,
+          "cfg_scale": 4.0,
+          "duration_s": 7.04,
+          "transcript_chars": 115,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 482.69408382475376
+        },
+        {
+          "repeats": 3,
+          "cfg_scale": 4.0,
+          "duration_s": 10.56,
+          "transcript_chars": 173,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 463.7740000616759
+        },
+        {
+          "repeats": 4,
+          "cfg_scale": 4.0,
+          "duration_s": 14.08,
+          "transcript_chars": 231,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 531.3652909826487
+        },
+        {
+          "repeats": 5,
+          "cfg_scale": 4.0,
+          "duration_s": 17.6,
+          "transcript_chars": 289,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 519.7887918911874
+        },
+        {
+          "repeats": 6,
+          "cfg_scale": 4.0,
+          "duration_s": 21.12,
+          "transcript_chars": 347,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 1066.4245001971722
+        },
+        {
+          "repeats": 8,
+          "cfg_scale": 4.0,
+          "duration_s": 28.16,
+          "transcript_chars": 463,
+          "served": true,
+          "reason": null,
+          "graph": null,
+          "ttfa_ms": 588.8956249691546
+        },
+        {
+          "repeats": 10,
+          "cfg_scale": 4.0,
+          "duration_s": 35.2,
+          "transcript_chars": 579,
+          "served": false,
+          "reason": "stream aborted: peer closed connection without sending complete message body (incomplete chunked read)",
+          "graph": {
+            "stage": "backbone prefill CUDA graph",
+            "batch": 2,
+            "length": 608,
+            "verbatim": "RuntimeError: backbone prefill CUDA graph (2, 608) was not declared in the warmup profile"
+          },
+          "ttfa_ms": null
+        }
+      ]
+    }
+  ]
+}

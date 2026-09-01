@@ -92,15 +92,35 @@ class SpeechRequest:
     instruction: str = DEFAULT_INSTRUCTION
     cfg_scale: float = 1.0
     seed: int = 42
+    ref_audio: bytes | None = None
+    ref_text: str | None = None
 
     def as_form(self) -> dict[str, str]:
         """Render as the multipart fields the vendor route expects."""
-        return {
+        form = {
             "text": self.text,
             "instruction": self.instruction,
             "cfg_scale": str(self.cfg_scale),
             "seed": str(self.seed),
         }
+        # Both halves or neither. The vendor enforces the pair, and sending
+        # half of it would measure that rejection rather than the thing under
+        # test.
+        if self.ref_audio is not None and self.ref_text is not None:
+            form["ref_text"] = self.ref_text
+        return form
+
+    def as_files(self) -> dict[str, tuple[str, bytes, str]] | None:
+        """Render the reference audio as a multipart file part.
+
+        Returns:
+            The ``ref_audio`` part, or None when this request carries no
+            reference — in which case the transport sends a plain form, as it
+            always did.
+        """
+        if self.ref_audio is None or self.ref_text is None:
+            return None
+        return {"ref_audio": ("reference.wav", self.ref_audio, "audio/wav")}
 
 
 @dataclass
@@ -193,7 +213,12 @@ class Transport(Protocol):
     """
 
     def stream(
-        self, url: str, *, headers: Mapping[str, str], data: Mapping[str, str]
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        data: Mapping[str, str],
+        files: Mapping[str, Any] | None = None,
     ) -> Any:
         """Open a streaming POST as a context manager yielding a
         `StreamResponse`."""
@@ -216,9 +241,20 @@ class HttpxTransport:
         self._client = httpx.Client(timeout=timeout_s, follow_redirects=True)
 
     def stream(
-        self, url: str, *, headers: Mapping[str, str], data: Mapping[str, str]
+        self,
+        url: str,
+        *,
+        headers: Mapping[str, str],
+        data: Mapping[str, str],
+        files: Mapping[str, Any] | None = None,
     ) -> Any:
-        return self._client.stream("POST", url, headers=dict(headers), data=dict(data))
+        if files is None:
+            return self._client.stream(
+                "POST", url, headers=dict(headers), data=dict(data)
+            )
+        return self._client.stream(
+            "POST", url, headers=dict(headers), data=dict(data), files=dict(files)
+        )
 
     def get(self, url: str, *, headers: Mapping[str, str]) -> Any:
         return self._client.get(url, headers=dict(headers))
@@ -375,7 +411,10 @@ class LatencyHarness:
             sample_rate = DEFAULT_SAMPLE_RATE
 
             with self._transport.stream(
-                url, headers=self._credentials.headers, data=request.as_form()
+                url,
+                headers=self._credentials.headers,
+                data=request.as_form(),
+                files=request.as_files(),
             ) as response:
                 if response.status_code in (401, 403):
                     raise AuthError(
@@ -465,23 +504,37 @@ def scrape_warmup_ms(logs: str) -> float | None:
     return float(matches[-1]) if matches else None
 
 
-def fetch_app_logs(app_name: str = "breeze-tts", lines: int = 500) -> str:
+def fetch_app_logs(
+    app_name: str = "breeze-tts", lines: int = 500, since: str | None = None
+) -> str:
     """Read recent container logs through the Modal CLI.
 
     ``modal app logs`` is where the vendor's ``fast warmup:`` line surfaces.
     This is a log read, not a request path — the prohibition on ``modal curl``
     is about measuring latency through Modal's API auth, which this does not do.
 
+    Pass `since` to bound the window server-side. Without it the CLI returns
+    its own default slice and this trims to `lines`, which is fine for scraping
+    a warmup figure and wrong for asking "did something new appear?" — a single
+    vendor traceback is around a hundred lines, so a new error pushes an old
+    one out and the *count* never changes. Bounding by time makes "new"
+    definitional instead of inferred.
+
     Args:
         app_name: The deployed app.
-        lines: How many recent lines to ask for.
+        lines: How many recent lines to keep.
+        since: A Modal relative time such as ``"30s"`` or ``"2m"``, or None for
+            the CLI's default window.
 
     Returns:
         The log text, or an empty string if the CLI is unavailable.
     """
+    command = ["modal", "app", "logs", app_name]
+    if since is not None:
+        command += ["--since", since]
     try:
         result = subprocess.run(
-            ["modal", "app", "logs", app_name],
+            command,
             capture_output=True,
             text=True,
             timeout=30,
