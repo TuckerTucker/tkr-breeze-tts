@@ -1,7 +1,7 @@
 meta:
   fmt: 14
   name: breeze-tts-demo
-  ts: "2026-09-01T02:35:00Z"
+  ts: "2026-09-01T03:20:00Z"
   what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
     Modal; a local gateway holds the credential and absorbs audio chores; a browser
     UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
@@ -46,27 +46,27 @@ state:
     - "All four capabilities' source and tests: 320 tests, all passing offline."
     - "DEPLOYED. Image built, 7.68GB checkpoint on the Volume, service live at
        tuckertucker--breeze-tts-breezeservice-serve.modal.run, proxy auth enforced."
-    - "Measured on an H100: warm TTFA 161ms, RTF 0.39, graph-capture warmup 148.6s,
-       cold start ~166s. Published claims are <40ms and 0.32."
+    - "Measured on an H100: warm TTFA 161ms, RTF 0.39, graph-capture warmup 162.6s
+       over 69 graphs, cold start ~170s. Published claims are <40ms and 0.32;
+       the operator has accepted the measured times."
+    - "All three voice modes work: Design at any cfg, Clone and Direction at any
+       cfg after the warmup-profile extension."
     - "Gateway verified end to end: streaming first byte 17ms vs 176ms total;
        replay served from cache with the upstream killed; 409 typed as busy."
     - "UI verified in Chrome: real AudioWorklet, 19ms first audio, no fallback."
   deferred:
-    - "Clone and Direction hard-fail at cfg != 1.0 — see
-       docs/audits/2026-08-31-cfg-branch-batch.md. Not fixed."
     - "Cold TTFA is unmeasured client-side; the figure is known from container
        logs only, so the UI's wake state says 'not yet measured'."
   do_not_assume:
-    - "The plan reads 19/19 slices done and demo-ui/slice/2 is NOT satisfied: its
-       CFG control offers values that hard-fail in Clone and Direction. The kit
-       refuses done -> in_progress, so the gap lives in docs/audits/."
     - "cfg is NOT graph-keyed. warmup_profile.py maps it to a binary mode, so a
        continuous slider is viable — for Design. The brief says otherwise; the
        brief is wrong."
     - "The token ceiling is PER BRANCH MODE and exceeding it is a hard failure,
        not a slowdown: 256 at cfg 1.0, 512 otherwise, then RuntimeError."
-    - "ref_edit_tata is never warmed. fast.json's warmup_request is hardcoded to
-       tts_instruction, so Clone/Direction work at cfg 1.0 only by coincidence."
+    - "The vendor's fast.json does NOT warm ref_edit_tata — its warmup_request is
+       hardcoded to tts_instruction. infra/extend_warmup_profile.py patches in the
+       batch-4 text-encoder graphs at build time; without that step Clone and
+       Direction raise at any cfg != 1.0. Do not drop it on a vendor bump."
     - "The vendor runtime is NOT in this repo. It is cloned into the image at a
        pinned commit (infra/image.py VENDOR_COMMIT); nothing here imports it locally."
     - "Koji is off (headless). Planning state is file-canonical in _tkr_kit/."

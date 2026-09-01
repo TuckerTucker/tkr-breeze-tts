@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-31
 **Severity:** High — two of the three headline voice modes
-**Status:** Open. Verified against the deployed H100; not fixed.
+**Status:** **Resolved** 2026-08-31 by `infra/extend_warmup_profile.py`. Kept for the mechanism, which is not documented upstream.
 **Found by:** driving the demo end to end after deploy (`demo-ui/slice/2`)
 
 ## What happens
@@ -60,22 +60,49 @@ The demo's own framing calls this "the most interesting control in the system
 and the one the docs explain least". It does not currently work in the two
 modes where it means the most.
 
-## Options
+## Resolution
 
-1. **Ship a custom `fast.json`** capturing batch 4 and adding a `ref_edit_tata`
-   warmup request. Correct and complete; costs warmup time on an already 166 s
-   cold start, and cold start is already the demo's worst interaction.
-2. **Pin cfg to 1.0 in the reference modes** and drop Direction as a distinct
-   mode. Cheap and honest, but deletes a headline capability.
-3. **Disable the fast path for reference modes only** — eager for Clone and
-   Direction, fast for Design. Keeps all three modes at the cost of the
-   latency claim in two of them.
+Only the **text encoder** needed new shapes, which made the fix far smaller
+than first estimated. `warmup_from_profile` captures text-encoder graphs
+directly from declared `(batch_size, token_length)` pairs rather than by
+running the warmup request:
 
-Option 1 is the only one that keeps both the capability and the claim. It needs
-a measurement first: how much does capturing batch 4 add to the 148 s warmup?
+```python
+for graph in profile.text_encoder_graphs:
+    text_cache.warmup_graph(batch_size=graph.batch_size, ...)
+```
 
-## Until then
+So no `ref_edit_tata` warmup request was needed — which is fortunate, because
+`SyntheticWarmupRequest` carries only `template/text/instruction/speaker/seed`
+and has no audio path to express one. The backbone and depth-decoder stages
+build from `cfg_scale_by_batch`, which keys on 1 and 2 regardless of segment
+count, so they already covered both templates.
 
-The UI will offer CFG values in Clone and Direction that cannot succeed. The
-gateway refuses over-length input before dispatch but does **not** yet refuse
-this combination, so it reaches the GPU and fails there.
+`infra/extend_warmup_profile.py` adds 16 graphs at `batch_size 4`, 32..512,
+matching batch 2's ceiling. It patches the vendor's own `configs/fast.json` at
+build time rather than shipping a hand-copied replacement, so a bump of
+`VENDOR_COMMIT` keeps the vendor's changes and only re-applies the addition.
+It is idempotent, and a test asserts it runs after the clone.
+
+### Verified after the fix
+
+| request | before | after |
+|---|---|---|
+| `ref_edit_tata`, cfg 1.0 | OK | OK — 1.84 s |
+| `ref_edit_tata`, cfg 2.5 | **FAIL** | **OK** — ttfa 1165 ms |
+| `ref_edit_tata`, cfg 4.0 | **FAIL** | **OK** — ttfa 507 ms |
+
+The dial demonstrably steers again: identical input and seed, varying only cfg,
+produced 2.64 s of audio at 1.0 against 1.28 s at 4.0.
+
+### What it cost
+
+| | before | after |
+|---|---|---|
+| declared graphs | 53 | 69 |
+| warmup | 148.6 s | **162.6 s** (+14.0 s, +9.4%) |
+| cold start | ~166 s | ~170 s |
+
+Fourteen seconds of warmup to restore two of the three voice modes, on a cold
+start the operator pays once per sitting. Taken deliberately, with the
+operator's agreement that the times are acceptable.

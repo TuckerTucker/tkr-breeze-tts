@@ -96,6 +96,18 @@ def build_image() -> modal.Image:
             "/opt/breeze-smoke/smoke_check.py",
             copy=True,
         )
+        .add_local_file(
+            __file__.replace("image.py", "extend_warmup_profile.py"),
+            "/opt/breeze-smoke/extend_warmup_profile.py",
+            copy=True,
+        )
+        # Add the text-encoder shapes ref_edit_tata needs. Without this, Clone
+        # and Direction raise at any cfg != 1.0 — the vendor's warmup_request
+        # only ever exercises tts_instruction, so batch 4 is never captured.
+        .run_commands(
+            "python /opt/breeze-smoke/extend_warmup_profile.py "
+            f"{VENDOR_ROOT}/configs/fast.json"
+        )
         # The final build step, so an ABI or version mismatch fails the build
         # rather than the first inference.
         .run_commands("python /opt/breeze-smoke/smoke_check.py")
