@@ -270,3 +270,51 @@ features:
       - Drawing the waveform or dragging the handles (demo-ui).
       - The voice library, which keeps its own copy and outlives any staged
         reference.
+  - name: voice-intent-contract
+    status: draft
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/src/config.ts
+        - gateway/package.json
+        - gateway/tsconfig.json
+    user_story: As the operator, I want one voice-and-delivery contract to drive
+      both Speak and Scripts, so that the gateway—not a UI mode label—decides
+      which vendor request is valid and every script cue preserves the delivery
+      settings I can see.
+    acceptance_criteria:
+      - A synthesis intent is described or referenced solely by the presence of
+        a complete reference; mode is derived metadata and is not authoritative
+        input.
+      - Every intent has one instruction field. A reference plus neutral
+        instruction is cloning; a reference plus directed instruction and CFG is
+        directed delivery through the same vendor template.
+      - Library and staged references are resolved before request shape, input
+        ceiling, cache provenance, and vendor template are selected.
+      - Script records persist default voice, instruction, CFG, and seed
+        behavior, with explicit per-cue overrides.
+      - Effective cue settings are resolved through the same voice-intent
+        function as one-off synthesis.
+      - Changing a script default marks only cues that inherit that value stale;
+        explicit cue overrides remain unchanged.
+      - Cue cache identity includes every effective setting, including
+        instruction, so visible changes cannot replay stale audio.
+      - Existing scripts and requests migrate to conservative defaults without
+        losing cached clips or cue text.
+    scope_in:
+      - A pure voice-intent resolver shared by speech and script request
+        construction.
+      - Script document defaults and per-cue instruction/voice/CFG/seed
+        overrides persisted in the existing script store.
+      - Speech and script API validation, migration, provenance, cache identity,
+        and tests.
+    scope_out:
+      - Any new vendor endpoint or change to the two vendor templates.
+      - UI layout and navigation (demo-ui voice-workspaces).
+      - A new store; existing script, voice, reference, and clip stores retain
+        their current lifecycles.
+    continues:
+      - local-gateway/feature/credential-proxy
+      - local-gateway/feature/voice-library
+      - local-gateway/feature/script-runner
+      - local-gateway/feature/input-ceiling

@@ -261,3 +261,127 @@ slice_specs:
       still returns a usable reference. Two syntheses from one reference perform
       one upload and one transcription. Eviction removes the WAV and its sidecar
       together, and a voice promoted beforehand still reads.
+  - slice: 9
+    status: draft
+    title: Voice-intent resolver
+    purpose: Make reference presence and one instruction the only authority for
+      selecting a vendor request shape.
+    interface: "`VoiceIntent = {text, instruction, cfgScale, seed, reference?:
+      ResolvedReference}` where `ResolvedReference` always contains audio plus
+      exact transcript. `resolveVoiceIntent(intent) -> {template:
+      'tts_instruction' | 'ref_edit_tata', derivedMode, segments, provenance}`.
+      The gateway resolves voiceId or staged reference ids before calling this
+      pure function."
+    behavior: If no reference exists, select the described template. If a complete
+      reference exists, select the referenced template regardless of whether the
+      operator is cloning neutrally or steering delivery; instruction and CFG
+      carry that distinction. Compute token segments and ceiling from the
+      derived template plus CFG branch, then build provenance from the same
+      normalized values. Parse legacy mode only as migration metadata and never
+      use it to choose a template.
+    errors: Reference audio without exact transcript, transcript without audio,
+      unresolved voiceId, or invalid staged window produces a typed local
+      validation failure naming the missing or invalid part. A legacy mode
+      contradicting reference presence is logged as a compatibility mismatch and
+      cannot change the derived shape. No invalid intent reaches the proxy.
+    tests: Table-driven cases cover no reference and every complete reference source
+      at CFG 1.0 and above 1.0. The resulting template, derived display
+      metadata, token ceiling, and provenance agree. Incomplete pairs and
+      contradictory legacy modes cannot select the wrong template or call
+      upstream.
+  - slice: 10
+    status: draft
+    title: Script defaults and cue overrides
+    purpose: Persist common delivery once per script while keeping explicit cue
+      differences and stale-only regeneration correct.
+    interface: "Extend `ScriptRecord` with `defaults: {voiceId, instruction,
+      cfgScale, seedMode, seed}` and each cue with nullable overrides for the
+      same effective fields. `effectiveCueSettings(script, cue)` resolves
+      override-first values. Script-store update methods patch defaults or one
+      cue and return the affected cue ids."
+    behavior: Load older records through a versioned migration that supplies neutral
+      instruction, CFG 1.0, and existing per-cue voice/seed values without
+      rewriting content until save. A default change compares each cue's
+      effective value before and after and marks only changed inheriting cues
+      stale. Explicit overrides remain untouched. Cache identity is computed
+      from effective text, voice/reference, instruction, CFG, and seed.
+    errors: A deleted default voice leaves inheriting cues unrunnable with the voice
+      named while overridden cues remain independent. Invalid numeric settings
+      are refused before persistence. A migration failure preserves the original
+      file and reports which record could not be read. No partial write leaves
+      defaults and cue states out of sync.
+    tests: Existing fixture records migrate without content loss. Each default field
+      and override precedence is table-tested. Changing a default stales only
+      inheriting cues whose effective value changed. Instruction changes alter
+      cache keys. Store reload restores defaults, overrides, and cue states
+      exactly.
+  - slice: 11
+    status: draft
+    title: Unified speech and script API
+    purpose: Expose the voice-intent contract to both one-off synthesis and
+      persistent scripts without requiring a UI mode.
+    interface: POST `/api/speech` accepts text, instruction, cfg_scale, seed, and
+      optional voice_id or reference_id/ref_start/ref_end; legacy mode is
+      optional during migration. GET `/api/scripts` returns document summaries.
+      GET/PATCH `/api/scripts/:id` reads and updates script defaults. PATCH
+      `/api/scripts/:id/cues/:cueId` accepts nullable cue overrides. Both speech
+      and script execution call the injected voice-intent resolver.
+    behavior: Resolve all reference identifiers into complete audio/transcript pairs
+      first. Normalize fields once, resolve intent, apply ceiling validation,
+      then proxy/cache using the normalized result. Script list summaries are
+      sufficient to restore the last-open document without loading every cue.
+      Default updates return refreshed cue states after inherited-value
+      invalidation. A script run resolves each stale cue immediately before
+      dispatch.
+    errors: Unknown voice, reference, script, or cue ids return typed not-found
+      failures. Conflicting reference sources or incomplete staged intervals
+      return typed validation. Legacy mode mismatch cannot choose the template.
+      One failed cue remains contextual to that cue and does not erase other
+      script progress.
+    tests: API tests prove described and referenced requests produce the expected
+      upstream multipart fields with no mode requirement. Script summaries
+      reopen documents, default patches persist, cue overrides win, and
+      stale-only runs call the resolver once per stale cue. Legacy clients
+      remain readable during migration.
+  - slice: 12
+    status: draft
+    title: Wire the voice-intent contract
+    purpose: Compose one resolver and one normalized request path across the gateway
+      without duplicating request-shape logic.
+    interface: The gateway assembly injects reference resolvers, voice lookup,
+      cache, proxy, and logger into a speech-intent service used by route
+      handlers and the cue queue. Existing stores remain the only persistence
+      dependencies.
+    behavior: Create the resolver once during gateway composition. Route one-off and
+      script synthesis through it after their source-specific lookup. Keep HTTP
+      parsing, domain resolution, proxy transport, and persistence separated
+      behind injected interfaces. Emit structured events for intent shape,
+      migration, and validation state without logging text, transcripts, or
+      audio.
+    errors: A dependency that cannot initialize prevents readiness with its remedy.
+      A resolver or migration failure is wrapped with operation and entity
+      context. Existing cached clips and scripts remain readable while canonical
+      writes use the new shape.
+    tests: Composition tests substitute reference, voice, cache, and proxy fakes.
+      Both entry points invoke the same resolver. Structured logs contain
+      identifiers and derived shape but no content. Restart tests confirm
+      migrated records and cache entries remain usable.
+  - slice: 13
+    status: draft
+    title: Voice-intent contract regression suite
+    purpose: Pin the shared contract, migrations, and selective script invalidation
+      before the UI depends on them.
+    interface: Gateway unit and integration suites covering resolver tables, API
+      multipart projection, script-store migration, cue invalidation, cache
+      keys, and proxy call counts.
+    behavior: Exercise the contract at domain, store, route, and composed-service
+      boundaries. Use deterministic fixtures and injected upstream fakes. Assert
+      both successful output and the absence of upstream calls on invalid input.
+    errors: Any mismatch between one-off and script resolution, loss during
+      migration, cache collision after a visible setting change, or invalid
+      request reaching upstream fails the suite with the effective intent
+      identified.
+    tests: Cover described/referenced x CFG branch x reference source, legacy mode
+      mismatches, incomplete pairs, default/override combinations, deleted
+      voices, migration and restart, stale-only reruns, and structured-log
+      redaction.

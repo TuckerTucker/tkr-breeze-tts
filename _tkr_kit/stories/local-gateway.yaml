@@ -290,3 +290,80 @@ stories:
         then: it is evicted, and a voice promoted from it is unaffected because a voice
           owns its own copy
     feature: reference-staging
+  - name: derive-the-vendor-request-from-voice-intent
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Have the visible voice and delivery controls become exactly one valid
+      vendor request without supplying a model mode label.
+    preconditions:
+      - The gateway has received text, one instruction, CFG, seed, and
+        optionally a reference identifier
+    trigger_action: Speak or a script cue requests synthesis
+    steps:
+      - actor: System
+        action: Resolves any library or staged reference into audio plus exact
+          transcript
+        system_response: The complete reference pair is available before validation and
+          request selection
+      - actor: System
+        action: Checks whether a reference pair exists
+        system_response: No reference selects the described template; a reference
+          selects the referenced template
+      - actor: System
+        action: Applies input ceilings, provenance, and cache identity
+        system_response: All are calculated from the derived request shape and the same
+          single instruction
+    acceptance_criteria:
+      - given: text and one instruction without a reference
+        when: the gateway resolves the intent
+        then: it emits the described vendor request
+      - given: a complete staged or library reference
+        when: the gateway resolves the intent
+        then: it emits the referenced vendor request with audio and transcript together
+      - given: a client-supplied legacy mode that disagrees with reference presence
+        when: the request is validated
+        then: the derived voice intent remains authoritative and the mismatch is not
+          allowed to choose the vendor template
+      - given: an incomplete reference pair
+        when: the request is validated
+        then: it is refused locally with the missing half named before Modal is called
+    feature: voice-intent-contract
+  - name: inherit-script-delivery-with-cue-overrides
+    status: draft
+    number: 2
+    actor: Operator
+    intent: Set common script delivery once while preserving explicit differences on
+      individual cues and regenerating only what actually changed.
+    preconditions:
+      - A script record exists
+    trigger_action: The operator sets script defaults, overrides a cue, or runs the script
+    steps:
+      - actor: System
+        action: Loads the script
+        system_response: Document defaults and each cue override are restored from the
+          existing script store
+      - actor: Operator
+        action: Changes a default voice, instruction, CFG, or seed behavior
+        system_response: Only cues inheriting the changed value become stale
+      - actor: Operator
+        action: Overrides one cue and runs
+        system_response: The cue resolves its effective settings through the shared
+          voice-intent contract and cache identity
+    acceptance_criteria:
+      - given: a cue without overrides
+        when: effective settings are resolved
+        then: the cue receives the script defaults
+      - given: a cue with an explicit instruction or voice override
+        when: the script default changes
+        then: the explicit cue value remains and that cue is not marked stale for an
+          inherited value it does not use
+      - given: an effective instruction change
+        when: cache identity is computed
+        then: the new value changes the key and stale audio cannot be replayed as
+          current
+      - given: a script stored before defaults existed
+        when: it loads
+        then: conservative defaults are materialised without losing cue text,
+          assignments, timings, or cached clip ids
+    feature: voice-intent-contract

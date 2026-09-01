@@ -238,31 +238,213 @@ slice_specs:
       ref: 3372dec
   - slice: 8
     status: draft
-    title: Reference trimmer
-    purpose: Let the operator see a recording's waveform and its words together and
-      cut the seconds worth cloning, without typing a transcript.
-    interface: "`<ReferenceTrimmer reference words peaks maxSeconds onChange />`
-      rendered inside VoiceModes when a staged reference is present. Reference
-      state becomes {referenceId, start, end, transcript, transcriptEdited} in
-      place of a File."
-    behavior: Draw peaks to a canvas at the container's width, redrawn on resize
-      rather than scaled, so the waveform stays honest. Two handles, keyboard-
-      and pointer-operable, each settling on the nearest word boundary. The
-      transcript beneath re-slices as the window moves; once hand-edited it
-      stops tracking and says so in place, with an undo rather than a
-      confirmation. Play only the window, from the gateway's window route. Show
-      the selection's duration against the measured reference ceiling and its
-      token count against the mode's ceiling, disabling Generate rather than
-      letting the request fail upstream. Where no reference-ceiling finding
-      exists, offer the conservative maximum and say the wall is unmeasured —
-      the same posture the CFG control already takes.
-    errors: No transcript, because ASR is unconfigured → the trimmer still works and
-      the transcript box is empty and required, with the health remedy shown
-      beside it. A selection past a ceiling → the readout turns and Generate
-      disables, never a toast and never a post-submission error.
-    tests: A drag landing mid-word settles on the boundary. The transcript matches
-      the window's words exactly. A hand edit survives a subsequent drag and the
-      divergence is announced. Generate is disabled, not merely warned, when the
-      selection exceeds either ceiling. With no findings file the maximum is the
-      conservative one and the copy says so. No toast and no confirmation dialog
-      is rendered on any path.
+    title: Single bounded reference selection
+    purpose: Let the operator move one measured, word-safe reference window across a
+      recording and preview exactly what will be sent, without managing two
+      endpoints or creating an invalid duration.
+    interface: "`<ReferenceTrimmer reference maxSeconds maxMeasured cfgScale
+      branchLimits tokenCeiling audioUrl onChange />`; reference state carries
+      `{referenceId, start, end, transcript, transcriptEdited}`, while `start`
+      is the user-controlled position and `end` is derived from the active
+      bounded window."
+    behavior: "Draw peaks at the container width and redraw on resize. Render one
+      pointer- and keyboard-operable selection marker; dragging inside it
+      preserves the pointer offset and moves the complete marker, while clicking
+      outside recentres the same unit. Derive its maximum duration from the
+      active branch measurement: 14.08 seconds at CFG 1.0 (`no_cfg`) and 28.16
+      seconds above 1.0 (`single_cfg`). Clamp before state is emitted, then
+      settle the whole interval on word boundaries and derive the transcript
+      from fully contained words. Once hand-edited, the transcript remains
+      operator-owned until restored. Preview only the selected gateway window.
+      If evidence is unavailable, use the conservative fallback and label it
+      unmeasured."
+    errors: No ASR words means the same single bounded window remains movable on
+      audio time and the transcript is empty and required with the ASR remedy in
+      place. Malformed or missing measurement data selects the conservative
+      fallback and says it is unmeasured. The UI never exposes independent
+      endpoints, an over-duration state, a toast, or a post-submission duration
+      error.
+    tests: Pointer drag and keyboard movement move start and end together. Clicking
+      outside recentres without changing the bounded duration. Word timing
+      settles both edges and the transcript includes only fully contained words.
+      CFG 1.0 resolves 14.08 seconds and CFG above 1.0 resolves 28.16 seconds. A
+      hand edit survives movement and can be restored. Missing evidence uses and
+      labels the conservative fallback. Reduced-motion and screen-reader
+      behavior remain usable.
+  - slice: 9
+    status: draft
+    title: Voice intent and workspace state
+    purpose: Replace mode-driven UI state with task state that can move intact
+      between Voices, Speak, and Scripts.
+    interface: "`VoiceSpec = {kind: 'described', instruction: string} | {kind:
+      'referenced', reference: Reference, instruction: string}`. `WorkspaceState
+      = {active: 'voices' | 'speak' | 'scripts', selectedVoiceId, speakDraft,
+      lastScriptId}` persisted through an injected Storage adapter with a schema
+      version and migration from the current draft/mode shape."
+    behavior: Reference presence determines required controls and request shape. One
+      instruction is stored and sent; CFG remains an independent
+      strength/balance value. Derive legacy Design/Clone/Direction only when
+      displaying provenance. Preserve selected voice, text, instruction, seed,
+      active tool, and open script across navigation and reload. Migrate
+      existing drafts without discarding typed text or a valid saved-voice
+      selection.
+    errors: An unavailable selected voice remains named but blocks generation with a
+      contextual replacement action. Corrupt persisted state falls back
+      field-by-field to safe defaults rather than discarding every valid field.
+      A referenced spec cannot exist without both reference and transcript. No
+      migration performs auto-correction of user text.
+    tests: Exhaustive union tests cover described and referenced blockers, request
+      projection, token ceilings, and CFG branches. Persistence round-trips
+      every workspace field. Legacy drafts migrate without text loss. Corrupt
+      fields fall back independently. No state transition can produce two
+      authoritative instructions.
+  - slice: 10
+    status: draft
+    title: Task navigation and processing feedback
+    purpose: Make the app read as three functional tools while keeping all work and
+      processing state visible.
+    interface: "`<WorkspaceNav active onSelect />` with three tabs/links labelled
+      Voices, Speak, Scripts. The app shell owns `Activity[]` through
+      `trackActivity(label, operation)` and renders `<ActivityIndicator
+      label={activitySummary(...)} />` whenever work remains."
+    behavior: Switch tools in place and preserve their drafts; do not remount away
+      unsaved state. Restore the persisted active tool at startup. Wrap every
+      async path—workspace load, findings, reference stage/transcribe, generate,
+      save/rename/delete, replay, script load/run, and export—with a stable
+      activity id. The newest operation supplies copy and an additional-count
+      suffix preserves overlap. Keep cold-start state distinct from ordinary
+      processing.
+    errors: A rejected operation removes only its own activity id and leaves a
+      contextual error beside the originating control. One completion cannot
+      hide another active operation. Navigation to a tool whose data failed to
+      load still renders the tool with its inline remedy. No toast or blocking
+      confirmation is introduced.
+    tests: Pointer and keyboard navigation update the active workspace and preserve
+      drafts. Reload restores it. Single and overlapping activities render
+      accurate copy; completion and rejection remove only their owner.
+      `aria-live`, reduced-motion CSS, focus visibility, and
+      no-toast/no-confirmation rules are asserted.
+  - slice: 11
+    status: draft
+    title: Voices workspace
+    purpose: Combine voice creation and durable library management into one tool
+      organised around the voice lifecycle.
+    interface: "`<VoiceWorkspace voices clips creationDraft onCreate onSave onRename
+      onDelete onUndo onUseInSpeak onUseInScript />`. Creation method is
+      `'describe' | 'clone-audio' | 'from-clip'`; it is local progressive
+      disclosure, not the speech request mode."
+    behavior: Show the library first with Create voice as a contextual action.
+      Describe asks for a voice description and auditions a generated clip
+      before save. Clone audio accepts upload or recording, stages it once,
+      exposes the single bounded transcript-following selection, and keeps
+      audio/transcript inseparable. From clip selects an existing generated clip
+      and preserves provenance. Suggest a name but allow direct editing. Rename
+      in place; delete immediately with undo. Actions carry a selected voice
+      into Speak or Scripts.
+    errors: An unavailable ASR leaves clone creation usable with a required manual
+      transcript and its remedy. A missing source clip prevents promotion and
+      says it was evicted. Duplicate names are disambiguated by the gateway and
+      reflected inline. Delete failure rolls the optimistic row back. No action
+      loses the current creation draft.
+    tests: Each creation method reveals only its inputs and produces the correct
+      VoiceSpec. Reference selection stays bounded to 14.08/28.16 by active
+      branch. Save, rename, delete/undo, provenance, and cross-tool actions are
+      covered. Keyboard and screen-reader operation match pointer behavior.
+  - slice: 12
+    status: draft
+    title: Speak workspace
+    purpose: Make one-off synthesis a clear voice-plus-delivery task with exactly
+      one instruction.
+    interface: "`<SpeakWorkspace voiceSpec draft cfgControl readiness recentClips
+      onGenerate onReplay onLoadVariation onSaveVoice />`. The typed client
+      sends text, instruction, cfgScale, seed, and optional voice/reference
+      identifiers; it does not require mode."
+    behavior: "Order controls by decision: voice source, line, delivery, advanced
+      CFG/seed, action, result. A described source needs no reference; a saved
+      or staged source supplies the complete reference pair. Render one delivery
+      instruction whose value is sent for every source. Use CFG copy to explain
+      balance without creating a Direction mode. Keep recent clips visible for
+      compare/replay/download/variation and promote; playback never resets the
+      draft."
+    errors: Missing reference transcript, over-ceiling text or reference, gateway
+      unavailable, busy model, cold start, incomplete stream, and playback
+      fallback each appear in context. Disable Generate with the remedy before
+      dispatch wherever the state is knowable. A failed generation keeps all
+      fields and selected voice.
+    tests: Described and referenced sources project to the unified client contract.
+      The visible instruction is exactly the sent instruction; no hidden
+      direction field wins. Generate blockers, readiness/wake,
+      replay-without-reset, variation, promotion, activity, stream failure, and
+      accessibility are covered.
+  - slice: 13
+    status: draft
+    title: Scripts workspace
+    purpose: Turn the existing cue editor into a persistent top-level document tool
+      with common defaults and explicit exceptions.
+    interface: "`<ScriptsWorkspace summaries activeScript defaults voices onOpen
+      onImport onUpdateDefaults onEditCue onRun onExport />`. Client additions:
+      `scripts()`, `script(id)`, `updateScript(id, defaults)`, and cue patches
+      carrying nullable overrides. Local workspace state persists
+      `lastScriptId`."
+    behavior: Load document summaries first and reopen the last script
+      progressively. Show all local scripts without pagination. Import VTT or
+      text into the same list. A defaults bar sets voice, one delivery
+      instruction, CFG, and seed behavior; each cue displays inherited values
+      and lets the operator create or clear overrides. Editing text or an
+      effective setting marks only that cue stale. Run stale/failed cues only,
+      maintain whole-script progress and row failures, show timing drift, and
+      export real-timing VTT/WAV.
+    errors: A missing last script falls back to the document list. A deleted voice
+      marks inheriting or overridden cues that use it as needing attention
+      without blocking unrelated cues. Load or run failure remains beside the
+      document/row and preserves edits. Malformed imports name skipped blocks.
+      No pagination, toast, silent reset, or audio time-stretching.
+    tests: List/open/resume/import flows, last-script persistence, defaults and
+      override precedence, clearing overrides, selective stale marking,
+      progress/failure continuation, drift, and exports are covered. Existing
+      one-edited-cue/one-request behavior remains pinned.
+  - slice: 14
+    status: draft
+    title: Wire voice lifecycle workspaces
+    purpose: Compose the new tools over shared state and injected services without
+      duplicating domain rules.
+    interface: "`AppProps` remains the IoC boundary for GatewayClient, AudioBackend,
+      and Storage. App owns normalized workspace, voice, clip, script,
+      readiness, activity, and failure state; workspaces receive typed props and
+      callbacks. The client targets the completed local-gateway voice-intent
+      contract before legacy mode is removed."
+    behavior: Load health, clips, voices, script summaries, findings, and persisted
+      workspace progressively. Keep data ownership in App or pure stores while
+      each workspace remains a prop-driven view. Wire lifecycle actions through
+      one state transition per action. Preserve global readiness/activity and
+      local contextual errors. Apply responsive layout without full-page
+      transitions for single actions.
+    errors: One failed initial resource does not blank unrelated tools. A workspace
+      action failure rolls back only its optimistic state and retains user
+      input. Gateway compatibility is checked before sending the no-mode
+      payload; final wiring does not ship against an incomplete voice-intent
+      contract.
+    tests: Composition tests inject fake client/audio/storage dependencies and
+      traverse Voices → Speak → Scripts → clip promotion. Partial-load, failure
+      rollback, reload restoration, readiness, and concurrent activity are
+      covered without network or browser globals leaking into pure modules.
+  - slice: 15
+    status: draft
+    title: Voice workspace interaction suite
+    purpose: Verify the redesigned lifecycle as users experience it and prevent old
+      mode-driven behavior from returning.
+    interface: A JSDOM interaction suite plus targeted pure-state tests using
+      injected client, audio, storage, and timer fakes.
+    behavior: "Exercise complete user journeys, not isolated render snapshots:
+      create a described voice, clone from a bounded reference, save/use it in
+      Speak, promote a clip, open a script, apply defaults and one override,
+      rerun stale-only, and reload into the same workspace."
+    errors: The suite fails on any visible ignored instruction, loss across
+      navigation/reload, unsupported 30-second claim, over-limit reference
+      state, hidden concurrent processing, toast/confirmation use, inaccessible
+      navigation, or unnecessary cue regeneration.
+    tests: Cover Create/Keep/Use lifecycle, all three tools, described/referenced
+      request parity, exact 14.08/28.16 limits, one movable selection, activity
+      overlap/failure/reduced motion, contextual errors,
+      keyboard/focus/screen-reader semantics, responsive layout, and existing
+      streaming/cache behavior.

@@ -231,31 +231,98 @@ features:
       territory:
         - ui/src/App.tsx
         - ui/src/components/VoiceModes.tsx
-    user_story: As the operator, I want to see a recording's waveform and its words
-      together and cut the few seconds I want, so that a long source recording
-      becomes a usable reference without my typing a transcript or trimming a
-      file elsewhere first.
+    user_story: As the operator, I want one duration-bounded selection to move
+      across a recording while its words follow, so that I can choose the
+      strongest usable reference without managing two endpoints or creating an
+      over-limit window.
     acceptance_criteria:
-      - The waveform and the transcript are shown together, and the selection
-        moves both — a section is chosen by looking at words, not by scrubbing
-        blind.
-      - Handles snap to word boundaries, so a cut cannot produce a transcript
-        that claims a half-spoken word.
-      - The transcript box stays editable for recognition errors, and an edit is
-        remembered rather than overwritten by the next drag.
-      - The window can be played before it is used, because a reference that
-        sounds wrong is cheaper to catch here than after a generation.
-      - The selection's token count is shown against the ceiling its mode
-        carries, and Generate is disabled rather than allowed to fail upstream.
-      - The longest selectable window comes from the recorded measurement, never
-        from a constant — an unmeasured deployment offers the conservative
-        maximum and says so.
+      - The waveform and transcript are shown together, and one selection marker
+        moves both as a unit.
+      - The selection duration is derived from the active measured ceiling, so
+        independently movable start and end handles cannot construct an
+        over-limit request.
+      - The complete window settles on word-safe boundaries, so its transcript
+        never claims a partially selected word.
+      - The transcript remains editable for recognition errors, and a hand edit
+        is remembered rather than overwritten by later movement.
+      - The selected window can be played before it is used.
+      - "The maximum changes with the active inference branch: 14.08 seconds at
+        CFG 1.0 and 28.16 seconds above 1.0 from the recorded measurement; 30
+        seconds is not presented as a supported maximum."
+      - When measured evidence is unavailable, the control uses the conservative
+        fallback and identifies it as unmeasured.
     scope_in:
-      - The waveform, the range handles, window playback, and the transcript
-        that follows them.
-      - The token and duration readouts that make an unservable selection
-        visible before it is submitted.
+      - The waveform, single movable selection marker, window playback, and
+        transcript that follows the selected words.
+      - Branch-specific duration and token readouts that prevent an unservable
+        request before submission.
     scope_out:
-      - Transcription and trimming themselves (local-gateway reference-staging).
-      - Saving a trimmed reference as a voice, which the existing voice library
-        already does from a clip.
+      - Transcription and trim-at-send (local-gateway reference-staging).
+      - Saving a trimmed reference as a voice, which belongs to the voice
+        lifecycle workspace.
+  - name: voice-workspaces
+    status: draft
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/main.tsx
+        - ui/src/styles.css
+        - ui/package.json
+        - ui/tsconfig.json
+    user_story: As the operator, I want the app organised around creating voices,
+      speaking with them, and producing scripts, so that I never have to
+      translate the model terms Design, Clone, and Direction into the task I am
+      trying to finish.
+    acceptance_criteria:
+      - The primary navigation is Voices, Speak, and Scripts; Design, Clone, and
+        Direction are no longer top-level modes.
+      - Voices owns creation and library management, with creation methods
+        Describe, Clone audio, and Create from a generated clip.
+      - Speak owns one-off generation with one voice source, one delivery
+        instruction, text, CFG, seed, playback, and recent clips.
+      - Scripts is a top-level persistent workspace that lists, opens, imports,
+        and resumes documents instead of exposing only the most recently
+        imported script.
+      - "The voice lifecycle is visible through contextual actions: Save to
+        Library, Use in Speak, Use in Script, and Create voice from clip."
+      - Clone remains a voice-creation method, not a lifecycle stage; Use
+        includes both one-off Speak and Scripts.
+      - Described and referenced voices are the only request shapes. The request
+        shape is derived from whether a reference exists, while direction
+        remains one instruction plus CFG.
+      - Only one instruction field is authoritative in each generation context;
+        no visible field can be ignored because another hidden or mode-specific
+        field wins.
+      - Script-level voice and delivery defaults can be overridden per cue, and
+        editing one cue still reruns only that cue.
+      - All asynchronous processing has contextual, accessible in-place activity
+        feedback, including overlapping background work; there are no toasts or
+        confirmation dialogs.
+      - Drafts, selected voice, active workspace, and open script survive
+        workspace switches and reloads.
+    scope_in:
+      - Task-based navigation and persistent workspace state for Voices, Speak,
+        and Scripts.
+      - Voice creation and management flows, one-off synthesis, clip promotion,
+        and script document reopening.
+      - A shared voice selector, one delivery-instruction model, CFG/seed
+        controls, and contextual activity/error states.
+      - Script defaults with per-cue overrides, stale-only execution, progress,
+        drift, and export in a dedicated workspace.
+    scope_out:
+      - Changing the model or its two vendor request templates.
+      - Remote accounts, sharing, collaboration, or multi-user libraries.
+      - Replacing the gateway voice, clip, reference, or script stores; this
+        feature consumes their existing APIs and adds only missing client
+        access.
+      - Treating Clone or Direction as primary navigation destinations.
+    continues:
+      - demo-ui/feature/synthesis-console
+      - demo-ui/feature/voice-modes
+      - demo-ui/feature/clip-history
+      - demo-ui/feature/voice-picker
+      - demo-ui/feature/script-editor
+    dependencies:
+      local-gateway/feature/voice-intent-contract: Speak and Scripts consume the
+        unified request shape, persisted script defaults, and cue overrides
+        before final UI wiring.

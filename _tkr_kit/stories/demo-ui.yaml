@@ -620,41 +620,249 @@ stories:
     status: draft
     number: 1
     actor: Operator
-    intent: Find and cut the few good seconds inside a long recording, seeing the
-      words while doing it.
+    intent: Move one safe, duration-bounded window across a long recording and hear
+      the exact complete words it will use.
     preconditions:
       - A reference has been staged
-      - The mode is Clone or Direction
-    trigger_action: The operator drags the range handles across the waveform
+      - A referenced voice is being created or used
+    trigger_action: The operator moves the selection marker across the waveform
     steps:
       - actor: Operator
-        action: Drags a handle
-        system_response: It settles on the nearest word boundary and the transcript
-          beneath narrows to the words inside the window
+        action: Drags the selected window or changes its position with the keyboard
+        system_response: The complete window moves as one unit, settles on word-safe
+          boundaries, and the transcript follows the fully contained words
+      - actor: System
+        action: Applies the measured limit for the active CFG branch
+        system_response: The window is 14.08 seconds at CFG 1.0 or 28.16 seconds above
+          1.0 and cannot be stretched beyond that ceiling
       - actor: Operator
-        action: Fixes a misrecognised name in the transcript, then adjusts the window
-          again
-        system_response: The correction survives; the edited transcript is not
-          overwritten by the new slice
-      - actor: Operator
-        action: Plays the selection
-        system_response: Only the chosen window plays, so a bad reference is caught
-          before a generation is spent on it
+        action: Fixes a recognition error, moves the window, and previews it
+        system_response: The correction remains operator-owned and only the selected
+          audio interval plays
     acceptance_criteria:
-      - given: a drag that lands mid-word
-        when: the handle settles
-        then: it snaps to the word boundary, because a window that cuts a word produces
-          a transcript that lies about its audio
-      - given: a selection whose transcript exceeds the mode's token ceiling
-        when: it is shown
-        then: the count is displayed against that ceiling and Generate is disabled,
-          rather than the request failing upstream
-      - given: no recorded reference-duration measurement
-        when: the trimmer sets its maximum window
-        then: it offers the conservative maximum and says the wall has not been
-          measured, rather than quoting a number nobody observed
+      - given: a recording longer than the active reference ceiling
+        when: the selection is moved
+        then: start and end move together as one bounded window, so no over-limit state
+          can be created
+      - given: CFG 1.0
+        when: the measured reference ceiling is resolved
+        then: the maximum is 14.08 seconds
+      - given: CFG above 1.0
+        when: the measured reference ceiling is resolved
+        then: the maximum is 28.16 seconds; the UI does not round this to an unsupported
+          30 seconds
+      - given: a position that would cut through speech
+        when: the selection settles
+        then: the whole window settles on complete-word boundaries and the transcript
+          names only fully contained words
       - given: a hand-edited transcript
-        when: the window changes
-        then: the edit is kept and the operator is shown that it no longer tracks the
-          selection
+        when: the window moves
+        then: the edit is preserved and its divergence from automatic tracking is shown
+          in place
     feature: reference-trimmer
+  - name: move-through-the-voice-lifecycle
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Move from making a voice, to keeping it, to using it for one line or a
+      script without translating model terminology or rebuilding context.
+    preconditions:
+      - The app has loaded its local workspace
+    trigger_action: The operator moves between Voices, Speak, and Scripts
+    steps:
+      - actor: Operator
+        action: Creates or selects a voice in Voices
+        system_response: The voice can be saved to the library and used directly in
+          Speak or Scripts
+      - actor: Operator
+        action: Switches to Speak or Scripts
+        system_response: The selected voice and unfinished work remain available in the
+          destination workspace
+      - actor: Operator
+        action: Promotes a successful generated clip
+        system_response: The clip becomes a named voice with provenance and can re-enter
+          the same lifecycle
+    acceptance_criteria:
+      - given: the primary navigation
+        when: the operator reads it
+        then: it names Voices, Speak, and Scripts; Clone is a creation method and
+          Direction is a delivery control, not a destination
+      - given: unfinished text, a selected voice, or an open script
+        when: the operator changes workspace and returns
+        then: the state remains where they left it
+      - given: a saved voice or a generated clip
+        when: the operator uses its contextual action
+        then: Use in Speak, Use in Script, or Create voice from clip moves the asset
+          forward without manual reconstruction
+      - given: a reload
+        when: the app restores
+        then: the active workspace and persisted drafts return without asking the
+          operator to choose again
+    feature: voice-workspaces
+  - name: create-and-manage-a-voice
+    status: draft
+    number: 2
+    actor: Operator
+    intent: Create a reusable voice by describing it, cloning audio, or promoting a
+      clip, then manage it as one durable library item.
+    preconditions:
+      - The gateway voice library is reachable
+    trigger_action: The operator opens Voices
+    steps:
+      - actor: Operator
+        action: Chooses Describe, Clone audio, or Create from clip
+        system_response: Only the inputs needed by that creation method appear
+      - actor: Operator
+        action: Uses Clone audio with a long upload or recording
+        system_response: The staged waveform exposes one measured, movable reference
+          window with its exact transcript
+      - actor: Operator
+        action: Auditions and saves the result
+        system_response: A suggested name and provenance are stored, and the voice
+          appears immediately in the library
+      - actor: Operator
+        action: Renames or deletes a voice
+        system_response: The list updates in place; deletion offers undo and never a
+          confirmation dialog
+    acceptance_criteria:
+      - given: the Voices workspace
+        when: the operator starts creating
+        then: Describe, Clone audio, and Create from clip are creation methods in one
+          tool rather than app-wide modes
+      - given: a described voice
+        when: it is generated
+        then: the request contains an instruction and no reference
+      - given: a cloned voice
+        when: it is generated
+        then: reference audio and its exact transcript are supplied together
+      - given: a saved voice
+        when: it is viewed later
+        then: its name, origin, default delivery, and actions to use it remain legible
+      - given: a voice deletion
+        when: the operator changes their mind
+        then: undo restores it without a confirmation dialog or toast
+    feature: voice-workspaces
+  - name: speak-with-one-voice-and-one-direction
+    status: draft
+    number: 3
+    actor: Operator
+    intent: Generate one line with a chosen voice and one clear delivery
+      instruction, without wondering which of two instruction fields will be
+      sent.
+    preconditions:
+      - The Speak workspace is open
+    trigger_action: The operator selects a voice source and enters text
+    steps:
+      - actor: Operator
+        action: Selects a saved voice, a temporary reference, or a described voice
+        system_response: The required reference controls appear only when the selected
+          source needs them
+      - actor: Operator
+        action: Writes the line and one delivery instruction, then adjusts CFG or seed
+          if needed
+        system_response: The visible instruction is the instruction that will be sent
+      - actor: Operator
+        action: Generates, compares a recent result, and keeps a successful one
+        system_response: Playback, provenance, download, variation, and promotion
+          actions remain beside the result
+    acceptance_criteria:
+      - given: a voice without reference audio
+        when: Speak builds the request
+        then: it derives the described request shape and sends one instruction
+      - given: a saved or staged reference
+        when: Speak builds the request
+        then: it derives the referenced request shape and sends the same single
+          instruction plus the reference pair
+      - given: any Speak configuration
+        when: the operator inspects the form
+        then: there is exactly one authoritative delivery instruction and no field whose
+          value can be silently ignored
+      - given: a recent clip
+        when: the operator replays or compares it
+        then: the current Speak draft remains unchanged
+      - given: an input that cannot be served
+        when: the form changes
+        then: Generate disables with a contextual remedy before any request is
+          dispatched
+    feature: voice-workspaces
+  - name: resume-and-direct-a-script
+    status: draft
+    number: 4
+    actor: Operator
+    intent: Return to any stored script, set its common voice and delivery once, and
+      override only the cues that differ.
+    preconditions:
+      - At least one script can be imported or already exists
+    trigger_action: The operator opens Scripts
+    steps:
+      - actor: System
+        action: Loads the script workspace
+        system_response: Stored documents are listed without pagination and the last
+          open document resumes
+      - actor: Operator
+        action: Imports, opens, or creates a script and sets its default voice,
+          instruction, CFG, and seed behavior
+        system_response: Every cue inherits the defaults unless it carries an explicit override
+      - actor: Operator
+        action: Changes one cue and runs the script
+        system_response: Only that cue becomes stale and only stale or failed cues reach the GPU
+      - actor: Operator
+        action: Reviews progress, drift, failures, and exports
+        system_response: Status and remedies remain in the script context while cached
+          cues are preserved
+    acceptance_criteria:
+      - given: stored scripts
+        when: Scripts opens
+        then: the operator can list, open, and resume them instead of seeing only the
+          latest import
+      - given: a script-level default voice and delivery
+        when: a cue has no override
+        then: the cue inherits the defaults
+      - given: a cue override
+        when: the script default later changes
+        then: the explicit cue value remains and the UI shows that it differs
+      - given: one edited cue
+        when: the script reruns
+        then: only that cue is regenerated and every unchanged cue remains cached
+      - given: a run in progress or a failed cue
+        when: the operator reviews the workspace
+        then: progress, failures, drift, and remedies are contextual and never
+          toast-only
+    feature: voice-workspaces
+  - name: see-processing-where-it-happens
+    status: draft
+    number: 5
+    actor: Operator
+    intent: Always know what the app is processing and whether other work is still
+      running, without losing the context of the action.
+    preconditions:
+      - An asynchronous operation starts
+    trigger_action: The app begins loading, staging, transcribing, generating,
+      saving, replaying, running a script, or exporting
+    steps:
+      - actor: System
+        action: Starts an asynchronous operation
+        system_response: A contextual in-place activity indicator names the work
+      - actor: System
+        action: Starts overlapping work
+        system_response: The latest task is named and the remaining concurrent task
+          count stays visible
+      - actor: System
+        action: Completes one operation
+        system_response: Only that operation leaves the activity state; the indicator
+          remains until all work is complete
+    acceptance_criteria:
+      - given: one operation in flight
+        when: the operator looks at the app
+        then: an accessible status names that operation
+      - given: overlapping operations
+        when: one finishes
+        then: the indicator continues to represent the work still running
+      - given: reduced motion is requested
+        when: processing occurs
+        then: text and a static filled rail communicate activity without animation
+      - given: an operation fails
+        when: it settles
+        then: the indicator clears that operation and the actionable error remains
+          beside the affected control
+    feature: voice-workspaces

@@ -288,3 +288,130 @@ slices:
     title: "Staged reference: peaks, timed transcript, trimmed window"
     layer: api
     status: draft
+  - number: 9
+    feature: voice-intent-contract
+    depends_on:
+      - 5
+      - 7
+      - 8
+    story_ids:
+      - derive-the-vendor-request-from-voice-intent
+    paths:
+      - gateway/src/reference-*.ts
+      - gateway/test/reference*.test.ts
+    delivers:
+      - A pure `VoiceIntent` model with one instruction and an optional complete
+        reference, replacing mode as the request-shape authority.
+      - One resolver that derives described versus referenced vendor templates
+        from reference presence after library or staged references are complete.
+      - Derived presentation/provenance metadata for legacy Design, Clone, and
+        Direction labels without accepting those labels as authoritative input.
+      - Mode-aware text ceilings computed from the derived template and CFG
+        branch, so removing mode from the client cannot weaken preflight
+        validation.
+      - Typed failures for incomplete reference pairs and contradictory legacy
+        inputs before any upstream request.
+    title: Derive synthesis shape from voice intent
+    layer: domain
+    status: draft
+  - number: 10
+    feature: voice-intent-contract
+    depends_on:
+      - 6
+      - 9
+    story_ids:
+      - inherit-script-delivery-with-cue-overrides
+    paths:
+      - gateway/src/script.ts
+      - gateway/test/script.test.ts
+    delivers:
+      - Persisted script defaults for voice, delivery instruction, CFG, and seed
+        behavior in the existing script record.
+      - Optional per-cue overrides whose effective values are resolved without
+        copying defaults into every cue.
+      - A migration for existing script files that materialises conservative
+        defaults while preserving cue content, timings, assignments, states, and
+        clip ids.
+      - "Inherited-value invalidation: changing a default marks only cues that
+        actually inherit that field stale."
+      - Cache identity covering every effective setting, including delivery
+        instruction, so a visible change cannot reuse stale audio.
+    title: Persist script defaults and cue overrides
+    layer: data
+    status: draft
+  - number: 11
+    feature: voice-intent-contract
+    depends_on:
+      - 9
+      - 10
+    story_ids:
+      - derive-the-vendor-request-from-voice-intent
+      - inherit-script-delivery-with-cue-overrides
+    paths:
+      - gateway/src/index.ts
+      - gateway/src/cue-queue.ts
+      - gateway/test/proxy*.test.ts
+    delivers:
+      - Speech intake accepting text, one instruction, CFG, seed, and optional
+        reference identifiers, with vendor shape derived after reference
+        resolution.
+      - Script read and update routes exposing document defaults and cue
+        overrides, while the existing list route returns enough summary data to
+        reopen documents.
+      - One synthesis adapter used by both POST /api/speech and script cue
+        execution.
+      - Provenance and cache records built from effective voice intent rather
+        than a client mode label.
+      - Backward-compatible parsing of legacy mode while refusing to let it
+        contradict the derived request.
+    title: Expose the unified voice-intent API
+    layer: api
+    status: draft
+  - number: 12
+    feature: voice-intent-contract
+    depends_on:
+      - 11
+    story_ids:
+      - derive-the-vendor-request-from-voice-intent
+      - inherit-script-delivery-with-cue-overrides
+    paths:
+      - gateway/src/index.ts
+      - gateway/src/config.ts
+      - gateway/package.json
+      - gateway/tsconfig.json
+    delivers:
+      - The pure resolver injected into one-off and queued synthesis paths
+        rather than duplicated conditionals.
+      - Existing voice, reference, script, cache, and proxy services composed
+        through the new contract with no new store.
+      - Legacy records and requests kept readable during the transition, with
+        one canonical write shape going forward.
+      - Structured logging of derived request shape, migration, and validation
+        failures without reference audio or transcript content.
+    title: Wire the voice-intent contract
+    layer: integration
+    status: draft
+  - number: 13
+    feature: voice-intent-contract
+    depends_on:
+      - 12
+    story_ids:
+      - derive-the-vendor-request-from-voice-intent
+      - inherit-script-delivery-with-cue-overrides
+    paths:
+      - gateway/test/reference*.test.ts
+      - gateway/test/proxy*.test.ts
+      - gateway/test/script.test.ts
+    delivers:
+      - Table-driven coverage of described and referenced intent across CFG
+        branches and reference sources.
+      - Integration coverage proving Speak and script cues resolve identical
+        effective inputs through the same adapter.
+      - Migration coverage for existing scripts and legacy request payloads.
+      - Regression coverage proving default changes invalidate inheriting cues
+        only and instruction changes alter cache identity.
+      - Failure coverage proving no contradictory or incomplete request reaches
+        Modal.
+    title: Test the voice-intent contract
+    layer: integration
+    status: draft

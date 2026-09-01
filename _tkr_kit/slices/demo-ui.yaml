@@ -272,24 +272,230 @@ slices:
       - ui/src/components/VoiceModes.tsx
       - ui/test/reference-trimmer.test.tsx
     delivers:
-      - The waveform and the words shown together, with one selection moving
-        both. Choosing eight seconds out of forty minutes by scrubbing a
-        waveform blind is the version of this feature that does not work.
-      - Handles that snap to word boundaries, because a window cutting mid-word
-        yields a transcript that claims audio it does not have — and an inexact
-        transcript is precisely what the cloning path cannot take.
-      - A transcript that stays editable for recognition errors, with an edit
-        remembered rather than silently overwritten by the next drag, and the
-        divergence shown in place instead of hidden.
-      - Window playback before use, so a reference that sounds wrong costs a
-        listen rather than a generation and a cold start.
-      - The selection's token count shown against the ceiling its mode carries,
-        with Generate disabled rather than permitted to fail upstream — making
-        the wrong thing hard instead of reporting it afterwards.
-      - A maximum window read from bench/findings rather than carried as a
-        constant. Where nothing has been measured the control offers the
-        conservative maximum and says the wall is unmeasured, exactly as the CFG
-        control already does.
-    title: Waveform trim with a transcript that follows the selection
+      - A waveform and timed words controlled by one selection marker whose
+        start and end move together as a unit.
+      - A window duration derived from the active measured inference branch,
+        making an over-limit drag impossible instead of reporting an error
+        afterwards.
+      - "The recorded ceilings surfaced exactly: 14.08 seconds for the no-CFG
+        branch at CFG 1.0 and 28.16 seconds for the single-CFG branch above 1.0;
+        30 seconds is not claimed."
+      - Whole-window settling on word-safe boundaries, so selected audio and
+        automatic transcript remain an exact pair.
+      - A transcript that stays editable for recognition errors, with operator
+        edits preserved and divergence shown in place.
+      - Window playback before use and an unmeasured fallback that identifies
+        itself as conservative.
+    title: Single bounded reference selection with a following transcript
     layer: ui
+    status: draft
+  - number: 9
+    feature: voice-workspaces
+    depends_on:
+      - 8
+    story_ids:
+      - move-through-the-voice-lifecycle
+      - speak-with-one-voice-and-one-direction
+      - resume-and-direct-a-script
+    paths:
+      - ui/src/state/mode.ts
+      - ui/src/state/*draft*.ts
+      - ui/src/state/script.ts
+      - ui/test/*state*.test.ts*
+    delivers:
+      - "A UI `VoiceSpec` union with exactly two shapes: described instruction,
+        or complete reference plus instruction."
+      - Mode removed as authoritative state; Design, Clone, and Direction
+        survive only as derived provenance or creation-language where useful.
+      - One authoritative delivery instruction across voice creation, Speak, and
+        script effective settings.
+      - Persisted workspace state for active tool, selected voice, Speak draft,
+        and last-open script with versioned migration from the current draft.
+      - Pure selectors that derive required controls, blockers, token ceilings,
+        and request payloads from voice/reference presence.
+    title: Model voice intent and persistent workspace state
+    layer: domain
+    status: draft
+  - number: 10
+    feature: voice-workspaces
+    depends_on:
+      - 9
+    story_ids:
+      - move-through-the-voice-lifecycle
+      - see-processing-where-it-happens
+    paths:
+      - ui/src/App.tsx
+      - ui/src/components/ActivityIndicator.tsx
+      - ui/src/state/activity.ts
+      - ui/src/styles.css
+      - ui/test/app.test.tsx
+      - ui/test/activity.test.ts
+    delivers:
+      - Primary navigation labelled Voices, Speak, and Scripts, with keyboard,
+        pointer, touch, and screen-reader parity.
+      - Tool switching that preserves mounted or persisted work rather than
+        resetting drafts, selection, or the open script.
+      - The existing concurrent activity tracker retained as an app-wide status
+        source and extended over every asynchronous operation.
+      - Contextual activity copy for workspace load, reference
+        staging/transcription, generation, saving, replay, script run, and
+        export.
+      - Reduced-motion behavior, contextual errors, and no toast or
+        confirmation-dialog paths.
+    title: Task navigation and application-wide activity
+    layer: ui
+    status: draft
+  - number: 11
+    feature: voice-workspaces
+    depends_on:
+      - 8
+      - 9
+    story_ids:
+      - create-and-manage-a-voice
+      - move-through-the-voice-lifecycle
+      - see-processing-where-it-happens
+    paths:
+      - ui/src/components/Voice*.tsx
+      - ui/src/components/ReferenceTrimmer.tsx
+      - ui/test/voice*.test.tsx
+      - ui/test/reference-trimmer.test.tsx
+    delivers:
+      - One Voices tool combining creation and durable management without
+        reproducing app-wide Design, Clone, and Direction tabs.
+      - Creation methods Describe, Clone audio, and Create from clip, each
+        revealing only its required inputs.
+      - Clone audio using the staged single-window trimmer and exact transcript
+        pair already planned in slice 8.
+      - Audition-before-save, suggested naming, origin/default-delivery
+        provenance, rename, delete with undo, and immediate library refresh.
+      - Contextual Use in Speak and Use in Script actions that carry the
+        selected voice without rebuilding it.
+    title: "Voices workspace: create, keep, and reuse"
+    layer: ui
+    status: draft
+  - number: 12
+    feature: voice-workspaces
+    depends_on:
+      - 9
+    story_ids:
+      - speak-with-one-voice-and-one-direction
+      - move-through-the-voice-lifecycle
+      - see-processing-where-it-happens
+    paths:
+      - ui/src/components/*Console*.tsx
+      - ui/src/components/CfgControl.tsx
+      - ui/src/components/History.tsx
+      - ui/test/*console*.test.tsx
+      - ui/test/history.test.tsx
+    delivers:
+      - "A one-off Speak tool ordered by task: voice source, line, one delivery
+        instruction, CFG/voice balance, seed, Generate, playback, and recent
+        outputs."
+      - Voice-source selection that reveals reference intake only when needed
+        and derives described or referenced intent automatically.
+      - "The current Direction defect removed: no second visible instruction can
+        override the console instruction without explanation."
+      - Recent clips kept beside Speak for compare/replay/download/variation
+        while durable voice management remains in Voices.
+      - Generate blockers, readiness, wake state, activity, and failures shown
+        beside the action they govern.
+      - Client integration targets local-gateway/feature/voice-intent-contract
+        and does not restore a required mode field.
+    title: Speak workspace with one delivery instruction
+    layer: ui
+    status: draft
+  - number: 13
+    feature: voice-workspaces
+    depends_on:
+      - 9
+    story_ids:
+      - resume-and-direct-a-script
+      - move-through-the-voice-lifecycle
+      - see-processing-where-it-happens
+    paths:
+      - ui/src/components/Script*.tsx
+      - ui/src/components/CueRow.tsx
+      - ui/src/state/script.ts
+      - ui/src/api/client.ts
+      - ui/test/script*.test.tsx
+    delivers:
+      - Scripts as its own top-level workspace with a document list,
+        import/create entry, open/resume behavior, and no pagination for the
+        local dataset.
+      - A shared voice selector and script-level defaults for voice, delivery
+        instruction, CFG, and seed behavior.
+      - Visible per-cue overrides with inherited values distinguished from
+        explicit ones and every editable CFG/instruction field exposed.
+      - Stale-only runs, whole-script progress, contextual failures, timing
+        drift, and VTT/WAV export preserved in the workspace.
+      - Last-open script persistence and progressive loading so document
+        navigation does not discard cue edits.
+      - Client integration targets local-gateway/feature/voice-intent-contract
+        for persisted defaults and overrides.
+    title: Scripts workspace with defaults and cue overrides
+    layer: ui
+    status: draft
+  - number: 14
+    feature: voice-workspaces
+    depends_on:
+      - 10
+      - 11
+      - 12
+      - 13
+    story_ids:
+      - move-through-the-voice-lifecycle
+      - create-and-manage-a-voice
+      - speak-with-one-voice-and-one-direction
+      - resume-and-direct-a-script
+      - see-processing-where-it-happens
+    paths:
+      - ui/src/App.tsx
+      - ui/src/main.tsx
+      - ui/src/api/client.ts
+      - ui/src/styles.css
+      - ui/package.json
+      - ui/tsconfig.json
+    delivers:
+      - Voices, Speak, and Scripts composed through injected client, audio, and
+        storage dependencies in the application shell.
+      - Contextual lifecycle actions wired across tools without duplicating
+        voice, clip, or script state.
+      - The gateway voice-intent contract projected through one typed client
+        with no required mode field.
+      - Final wiring is gated by local-gateway/feature/voice-intent-contract
+        even though the live planning writer cannot encode a qualified slice id.
+      - Global readiness, cold-start truth, and concurrent activity retained
+        while tool-specific status stays local.
+      - Responsive, accessible layout and state restoration across reload.
+    title: Wire voice lifecycle workspaces
+    layer: integration
+    status: draft
+  - number: 15
+    feature: voice-workspaces
+    depends_on:
+      - 14
+    story_ids:
+      - move-through-the-voice-lifecycle
+      - create-and-manage-a-voice
+      - speak-with-one-voice-and-one-direction
+      - resume-and-direct-a-script
+      - see-processing-where-it-happens
+    paths:
+      - ui/test/*app*.test.tsx
+      - ui/test/voice-library.test.tsx
+      - ui/test/console.test.tsx
+      - ui/test/script-editor.test.tsx
+    delivers:
+      - Interaction coverage for the complete Create/Keep/Use lifecycle across
+        Voices, Speak, Scripts, and clip promotion.
+      - Regression coverage proving one visible instruction reaches the request
+        for both described and referenced voices.
+      - Persistence coverage for workspace switches, reload, selected voice,
+        drafts, and last-open script.
+      - Concurrency and failure coverage for app-wide activity plus contextual
+        errors.
+      - Keyboard, screen-reader, reduced-motion, narrow-layout, and
+        no-toast/no-confirmation assertions.
+    title: Test voice lifecycle workspaces
+    layer: integration
     status: draft
