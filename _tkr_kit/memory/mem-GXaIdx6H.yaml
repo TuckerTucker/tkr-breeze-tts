@@ -1,0 +1,12 @@
+canonicalId: mem-GXaIdx6H
+sourceId: find-nHeIG85T
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: c263528e-cbc7-4885-ab8b-69fa3e042e05
+  sourceHash: 4e35193815d39c13bd0105e51a8d3e40f74d6398c000c3a2f9ccf62b0e912759
+  snapshotAt: 2026-09-01T05:33:36.456Z
+rationale: null
+who: tucker
+when: 2026-09-01T05:33:36.456Z
