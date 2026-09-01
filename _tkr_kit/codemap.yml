@@ -1,7 +1,7 @@
 meta:
   fmt: 14
   name: breeze-tts-demo
-  ts: "2026-09-01T06:22:00Z"
+  ts: "2026-09-01T20:32:07Z"
   what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
     Modal; a local gateway holds the credential and absorbs audio chores; a browser
     UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
@@ -13,7 +13,7 @@ meta:
     start: "npm start"
     test: "npm test && npm run test:python"
     deploy: "modal run infra/weights.py && modal deploy infra/service.py"
-    measure: "python -m bench.harness && python -m bench.cfg_probe"
+    measure: "python -m bench.harness && python -m bench.cfg_probe && python -m bench.reference_probe"
 
 capabilities:
   - id: modal-inference
@@ -27,24 +27,24 @@ capabilities:
     state: done
     dir: bench/
     evidence: "commit 183a1a0; findings recorded from real hardware"
-    provides: "first-audio + RTF harness; cfg fast-path fall-off probe"
-    verified: "42 tests; both probes run against the deployed endpoint"
+    provides: "first-audio + RTF harness; cfg fast-path fall-off and reference-ceiling probes"
+    verified: "66 tests; all three probes run against the deployed endpoint"
   - id: local-gateway
     state: done
     dir: gateway/
-    evidence: "commit 69103a2"
-    provides: "credential proxy, dual transport, reference intake, clip cache, voice library, script runner"
-    verified: "106 tests + end-to-end against a stub upstream"
+    evidence: "commit a01edea"
+    provides: "credential proxy, dual transport, staged reference + ASR proxy, trim-at-send, clip cache, voice library, script runner"
+    verified: "156 tests + real ffmpeg intake and injected ASR/upstream boundaries"
   - id: demo-ui
     state: done
     dir: ui/
-    evidence: "commit 3372dec"
-    provides: "console, three voice modes, streaming playback, wake state, history, voice library, script editor"
-    verified: "132 tests + real AudioWorklet driven in Chrome"
+    evidence: "commit f4a188c"
+    provides: "console, three voice modes, bounded reference selection, concurrent activity feedback, streaming playback, wake state, history, voice library, script editor"
+    verified: "165 tests + real AudioWorklet driven in Chrome"
 
 state:
   built:
-    - "All four capabilities' source and tests: 323 tests, all passing offline."
+    - "All four capabilities' source and tests: 455 tests, all passing offline."
     - "DEPLOYED. Image built, 7.68GB checkpoint on the Volume, service live at
        tuckertucker--breeze-tts-breezeservice-serve.modal.run, proxy auth enforced."
     - "Measured on an H100: warm TTFA 161ms, RTF 0.39, graph-capture warmup 162.6s
@@ -55,6 +55,8 @@ state:
     - "Gateway verified end to end: streaming first byte 17ms vs 176ms total;
        replay served from cache with the upstream killed; 409 typed as busy."
     - "UI verified in Chrome: real AudioWorklet, 19ms first audio, no fallback."
+    - "Reference audio is staged and transcribed once, then one bounded selection
+       moves as a unit and is trimmed only when synthesis is sent."
   deferred:
     - "Cold TTFA is unmeasured client-side; the figure is known from container
        logs only, so the UI's wake state says 'not yet measured'."
@@ -68,6 +70,8 @@ state:
        brief is wrong."
     - "The token ceiling is PER BRANCH MODE and exceeding it is a hard failure,
        not a slowdown: 256 at cfg 1.0, 512 otherwise, then RuntimeError."
+    - "The measured reference ceiling is 14.08 seconds at cfg 1.0 and 28.16
+       seconds above cfg 1.0. There is no supported 30-second branch."
     - "The vendor's fast.json does NOT warm ref_edit_tata — its warmup_request is
        hardcoded to tts_instruction. infra/extend_warmup_profile.py patches in the
        batch-4 text-encoder graphs at build time; without that step Clone and
@@ -99,6 +103,9 @@ invariants:
   - "No time-stretch, ever. Script drift is measured and reported, never corrected."
   - "No language field is sent. The vendor API has none; the selector drives the
      vocal-event palette only."
+  - "Staged references are expiring working material, separate from generated clips
+     and durable voices. A reference selection is trimmed at send time and must fit
+     the measured ceiling for its CFG branch."
   - "UX: no toasts, no confirmation dialogs, undo over 'are you sure?', status in
      place beside the control it concerns."
 
@@ -111,8 +118,8 @@ deps:
 struct:
   infra:     { n: 7,  lines: 981,  tests: 5, role: "Modal deployment surface" }
   bench:     { n: 3,  lines: 1331, tests: 4, role: "measurement clients + findings/" }
-  gateway/src: { n: 12, lines: 3933, tests: 7, role: "local Node service" }
-  ui/src:    { n: 21, lines: 3402, tests: 9, role: "React browser surface" }
+  gateway/src: { n: 15, lines: 5542, tests: 10, role: "local Node service" }
+  ui/src:    { n: 25, lines: 4864, tests: 12, role: "React browser surface" }
   ui/public: { n: 1, role: "pcm-processor.js — served untransformed, deliberately not bundled" }
 
 nav:
@@ -123,13 +130,17 @@ nav:
     gateway: gateway/src/index.ts
     ui: ui/src/main.tsx
   data_flow: "browser → gateway/src/index.ts → proxy.ts → Modal → vendor FastAPI →
-    PCM stream → tee to cache.ts + pipe to ui/src/audio/player.ts → AudioWorklet"
-  pure_logic: [gateway/src/cache-index.ts, gateway/src/voices-index.ts, gateway/src/vtt.ts, ui/src/state/]
+    PCM stream → tee to cache.ts + pipe to ui/src/audio/player.ts → AudioWorklet;
+    reference upload → ASR proxy + staged WAV/transcript → bounded trim at speech send"
+  pure_logic: [gateway/src/cache-index.ts, gateway/src/voices-index.ts,
+               gateway/src/reference-slice.ts, gateway/src/vtt.ts, ui/src/state/]
 
 api:
   gateway:
     health:  ["GET /api/health", "POST /api/wake", "GET /api/findings"]
     speech:  ["POST /api/speech"]
+    references: ["POST /api/reference", "GET /api/reference/:id/audio",
+                 "DELETE /api/reference/:id"]
     clips:   ["GET /api/clips", "GET /api/clips/:id", "DELETE /api/clips/:id"]
     voices:  ["GET /api/voices", "POST /api/voices", "PATCH /api/voices/:id",
               "DELETE /api/voices/:id", "GET /api/voices/:id/audio"]
@@ -143,10 +154,10 @@ api:
 config:
   env_file: ".env at the repo root — one copy, because the gateway and bench
     authenticate to the same endpoint (.env.example is the template)"
-  gateway: [MODAL_ENDPOINT_URL, MODAL_KEY, MODAL_SECRET, GATEWAY_PORT, GATEWAY_TRANSPORT,
+  gateway: [MODAL_ENDPOINT_URL, MODAL_ASR_URL, MODAL_KEY, MODAL_SECRET, GATEWAY_PORT, GATEWAY_TRANSPORT,
             GATEWAY_SCALEDOWN_WINDOW_S, GATEWAY_UPSTREAM_TIMEOUT_MS,
             CLIP_CACHE_DIR, CLIP_CACHE_MAX_BYTES, VOICE_STORE_DIR, SCRIPT_STORE_DIR,
-            BENCH_FINDINGS_DIR, UI_DIST_DIR]
+            REFERENCE_STORE_DIR, REFERENCE_MAX_AGE_MS, BENCH_FINDINGS_DIR, UI_DIST_DIR]
   modal: [BREEZE_GPU, BREEZE_PIN_GPU, BREEZE_SCALEDOWN_WINDOW_S, BREEZE_MIN_CONTAINERS,
           BREEZE_TIMEOUT_S, BREEZE_REQUIRES_PROXY_AUTH]
   defaults: { port: 8787, transport: streaming, gpu: "H100!", scaledown_s: 600, cache_max: 2GiB }
@@ -160,11 +171,13 @@ relations:
      computes a latency figure it did not observe or read."
   - "Clips and voices have separate lifetimes: clips evict oldest-first, voices own
      their own copy of the audio and survive their source clip."
+  - "Staged references have a third lifecycle: upload and ASR happen once, the WAV
+     and timed transcript expire together, and each request trims the selected window."
   - "A script cue's clipId is a hash of text+voice+cfg+seed, so staleness is derived
      rather than tracked and one edit costs one GPU request."
 
 testing:
-  totals: { infra: 43, bench: 42, gateway: 106, ui: 132, all: 323 }
+  totals: { infra: 68, bench: 66, gateway: 156, ui: 165, all: 455 }
   runners: { python: pytest, gateway: vitest, ui: "vitest + jsdom + testing-library" }
   principle: "No test needs a GPU, a network, or a deployed service — the Modal SDK
     is only constructed, and every HTTP/audio boundary is injected."

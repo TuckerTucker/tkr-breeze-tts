@@ -105,9 +105,9 @@ The gateway serves the built UI from its own origin. For UI development,
 ## Tests
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests   # 74
+PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests   # 134
 npm --prefix gateway test                                          # 156
-npm --prefix ui test                                               # 161
+npm --prefix ui test                                               # 165
 ```
 
 None of them need a GPU, a network, or a deployed service: the Modal SDK is only
