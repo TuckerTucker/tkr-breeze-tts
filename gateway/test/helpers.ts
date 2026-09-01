@@ -34,6 +34,7 @@ export function stubConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfi
   return {
     port: 0,
     endpoint: 'https://example--breeze-tts-serve.modal.run',
+    asrEndpoint: null,
     key: 'wk-testkey0123456789',
     secret: 'ws-testsecret0123456789',
     transport: 'streaming',
@@ -41,6 +42,8 @@ export function stubConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfi
     clipCacheMaxBytes: 10 * 1024 * 1024,
     voiceStoreDir: join(tmpdir(), 'breeze-test-voices'),
     scriptStoreDir: join(tmpdir(), 'breeze-test-scripts'),
+    referenceStoreDir: join(tmpdir(), 'breeze-test-references'),
+    referenceMaxAgeMs: 86_400_000,
     scaledownWindowMs: 300_000,
     findingsDir: join(tmpdir(), 'breeze-test-findings'),
     uiDir: join(tmpdir(), 'breeze-test-ui'),

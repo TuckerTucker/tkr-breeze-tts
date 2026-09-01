@@ -52,6 +52,8 @@ export interface GatewayConfig {
   readonly port: number;
   /** Deployed Modal web endpoint. The browser never learns this. */
   readonly endpoint: string;
+  /** Optional sibling transcription endpoint. The browser never learns this. */
+  readonly asrEndpoint: string | null;
   /** `Modal-Key` header value. Never leaves this process. */
   readonly key: string;
   /** `Modal-Secret` header value. Never leaves this process. */
@@ -66,6 +68,10 @@ export interface GatewayConfig {
   readonly voiceStoreDir: string;
   /** Where scripts are persisted. */
   readonly scriptStoreDir: string;
+  /** Where staged reference WAVs and their sidecars are persisted. */
+  readonly referenceStoreDir: string;
+  /** Age after which staged working material is evicted. */
+  readonly referenceMaxAgeMs: number;
   /**
    * Mirrors the service's `scaledown_window`. The gateway infers readiness
    * from idle time rather than polling upstream health — a poll after
@@ -212,6 +218,14 @@ export function loadConfig(env: Record<string, string> = readEnv()): GatewayConf
     );
   }
 
+  const asrRaw = (env.MODAL_ASR_URL ?? '').replace(/\/+$/, '');
+  if (asrRaw && !/^https?:\/\//.test(asrRaw)) {
+    throw new ConfigError(
+      `MODAL_ASR_URL must be an absolute http(s) URL, got ${JSON.stringify(asrRaw)}`,
+      'Use the full https://…modal.run URL that `modal deploy infra/asr.py` printed.',
+    );
+  }
+
   validateProxyTokenPair(env.MODAL_KEY, env.MODAL_SECRET);
 
   const transportRaw = env.GATEWAY_TRANSPORT ?? 'streaming';
@@ -225,6 +239,7 @@ export function loadConfig(env: Record<string, string> = readEnv()): GatewayConf
   return {
     port: requirePositiveInt(env.GATEWAY_PORT, 8787, 'GATEWAY_PORT'),
     endpoint,
+    asrEndpoint: asrRaw || null,
     key: env.MODAL_KEY!,
     secret: env.MODAL_SECRET!,
     transport: transportRaw,
@@ -236,6 +251,14 @@ export function loadConfig(env: Record<string, string> = readEnv()): GatewayConf
     ),
     voiceStoreDir: resolveFromRoot(env.VOICE_STORE_DIR ?? '.cache/voices'),
     scriptStoreDir: resolveFromRoot(env.SCRIPT_STORE_DIR ?? '.cache/scripts'),
+    referenceStoreDir: resolveFromRoot(
+      env.REFERENCE_STORE_DIR ?? '.cache/references',
+    ),
+    referenceMaxAgeMs: requirePositiveInt(
+      env.REFERENCE_MAX_AGE_MS,
+      24 * 60 * 60 * 1000,
+      'REFERENCE_MAX_AGE_MS',
+    ),
     scaledownWindowMs:
       requirePositiveInt(
         env.GATEWAY_SCALEDOWN_WINDOW_S,
@@ -266,11 +289,17 @@ export function loadConfig(env: Record<string, string> = readEnv()): GatewayConf
  * @param config - The configuration whose secrets should be removed.
  * @returns The text with any credential material replaced.
  */
-export function redact(value: string, config: Pick<GatewayConfig, 'key' | 'secret' | 'endpoint'>): string {
+export function redact(
+  value: string,
+  config: Pick<GatewayConfig, 'key' | 'secret' | 'endpoint'> &
+    Partial<Pick<GatewayConfig, 'asrEndpoint'>>,
+): string {
   let out = value;
   for (const secret of [config.key, config.secret]) {
     if (secret) out = out.split(secret).join('[redacted]');
   }
-  if (config.endpoint) out = out.split(config.endpoint).join('[upstream]');
+  for (const endpoint of [config.endpoint, config.asrEndpoint]) {
+    if (endpoint) out = out.split(endpoint).join('[upstream]');
+  }
   return out.replace(/\b(wk|ws|ak|as)-[A-Za-z0-9_-]{4,}/g, '[redacted]');
 }

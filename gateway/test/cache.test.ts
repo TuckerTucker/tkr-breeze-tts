@@ -19,6 +19,8 @@ import {
 import { ModalProxy } from '../src/proxy.js';
 import { ScriptStore } from '../src/script.js';
 import { VoiceStore } from '../src/voices.js';
+import { AsrProxy } from '../src/asr.js';
+import { ReferenceStore } from '../src/references.js';
 import { createServer, type GatewayServer } from '../src/index.js';
 import { readWavHeader } from '../src/transport.js';
 import { makePcm, silentLogger, stubConfig } from './helpers.js';
@@ -124,12 +126,20 @@ describe('replay never reaches the GPU', () => {
       clipCacheDir: join(dir, 'clips'),
       voiceStoreDir: join(dir, 'voices'),
       scriptStoreDir: join(dir, 'scripts'),
+      referenceStoreDir: join(dir, 'references'),
     });
     const logger = silentLogger();
     const cache = new ClipCache({ dir: config.clipCacheDir, maxBytes: 1e9, logger });
     const voices = new VoiceStore({ dir: config.voiceStoreDir, logger });
     const scripts = new ScriptStore({ dir: config.scriptStoreDir, logger });
-    await Promise.all([cache.load(), voices.load(), scripts.load()]);
+    const ffmpeg = { available: true, version: 'stub', remedy: null } as const;
+    const references = new ReferenceStore({
+      dir: config.referenceStoreDir,
+      maxAgeMs: config.referenceMaxAgeMs,
+      logger,
+      ffmpeg,
+    });
+    await Promise.all([cache.load(), voices.load(), scripts.load(), references.load()]);
 
     const record = await cache.put(makePcm(2400), {
       format: FORMAT,
@@ -153,7 +163,9 @@ describe('replay never reaches the GPU', () => {
       cache,
       voices,
       scripts,
-      ffmpeg: { available: true, version: 'stub', remedy: null },
+      references,
+      asr: new AsrProxy({ config, logger }),
+      ffmpeg,
     });
     servers.push(server);
 

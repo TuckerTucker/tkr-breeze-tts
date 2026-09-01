@@ -63,6 +63,31 @@ describe('startup validation', () => {
     expect(loadConfig(validEnv).transport).toBe('streaming');
   });
 
+  it('keeps ASR optional while declaring bounded reference storage', () => {
+    const config = loadConfig(validEnv);
+    expect(config.asrEndpoint).toBeNull();
+    expect(config.referenceStoreDir).toContain('.cache/references');
+    expect(config.referenceMaxAgeMs).toBe(86_400_000);
+  });
+
+  it('validates and normalises the optional ASR endpoint', () => {
+    expect(
+      loadConfig({
+        ...validEnv,
+        MODAL_ASR_URL: 'https://example--breeze-asr.modal.run///',
+      }).asrEndpoint,
+    ).toBe('https://example--breeze-asr.modal.run');
+    expect(() =>
+      loadConfig({ ...validEnv, MODAL_ASR_URL: 'not-a-url' }),
+    ).toThrowError(/MODAL_ASR_URL/);
+  });
+
+  it('rejects an invalid reference retention window rather than disabling eviction', () => {
+    expect(() =>
+      loadConfig({ ...validEnv, REFERENCE_MAX_AGE_MS: '0' }),
+    ).toThrowError(/REFERENCE_MAX_AGE_MS/);
+  });
+
   it('parses a dotenv file, ignoring comments and stripping quotes', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'breeze-env-'));
     const path = join(dir, '.env');
@@ -83,6 +108,15 @@ describe('the credential never reaches the browser', () => {
     expect(scrubbed).not.toContain(config.key);
     expect(scrubbed).not.toContain(config.secret);
     expect(scrubbed).not.toContain(config.endpoint);
+  });
+
+  it('scrubs the optional ASR URL too', () => {
+    const withAsr = stubConfig({
+      asrEndpoint: 'https://example--breeze-asr.modal.run',
+    });
+    expect(redact(`failed at ${withAsr.asrEndpoint}`, withAsr)).not.toContain(
+      withAsr.asrEndpoint,
+    );
   });
 
   it('scrubs anything token-shaped even when it is not the configured pair', () => {

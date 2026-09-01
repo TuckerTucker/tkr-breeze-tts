@@ -21,6 +21,8 @@ import { ClipCache } from '../src/cache.js';
 import { ModalProxy } from '../src/proxy.js';
 import { ScriptStore } from '../src/script.js';
 import { VoiceStore } from '../src/voices.js';
+import { AsrProxy } from '../src/asr.js';
+import { ReferenceStore } from '../src/references.js';
 import { createServer, type GatewayServer } from '../src/index.js';
 import { makePcm, silentLogger, stubConfig, stubFetch, type StubUpstream } from './helpers.js';
 
@@ -34,6 +36,7 @@ describe('an upstream that fails after committing to 200', () => {
       clipCacheDir: join(dir, name, 'clips'),
       voiceStoreDir: join(dir, name, 'voices'),
       scriptStoreDir: join(dir, name, 'scripts'),
+      referenceStoreDir: join(dir, name, 'references'),
     });
     const logger = silentLogger();
     const cache = new ClipCache({
@@ -43,7 +46,14 @@ describe('an upstream that fails after committing to 200', () => {
     });
     const voices = new VoiceStore({ dir: config.voiceStoreDir, logger });
     const scripts = new ScriptStore({ dir: config.scriptStoreDir, logger });
-    await Promise.all([cache.load(), voices.load(), scripts.load()]);
+    const ffmpeg = { available: true, version: 'stub', remedy: null } as const;
+    const references = new ReferenceStore({
+      dir: config.referenceStoreDir,
+      maxAgeMs: config.referenceMaxAgeMs,
+      logger,
+      ffmpeg,
+    });
+    await Promise.all([cache.load(), voices.load(), scripts.load(), references.load()]);
 
     const server = createServer({
       config,
@@ -52,7 +62,9 @@ describe('an upstream that fails after committing to 200', () => {
       cache,
       voices,
       scripts,
-      ffmpeg: { available: true, version: 'stub', remedy: null },
+      references,
+      asr: new AsrProxy({ config, logger }),
+      ffmpeg,
     });
     servers.push(server);
     caches.push(cache);

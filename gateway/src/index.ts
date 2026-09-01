@@ -51,6 +51,12 @@ import {
 } from './transport.js';
 import { VoiceStore } from './voices.js';
 import { suggestNameFromInstruction } from './voices-index.js';
+import { AsrProxy } from './asr.js';
+import { ReferenceStore } from './references.js';
+import {
+  parseReferenceCeiling,
+  referenceSecondsFor,
+} from './reference-slice.js';
 import {
   MAX_CUE_TOKENS,
   ScriptStore,
@@ -84,6 +90,8 @@ export interface ServerDeps {
   readonly cache: ClipCache;
   readonly voices: VoiceStore;
   readonly scripts: ScriptStore;
+  readonly references: ReferenceStore;
+  readonly asr: AsrProxy;
   readonly ffmpeg: FfmpegStatus;
 }
 
@@ -93,6 +101,13 @@ export const DEFAULT_CFG_CONTROL = {
   values: [1.0, 4.0],
   default: 1.0,
 };
+
+/**
+ * One forty-minute, 44.1 kHz stereo PCM WAV is roughly 404 MiB. Reference
+ * intake exists specifically so a long source is uploaded once, so the former
+ * 64 MiB multipart ceiling would have contradicted the resource it exposes.
+ */
+export const MAX_AUDIO_UPLOAD_BYTES = 512 * 1024 * 1024;
 
 interface SpeechFields {
   text: string;
@@ -104,6 +119,9 @@ interface SpeechFields {
   refAudio: Buffer | undefined;
   refFilename: string | undefined;
   voiceId: string | undefined;
+  referenceId: string | undefined;
+  refStart: number | undefined;
+  refEnd: number | undefined;
 }
 
 function asVoiceMode(value: string | undefined): VoiceMode {
@@ -238,11 +256,24 @@ function sendError(
  * @returns A configured Fastify instance, not yet listening.
  */
 export function createServer(deps: ServerDeps): GatewayServer {
-  const { config, logger, proxy, cache, voices, scripts, ffmpeg } = deps;
-  const app = Fastify({ loggerInstance: logger, bodyLimit: 64 * 1024 * 1024 });
+  const {
+    config,
+    logger,
+    proxy,
+    cache,
+    voices,
+    scripts,
+    references,
+    asr,
+    ffmpeg,
+  } = deps;
+  const app = Fastify({
+    loggerInstance: logger,
+    bodyLimit: MAX_AUDIO_UPLOAD_BYTES,
+  });
 
   app.register(multipart, {
-    limits: { fileSize: 64 * 1024 * 1024, files: 1 },
+    limits: { fileSize: MAX_AUDIO_UPLOAD_BYTES, files: 1 },
   });
 
   app.setErrorHandler((error, request, reply) => {
@@ -267,7 +298,11 @@ export function createServer(deps: ServerDeps): GatewayServer {
   // container *starts* one, so polling it to find out whether a cold start is
   // due would cause the cold start it was checking for.
   app.get('/api/health', async () => {
-    const latency = await readFinding(config.findingsDir, 'latency.json');
+    const [latency, rawReferenceCeiling] = await Promise.all([
+      readFinding(config.findingsDir, 'latency.json'),
+      readFinding(config.findingsDir, 'reference-ceiling.json'),
+    ]);
+    const referenceCeiling = parseReferenceCeiling(rawReferenceCeiling);
     const summary = (latency?.summary ?? null) as Record<string, any> | null;
     return {
       readiness: proxy.readiness(),
@@ -278,9 +313,15 @@ export function createServer(deps: ServerDeps): GatewayServer {
         available: ffmpeg.available,
         remedy: ffmpeg.available ? null : FFMPEG_INSTALL_REMEDY,
       },
+      asr: asr.status(),
       cache: { enabled: cache.enabled, clips: cache.list().length, bytes: cache.totalBytes() },
       voices: voices.list().length,
-      limits: { maxTokens: MAX_CUE_TOKENS, tokenCeilingByBatch: CEILING_BY_BATCH },
+      references: { staged: references.size, maxAgeMs: references.maxAgeMs },
+      limits: {
+        maxTokens: MAX_CUE_TOKENS,
+        tokenCeilingByBatch: CEILING_BY_BATCH,
+        referenceSeconds: referenceCeiling,
+      },
       // Null rather than a placeholder: the UI says "not yet measured".
       measured: summary
         ? {
@@ -300,7 +341,26 @@ export function createServer(deps: ServerDeps): GatewayServer {
   });
 
   app.get('/api/findings', async () => {
-    const cfg = await readFinding(config.findingsDir, 'cfg-falloff.json');
+    const [cfg, rawReferenceCeiling] = await Promise.all([
+      readFinding(config.findingsDir, 'cfg-falloff.json'),
+      readFinding(config.findingsDir, 'reference-ceiling.json'),
+    ]);
+    const parsedReferenceCeiling = parseReferenceCeiling(rawReferenceCeiling);
+    const referenceCeiling = parsedReferenceCeiling
+      ? {
+          measured: true,
+          ...parsedReferenceCeiling,
+          rationale: rawReferenceCeiling?.rationale ?? null,
+          measuredAt: rawReferenceCeiling?.measured_at ?? null,
+        }
+      : {
+          measured: false,
+          maxReferenceSeconds: null,
+          ceilingByBranchMode: null,
+          rationale:
+            'The reference-duration probe has not recorded a usable ceiling for this deployment.',
+          measuredAt: null,
+        };
     if (!cfg) {
       return {
         measured: false,
@@ -311,6 +371,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
           'the demo is making, so the conservative control is used.',
         cfgControl: DEFAULT_CFG_CONTROL,
         capturedCfgScales: DEFAULT_CFG_CONTROL.values,
+        referenceCeiling,
       };
     }
     return {
@@ -321,8 +382,60 @@ export function createServer(deps: ServerDeps): GatewayServer {
       capturedCfgScales: cfg.captured_cfg_scales ?? DEFAULT_CFG_CONTROL.values,
       tokenCeiling: cfg.token_ceiling ?? null,
       measuredAt: cfg.measured_at ?? null,
+      referenceCeiling,
     };
   });
+
+  // ── Staged references ───────────────────────────────────────────────────
+  app.post('/api/reference', async (request) => {
+    const contentType = request.headers['content-type'] ?? '';
+    if (!contentType.includes('multipart/form-data')) {
+      throw new GatewayError(
+        'validation',
+        'reference intake requires one multipart audio file',
+      );
+    }
+    let uploaded: Buffer | undefined;
+    for await (const part of (request as never as { parts(): AsyncIterable<any> }).parts()) {
+      if (part.type === 'file') uploaded = await part.toBuffer();
+    }
+    if (!uploaded) {
+      throw new GatewayError('validation', 'no reference audio file was supplied');
+    }
+    const wav = await normaliseReference(uploaded, {
+      ffmpegAvailable: ffmpeg.available,
+    });
+    const transcription = await asr.transcribe(wav);
+    return references.create(wav, transcription);
+  });
+
+  app.get<{
+    Params: { id: string };
+    Querystring: { start?: string; end?: string };
+  }>('/api/reference/:id/audio', async (request, reply) => {
+    const record = references.get(request.params.id);
+    if (!record) {
+      throw new GatewayError(
+        'not-found',
+        `no staged reference with id ${request.params.id}`,
+      );
+    }
+    const start = request.query.start === undefined ? 0 : Number(request.query.start);
+    const end =
+      request.query.end === undefined
+        ? record.durationSeconds
+        : Number(request.query.end);
+    const window = await references.window(request.params.id, start, end);
+    reply.type('audio/wav');
+    reply.header('Cache-Control', 'no-store');
+    reply.header('X-Reference-Start', String(window.start));
+    reply.header('X-Reference-End', String(window.end));
+    return reply.send(window.wav);
+  });
+
+  app.delete<{ Params: { id: string } }>('/api/reference/:id', async (request) => ({
+    removed: await references.remove(request.params.id),
+  }));
 
   // ── Synthesis ────────────────────────────────────────────────────────────
   app.post('/api/speech', async (request, reply) => {
@@ -334,6 +447,25 @@ export function createServer(deps: ServerDeps): GatewayServer {
     let refAudio: Buffer | undefined;
     let refText = fields.refText;
 
+    const sources = [fields.voiceId, fields.refAudio, fields.referenceId].filter(
+      Boolean,
+    );
+    if (sources.length > 1) {
+      throw new GatewayError(
+        'validation',
+        'choose one reference source: a staged reference, an uploaded file, or a saved voice',
+      );
+    }
+    if (
+      !fields.referenceId &&
+      (fields.refStart !== undefined || fields.refEnd !== undefined)
+    ) {
+      throw new GatewayError(
+        'validation',
+        'ref_start and ref_end require a reference_id',
+      );
+    }
+
     if (fields.voiceId) {
       const voice = await voices.read(fields.voiceId);
       // Both halves, together, from one read. A library request is structurally
@@ -344,6 +476,35 @@ export function createServer(deps: ServerDeps): GatewayServer {
       refAudio = await normaliseReference(fields.refAudio, {
         ffmpegAvailable: ffmpeg.available,
       });
+    } else if (fields.referenceId) {
+      if (fields.refStart === undefined || fields.refEnd === undefined) {
+        throw new GatewayError(
+          'validation',
+          'a staged reference requires both ref_start and ref_end',
+          { remedy: 'Choose a reference window before generating.' },
+        );
+      }
+      const rawCeiling = await readFinding(
+        config.findingsDir,
+        'reference-ceiling.json',
+      );
+      const measured = parseReferenceCeiling(rawCeiling);
+      const maxDurationSeconds = measured
+        ? referenceSecondsFor(measured, fields.cfgScale)
+        : undefined;
+      const window = await references.window(
+        fields.referenceId,
+        fields.refStart,
+        fields.refEnd,
+        {
+          ...(maxDurationSeconds === undefined ? {} : { maxDurationSeconds }),
+          cfgScale: fields.cfgScale,
+        },
+      );
+      refAudio = window.wav;
+      // A hand correction is allowed to replace recognition, but the default
+      // always follows the exact snapped audio window.
+      refText = fields.refText ?? window.transcript;
     }
 
     validateReferencePair({ hasAudio: Boolean(refAudio), refText });
@@ -800,6 +961,9 @@ async function readSpeechFields(request: {
 
   const cfgScale = Number(values.cfg_scale ?? '1');
   const seed = Number(values.seed ?? '42');
+  const refStart =
+    values.ref_start === undefined ? undefined : Number(values.ref_start);
+  const refEnd = values.ref_end === undefined ? undefined : Number(values.ref_end);
   return {
     text: values.text ?? '',
     instruction: values.instruction ?? 'Speak clearly and naturally.',
@@ -810,6 +974,9 @@ async function readSpeechFields(request: {
     refAudio,
     refFilename,
     voiceId: values.voice_id || undefined,
+    referenceId: values.reference_id || undefined,
+    refStart,
+    refEnd,
   };
 }
 
@@ -921,12 +1088,34 @@ export async function main(): Promise<void> {
   });
   const voices = new VoiceStore({ dir: config.voiceStoreDir, logger });
   const scripts = new ScriptStore({ dir: config.scriptStoreDir, logger });
+  const references = new ReferenceStore({
+    dir: config.referenceStoreDir,
+    maxAgeMs: config.referenceMaxAgeMs,
+    logger,
+    ffmpeg,
+  });
 
-  await Promise.all([cache.load(), voices.load(), scripts.load()]);
+  await Promise.all([
+    cache.load(),
+    voices.load(),
+    scripts.load(),
+    references.load(),
+  ]);
   await preflight(config, logger);
 
   const proxy = new ModalProxy({ config, logger });
-  const app = createServer({ config, logger, proxy, cache, voices, scripts, ffmpeg });
+  const asr = new AsrProxy({ config, logger });
+  const app = createServer({
+    config,
+    logger,
+    proxy,
+    cache,
+    voices,
+    scripts,
+    references,
+    asr,
+    ffmpeg,
+  });
 
   await app.listen({ port: config.port, host: '127.0.0.1' });
   const uiPresent = existsSync(config.uiDir);
@@ -936,6 +1125,8 @@ export async function main(): Promise<void> {
       transport: config.transport,
       ui: uiPresent ? 'served' : 'not built (run: npm --prefix ui run build)',
       ffmpeg: ffmpeg.available,
+      asr: asr.status().available,
+      referenceMaxAgeMs: config.referenceMaxAgeMs,
     },
     `gateway listening on http://127.0.0.1:${config.port}`,
   );

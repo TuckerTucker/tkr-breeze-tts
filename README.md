@@ -15,7 +15,7 @@ The design brief, with every constraint cited to vendor source, is
 browser ──► gateway (localhost) ──► Modal ──► GPU
    │             │                    proxy auth at the edge
    │             ├─ holds Modal-Key / Modal-Secret; the browser never sees them
-   │             ├─ transcodes recorded WebM/Opus to WAV via ffmpeg
+   │             ├─ stages, transcribes and trims reference recordings once
    │             ├─ tees generated PCM to disk while streaming
    │             └─ serves the UI, so CORS never arises
    └─ AudioWorklet plays s16le PCM as it arrives
@@ -26,7 +26,7 @@ browser ──► gateway (localhost) ──► Modal ──► GPU
 | `infra/` | The Modal image, weights Volume, serving class, and deployment config |
 | `bench/` | The measurement harness and the cfg fall-off probe; findings land in `bench/findings/` |
 | `gateway/` | The local Node service: credential custody, transports, clip cache, voice library, script runner |
-| `ui/` | The browser surface: three voice modes, streaming playback, wake state, history, script editor |
+| `ui/` | The browser surface: three voice modes, staged reference trimming, streaming playback, wake state, history, script editor |
 
 ## Getting it running
 
@@ -88,6 +88,7 @@ slider whose behaviour is unverified.
 ```bash
 python -m bench.harness --warm-runs 5   # → bench/findings/latency.json
 python -m bench.cfg_probe --repeats 5   # → bench/findings/cfg-falloff.json
+python -m bench.reference_probe         # → bench/findings/reference-ceiling.json
 ```
 
 ### 4. Run the demo
@@ -105,8 +106,8 @@ The gateway serves the built UI from its own origin. For UI development,
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests   # 74
-npm --prefix gateway test                                          # 104
-npm --prefix ui test                                               # 131
+npm --prefix gateway test                                          # 156
+npm --prefix ui test                                               # 161
 ```
 
 None of them need a GPU, a network, or a deployed service: the Modal SDK is only
