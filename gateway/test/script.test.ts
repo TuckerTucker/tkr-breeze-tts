@@ -17,6 +17,7 @@ import {
   estimateTokens,
   exportVtt,
   refreshScript,
+  tokenCeilingFor,
   type Cue,
   type ScriptRecord,
 } from '../src/script.js';
@@ -164,7 +165,7 @@ describe('the cue list is the document', () => {
     expect(refreshed.cues[0]!.problem).toMatch(/Narrator — calm/);
   });
 
-  it('flags a cue past the token ceiling before anything is dispatched', async () => {
+  it('flags a cue past its own mode’s ceiling before anything is dispatched', async () => {
     const script = await scripts.importFile({ source: SAMPLE_VTT });
     const long = 'word '.repeat(MAX_CUE_TOKENS * 5);
     await scripts.patchCue(script.id, script.cues[0]!.id, { text: long });
@@ -174,8 +175,37 @@ describe('the cue list is the document', () => {
       availableVoiceIds: new Set(),
     });
     expect(refreshed.cues[0]!.state).toBe('unrunnable');
-    expect(refreshed.cues[0]!.problem).toContain(String(MAX_CUE_TOKENS));
+    // Default cfg is 1.0, so the single-branch ceiling of 256 applies.
+    expect(refreshed.cues[0]!.problem).toContain('256');
+    expect(refreshed.cues[0]!.problem).toContain('fails outright');
     expect(estimateTokens(long)).toBeGreaterThan(MAX_CUE_TOKENS);
+  });
+
+  it('applies the ceiling per branch mode, not globally', async () => {
+    // Measured live: ~299 tokens fails at cfg 1.0 and serves at cfg 2.5/4.0.
+    // A flat 512 would let the cfg-1.0 case through to a hard failure that
+    // produces no audio at all.
+    expect(tokenCeilingFor(1.0)).toBe(256);
+    expect(tokenCeilingFor(2.5)).toBe(512);
+    expect(tokenCeilingFor(4.0)).toBe(512);
+
+    const script = await scripts.importFile({ source: SAMPLE_VTT });
+    const midLength = 'word '.repeat(300); // ~375 tokens: over 256, under 512
+    const cueId = script.cues[0]!.id;
+
+    await scripts.patchCue(script.id, cueId, { text: midLength, cfgScale: 1.0 });
+    let refreshed = refreshScript(scripts.require(script.id), {
+      cache,
+      availableVoiceIds: new Set(),
+    });
+    expect(refreshed.cues[0]!.state).toBe('unrunnable');
+
+    await scripts.patchCue(script.id, cueId, { cfgScale: 4.0 });
+    refreshed = refreshScript(scripts.require(script.id), {
+      cache,
+      availableVoiceIds: new Set(),
+    });
+    expect(refreshed.cues[0]!.state).not.toBe('unrunnable');
   });
 });
 

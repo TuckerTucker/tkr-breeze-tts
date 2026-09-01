@@ -18,6 +18,8 @@ import {
   loadDraft,
   rollSeed,
   saveDraft,
+  tokenCeilingFor,
+  TOKEN_CEILING_BY_MODE,
   type Draft,
 } from '../src/state/draft.js';
 
@@ -33,8 +35,10 @@ function Harness(props: { initial?: Partial<Draft>; onGenerate?: () => void }): 
         busy: false,
         generating: false,
         modeBlocker: null,
+        cfgScale: 1.0,
       })}
       statusLine="Warm — expected 38ms to first audio"
+      cfgScale={1.0}
       onGenerate={props.onGenerate ?? (() => {})}
       onRerollSeed={() => setDraft({ ...draft, seed: 999 })}
     />
@@ -55,6 +59,7 @@ describe('Generate is never enabled into a failure', () => {
       busy: false,
       generating: false,
       modeBlocker: null,
+      cfgScale: 1.0,
     });
     // Not enabled into a failure — the reason names what is wrong.
     expect(reason).toMatch(/gateway is not running/i);
@@ -68,6 +73,7 @@ describe('Generate is never enabled into a failure', () => {
         busy: true,
         generating: false,
         modeBlocker: null,
+        cfgScale: 1.0,
       }),
     ).toMatch(/Disabled while a request is running/i);
   });
@@ -81,7 +87,28 @@ describe('Generate is never enabled into a failure', () => {
     const long = 'x'.repeat((MAX_TOKENS + 40) * 4);
     render(<Harness initial={{ text: long }} />);
     expect(screen.getByRole('button', { name: /generate/i })).toBeDisabled();
-    expect(screen.getByText(/past the 512/i)).toBeInTheDocument();
+    // The harness renders at CFG 1.0, whose ceiling is 256, not 512.
+    expect(screen.getByText(/past the limit at CFG 1/i)).toBeInTheDocument();
+  });
+
+  it('applies the ceiling of the current CFG mode, not a flat one', () => {
+    // Measured live: ~299 tokens fails at CFG 1.0 and serves at 2.5 and 4.0,
+    // and past the ceiling the request produces no audio at all rather than
+    // running slowly — so the reason names the way out.
+    expect(tokenCeilingFor(1.0)).toBe(256);
+    expect(tokenCeilingFor(2.5)).toBe(512);
+    expect(TOKEN_CEILING_BY_MODE).toEqual({ noCfg: 256, singleCfg: 512 });
+
+    const midLength = 'x'.repeat(300 * 4); // ~300 tokens
+    const gate = {
+      draft: { ...INITIAL_DRAFT, text: midLength },
+      gatewayReachable: true,
+      busy: false,
+      generating: false,
+      modeBlocker: null,
+    };
+    expect(generateBlockedReason({ ...gate, cfgScale: 1.0 })).toMatch(/raise CFG/);
+    expect(generateBlockedReason({ ...gate, cfgScale: 4.0 })).toBeNull();
   });
 
   it('reports the mode blocker when one is present', () => {
@@ -92,6 +119,7 @@ describe('Generate is never enabled into a failure', () => {
         busy: false,
         generating: false,
         modeBlocker: 'Add the exact transcript of the reference recording.',
+        cfgScale: 1.0,
       }),
     ).toMatch(/exact transcript/);
   });
@@ -102,8 +130,10 @@ describe('length feedback tracks input live', () => {
     render(<Harness />);
     const textarea = screen.getByLabelText('Text to speak');
     fireEvent.change(textarea, { target: { value: 'a'.repeat(40) } });
+    // The meter shows the ceiling that actually applies: the harness renders
+    // at CFG 1.0, so 256 rather than a flat 512.
     expect(screen.getByRole('status', { name: 'Input length' }).textContent).toContain(
-      '10 / 512',
+      '10 / 256',
     );
   });
 

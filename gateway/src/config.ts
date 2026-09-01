@@ -239,7 +239,11 @@ export function loadConfig(env: Record<string, string> = readEnv()): GatewayConf
     scaledownWindowMs:
       requirePositiveInt(
         env.GATEWAY_SCALEDOWN_WINDOW_S,
-        300,
+        // Must track infra/config.py's scaledown_window_s. Readiness is
+        // inferred from idle time against this number, so a gateway set
+        // shorter than the service reports "cold" while the container is
+        // still warm — the UI then promises a wake that will not happen.
+        600,
         'GATEWAY_SCALEDOWN_WINDOW_S',
       ) * 1000,
     findingsDir: resolveFromRoot(env.BENCH_FINDINGS_DIR ?? 'bench/findings'),

@@ -12,10 +12,10 @@
 import { useRef, type JSX } from 'react';
 
 import {
-  MAX_TOKENS,
   VOCAL_EVENTS,
   estimateTokens,
   insertAtCaret,
+  tokenCeilingFor,
   type Draft,
   type EventLanguage,
 } from '../state/draft.js';
@@ -30,6 +30,8 @@ export interface ConsoleProps {
   /** The status line beside the control — readiness, or what is happening. */
   readonly statusLine: string;
   readonly onRerollSeed: () => void;
+  /** Decides the token ceiling: exactly 1.0 caps at 256, anything else at 512. */
+  readonly cfgScale: number;
 }
 
 /**
@@ -42,7 +44,8 @@ export function Console(props: ConsoleProps): JSX.Element {
   const textRef = useRef<HTMLTextAreaElement>(null);
   const { draft, onDraftChange } = props;
   const tokens = estimateTokens(draft.text);
-  const over = tokens > MAX_TOKENS;
+  const ceiling = tokenCeilingFor(props.cfgScale);
+  const over = tokens > ceiling;
 
   const insertEvent = (marker: string): void => {
     const element = textRef.current;
@@ -74,8 +77,8 @@ export function Console(props: ConsoleProps): JSX.Element {
           role="status"
           aria-label="Input length"
         >
-          {tokens} / {MAX_TOKENS} tokens
-          {over ? ` — ${tokens - MAX_TOKENS} past the fast path` : ''}
+          {tokens} / {ceiling} tokens
+          {over ? ` — ${tokens - ceiling} past the limit at CFG ${props.cfgScale}` : ''}
         </p>
       </div>
 

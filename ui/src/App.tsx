@@ -125,6 +125,7 @@ export function App(props: AppProps): JSX.Element {
     busy,
     generating,
     modeBlocker: blocker,
+    cfgScale: mode.cfgScale,
   });
 
   const statusLine = failure
@@ -268,6 +269,7 @@ export function App(props: AppProps): JSX.Element {
           onDraftChange={setDraft}
           blockedReason={blockedReason}
           statusLine={statusLine}
+          cfgScale={mode.cfgScale}
           onGenerate={() => void generate()}
           onRerollSeed={() => setDraft({ ...draft, seed: rollSeed() })}
         />

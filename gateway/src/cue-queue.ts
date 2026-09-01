@@ -18,9 +18,9 @@ import type { Logger } from 'pino';
 import type { ClipCache } from './cache.js';
 import { GatewayError } from './proxy.js';
 import {
-  MAX_CUE_TOKENS,
   clipIdFor,
   estimateTokens,
+  tokenCeilingFor,
   type Cue,
   type ScriptRecord,
 } from './script.js';
@@ -131,11 +131,14 @@ export async function runScript(options: {
     }
 
     const tokens = estimateTokens(cue.text);
-    if (tokens > MAX_CUE_TOKENS) {
-      // Refused before dispatch. Truncating silently would produce audio that
-      // is missing words nobody was told about.
+    const ceiling = tokenCeilingFor(cue.cfgScale);
+    if (tokens > ceiling) {
+      // Refused before dispatch. Past the ceiling the vendor's frozen graph
+      // cache raises and the connection aborts with no audio, so dispatching
+      // would burn a GPU request to produce nothing.
       cue.state = 'unrunnable';
-      cue.problem = `about ${tokens} tokens, past the ${MAX_CUE_TOKENS}-token ceiling`;
+      cue.problem =
+        `about ${tokens} tokens, past the ${ceiling}-token ceiling at cfg ${cue.cfgScale}`;
       unrunnable += 1;
       results.push({
         cueId: cue.id,

@@ -17,8 +17,32 @@
  */
 export type EventLanguage = 'en' | 'zh';
 
-/** The captured input-length ceiling, mirroring the gateway's. */
-export const MAX_TOKENS = 512;
+/**
+ * The captured input-length ceiling, **per branch-batch mode**.
+ *
+ * Mirrors the gateway's. `configs/fast.json` captures batch 1 at 32..256 and
+ * batch 2 at 32..512, and the vendor maps cfg to a binary mode — exactly 1.0
+ * runs a single branch, anything else runs dual branches. Past the ceiling the
+ * request does not run slowly, it **fails**: the frozen graph cache raises and
+ * no audio arrives. Verified live at ~299 tokens, which failed at cfg 1.0 and
+ * served at cfg 2.5 and 4.0.
+ */
+export const TOKEN_CEILING_BY_MODE = { noCfg: 256, singleCfg: 512 } as const;
+
+/** The higher of the two, for display before a cfg value is known. */
+export const MAX_TOKENS = TOKEN_CEILING_BY_MODE.singleCfg;
+
+/**
+ * The ceiling a given cfg value actually gets.
+ *
+ * @param cfgScale - The current guidance scale.
+ * @returns Maximum input tokens that will succeed.
+ */
+export function tokenCeilingFor(cfgScale: number): number {
+  return cfgScale === 1.0
+    ? TOKEN_CEILING_BY_MODE.noCfg
+    : TOKEN_CEILING_BY_MODE.singleCfg;
+}
 
 /** The vendor's default instruction, used as a sensible pre-fill. */
 export const DEFAULT_INSTRUCTION = 'Speak clearly and naturally.';
@@ -112,6 +136,8 @@ export interface GateInput {
   readonly generating: boolean;
   /** Set when the current mode still needs something. */
   readonly modeBlocker: string | null;
+  /** The current guidance scale, which decides the token ceiling. */
+  readonly cfgScale: number;
 }
 
 /**
@@ -130,8 +156,13 @@ export function generateBlockedReason(input: GateInput): string | null {
   if (input.busy) return 'Disabled while a request is running.';
   if (!input.draft.text.trim()) return 'Enter some text to enable.';
   const tokens = estimateTokens(input.draft.text);
-  if (tokens > MAX_TOKENS) {
-    return `About ${tokens} tokens — ${tokens - MAX_TOKENS} past the ${MAX_TOKENS} the fast path covers.`;
+  const ceiling = tokenCeilingFor(input.cfgScale);
+  if (tokens > ceiling) {
+    // Not a latency warning: past the ceiling the request produces no audio at
+    // all, so the remedy names the way out rather than just the limit.
+    return input.cfgScale === 1.0
+      ? `About ${tokens} tokens — past the ${ceiling}-token limit at CFG 1.0. Shorten it, or raise CFG for a ${TOKEN_CEILING_BY_MODE.singleCfg}-token limit.`
+      : `About ${tokens} tokens — past the ${ceiling}-token limit. Shorten it to generate.`;
   }
   if (input.modeBlocker) return input.modeBlocker;
   return null;

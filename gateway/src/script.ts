@@ -38,10 +38,36 @@ export type CueState =
   | 'unrunnable';
 
 /**
- * The captured input-length ceiling. Beyond it the request still succeeds, but
- * off the CUDA-graph fast path, which is the latency claim the demo is making.
+ * The captured input-length ceiling, **per branch-batch mode**.
+ *
+ * Measured, not assumed. `configs/fast.json` captures the text encoder and
+ * backbone prefill at batch 1 → 32..256 and batch 2 → 32..512, and
+ * `warmup_profile.py` maps cfg to a binary mode — `no_cfg` for exactly 1.0,
+ * `single_cfg` otherwise. So cfg 1.0 runs a single branch capped at 256
+ * tokens and any other cfg runs dual branches capped at 512.
+ *
+ * Beyond the ceiling the request does **not** degrade to a slower path.
+ * `freeze_after_warmup` makes the graph cache raise
+ * `RuntimeError: text encoder CUDA graph (b, n) was not declared in the warmup
+ * profile`, the connection aborts, and no audio is produced. Verified live:
+ * ~299 tokens fails at cfg 1.0 and serves at cfg 2.5 and 4.0.
  */
-export const MAX_CUE_TOKENS = 512;
+export const TOKEN_CEILING_BY_MODE = { noCfg: 256, singleCfg: 512 } as const;
+
+/** The higher of the two, for display where the mode is not yet known. */
+export const MAX_CUE_TOKENS = TOKEN_CEILING_BY_MODE.singleCfg;
+
+/**
+ * The token ceiling a given cfg value actually gets.
+ *
+ * @param cfgScale - The requested guidance scale.
+ * @returns Maximum input tokens that will succeed.
+ */
+export function tokenCeilingFor(cfgScale: number): number {
+  return cfgScale === 1.0
+    ? TOKEN_CEILING_BY_MODE.noCfg
+    : TOKEN_CEILING_BY_MODE.singleCfg;
+}
 
 /**
  * Estimate token count from characters.
@@ -144,9 +170,12 @@ export function refreshScript(
       cue.problem = `the voice “${cue.voiceName ?? cue.voiceId}” is no longer in the library`;
       continue;
     }
-    if (estimateTokens(cue.text) > MAX_CUE_TOKENS) {
+    const ceiling = tokenCeilingFor(cue.cfgScale);
+    if (estimateTokens(cue.text) > ceiling) {
       cue.state = 'unrunnable';
-      cue.problem = `about ${estimateTokens(cue.text)} tokens, past the ${MAX_CUE_TOKENS}-token ceiling`;
+      cue.problem =
+        `about ${estimateTokens(cue.text)} tokens, past the ${ceiling}-token ceiling ` +
+        `at cfg ${cue.cfgScale} — this fails outright rather than running slowly`;
       continue;
     }
 

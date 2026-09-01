@@ -54,6 +54,8 @@ import { suggestNameFromInstruction } from './voices-index.js';
 import {
   MAX_CUE_TOKENS,
   ScriptStore,
+  TOKEN_CEILING_BY_MODE,
+  tokenCeilingFor,
   concatenateScript,
   estimateTokens,
   exportVtt,
@@ -190,7 +192,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
       },
       cache: { enabled: cache.enabled, clips: cache.list().length, bytes: cache.totalBytes() },
       voices: voices.list().length,
-      limits: { maxTokens: MAX_CUE_TOKENS },
+      limits: { maxTokens: MAX_CUE_TOKENS, tokenCeilingByMode: TOKEN_CEILING_BY_MODE },
       // Null rather than a placeholder: the UI says "not yet measured".
       measured: summary
         ? {
@@ -241,11 +243,18 @@ export function createServer(deps: ServerDeps): GatewayServer {
     if (!fields.text.trim()) {
       throw new GatewayError('validation', 'there is nothing to speak');
     }
-    if (estimateTokens(fields.text) > MAX_CUE_TOKENS) {
+    const ceiling = tokenCeilingFor(fields.cfgScale);
+    if (estimateTokens(fields.text) > ceiling) {
       throw new GatewayError(
         'validation',
-        `about ${estimateTokens(fields.text)} tokens, past the ${MAX_CUE_TOKENS}-token ceiling`,
-        { remedy: 'Shorten the line, or split it across two generations.' },
+        `about ${estimateTokens(fields.text)} tokens, past the ${ceiling}-token ceiling ` +
+          `at cfg ${fields.cfgScale}`,
+        {
+          remedy:
+            fields.cfgScale === 1.0
+              ? `Shorten the line, or raise CFG above 1.0 — dual-branch mode carries a ${TOKEN_CEILING_BY_MODE.singleCfg}-token ceiling.`
+              : 'Shorten the line, or split it across two generations.',
+        },
       );
     }
 

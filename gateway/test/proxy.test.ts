@@ -190,6 +190,13 @@ describe('readiness is inferred, never polled', () => {
     expect(proxy.readiness()).toBe('unknown');
   });
 
+  it('defaults its window to the service’s, so readiness cannot disagree', () => {
+    // infra/config.py defaults scaledown_window_s to 600 after the measured
+    // 166s cold start; a gateway defaulting to 300 would report cold while the
+    // container was still warm.
+    expect(loadConfig(validEnv).scaledownWindowMs).toBe(600_000);
+  });
+
   it('is warm inside the scaledown window and cold beyond it', async () => {
     let now = 1_000_000;
     const proxy = new ModalProxy({
