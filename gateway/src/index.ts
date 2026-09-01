@@ -61,14 +61,20 @@ import {
   MAX_CUE_TOKENS,
   ScriptStore,
   CEILING_BY_BATCH,
-  ceilingRefusal,
-  findCeilingBreach,
   concatenateScript,
+  effectiveCueSettings,
   exportVtt,
   refreshScript,
   type Cue,
+  type ScriptDefaultsPatch,
+  type ScriptRecord,
 } from './script.js';
 import { runScript } from './cue-queue.js';
+import {
+  resolveVoiceIntent,
+  type ReferenceProvenance,
+  type VoiceIntentResolver,
+} from './voice-intent.js';
 
 /**
  * The server's concrete type. Spelled out because the instance carries a real
@@ -93,6 +99,8 @@ export interface ServerDeps {
   readonly references: ReferenceStore;
   readonly asr: AsrProxy;
   readonly ffmpeg: FfmpegStatus;
+  /** Optional in tests; production uses the shared pure resolver. */
+  readonly intentResolver?: VoiceIntentResolver;
 }
 
 /** The conservative CFG control, used until the fall-off probe has run. */
@@ -114,7 +122,7 @@ interface SpeechFields {
   instruction: string;
   cfgScale: number;
   seed: number;
-  mode: VoiceMode;
+  mode: VoiceMode | undefined;
   refText: string | undefined;
   refAudio: Buffer | undefined;
   refFilename: string | undefined;
@@ -124,8 +132,10 @@ interface SpeechFields {
   refEnd: number | undefined;
 }
 
-function asVoiceMode(value: string | undefined): VoiceMode {
-  return value === 'clone' || value === 'direction' ? value : 'design';
+function asVoiceMode(value: string | undefined): VoiceMode | undefined {
+  return value === 'design' || value === 'clone' || value === 'direction'
+    ? value
+    : undefined;
 }
 
 /**
@@ -267,6 +277,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
     asr,
     ffmpeg,
   } = deps;
+  const intentResolver = deps.intentResolver ?? resolveVoiceIntent;
   const app = Fastify({
     loggerInstance: logger,
     bodyLimit: MAX_AUDIO_UPLOAD_BYTES,
@@ -446,6 +457,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
     }
     let refAudio: Buffer | undefined;
     let refText = fields.refText;
+    let referenceProvenance: ReferenceProvenance | undefined;
 
     const sources = [fields.voiceId, fields.refAudio, fields.referenceId].filter(
       Boolean,
@@ -472,10 +484,15 @@ export function createServer(deps: ServerDeps): GatewayServer {
       // incapable of being the half-formed pair the vendor rejects.
       refAudio = voice.wav;
       refText = voice.record.transcript;
+      referenceProvenance = { kind: 'voice', id: fields.voiceId };
     } else if (fields.refAudio) {
       refAudio = await normaliseReference(fields.refAudio, {
         ffmpegAvailable: ffmpeg.available,
       });
+      referenceProvenance = {
+        kind: 'upload',
+        ...(fields.refFilename ? { filename: fields.refFilename } : {}),
+      };
     } else if (fields.referenceId) {
       if (fields.refStart === undefined || fields.refEnd === undefined) {
         throw new GatewayError(
@@ -505,32 +522,53 @@ export function createServer(deps: ServerDeps): GatewayServer {
       // A hand correction is allowed to replace recognition, but the default
       // always follows the exact snapped audio window.
       refText = fields.refText ?? window.transcript;
+      referenceProvenance = {
+        kind: 'staged',
+        id: fields.referenceId,
+        start: window.start,
+        end: window.end,
+      };
     }
 
     validateReferencePair({ hasAudio: Boolean(refAudio), refText });
-
-    // After the reference is resolved, not before: a library voice supplies the
-    // transcript, and the transcript is a text segment. Checking ahead of this
-    // is what let a 2707-character one through to raise `(2, 640)` on the GPU.
-    const breach = findCeilingBreach({
-      mode: fields.mode,
-      cfgScale: fields.cfgScale,
-      text: fields.text,
-      instruction: fields.instruction,
-      ...(refText ? { refText } : {}),
-    });
-    if (breach) {
-      const refusal = ceilingRefusal(breach, fields.mode);
-      throw new GatewayError('validation', refusal.message, { remedy: refusal.remedy });
-    }
-
-    const startedAt = performance.now();
-    const upstream = await proxy.speech({
+    const resolved = intentResolver({
       text: fields.text,
       instruction: fields.instruction,
       cfgScale: fields.cfgScale,
       seed: fields.seed,
-      ...(refAudio && refText ? { refAudio, refText } : {}),
+      ...(refAudio && refText && referenceProvenance
+        ? {
+            reference: {
+              audio: refAudio,
+              transcript: refText,
+              provenance: referenceProvenance,
+            },
+          }
+        : {}),
+      ...(fields.mode ? { legacyMode: fields.mode } : {}),
+    });
+    logger.info(
+      {
+        template: resolved.template,
+        batch: resolved.batch,
+        referenceKind: resolved.reference?.provenance.kind ?? null,
+        legacyMismatch: resolved.legacyMismatch,
+      },
+      'voice intent resolved',
+    );
+
+    const startedAt = performance.now();
+    const upstream = await proxy.speech({
+      text: resolved.text,
+      instruction: resolved.instruction,
+      cfgScale: resolved.cfgScale,
+      seed: resolved.seed,
+      ...(resolved.reference
+        ? {
+            refAudio: resolved.reference.audio,
+            refText: resolved.reference.transcript,
+          }
+        : {}),
     });
 
     let format: AudioFormat;
@@ -543,12 +581,12 @@ export function createServer(deps: ServerDeps): GatewayServer {
     }
 
     const provenance: ClipRequest = {
-      text: fields.text,
-      instruction: fields.instruction,
-      mode: fields.mode,
-      cfgScale: fields.cfgScale,
-      seed: fields.seed,
-      ...(refText ? { refText } : {}),
+      text: resolved.text,
+      instruction: resolved.instruction,
+      mode: resolved.derivedMode,
+      cfgScale: resolved.cfgScale,
+      seed: resolved.seed,
+      ...(resolved.reference ? { refText: resolved.reference.transcript } : {}),
       ...(fields.voiceId ? { voiceId: fields.voiceId } : {}),
     };
 
@@ -733,6 +771,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
     const contentType = request.headers['content-type'] ?? '';
     let source = '';
     let filename: string | undefined;
+    let defaults: ScriptDefaultsPatch | undefined;
 
     if (contentType.includes('multipart/form-data')) {
       for await (const part of (request as never as { parts(): AsyncIterable<any> }).parts()) {
@@ -742,17 +781,26 @@ export function createServer(deps: ServerDeps): GatewayServer {
         }
       }
     } else {
-      const body = (request.body ?? {}) as { source?: string; filename?: string };
+      const body = (request.body ?? {}) as {
+        source?: string;
+        filename?: string;
+        defaults?: ScriptDefaultsPatch;
+      };
       source = body.source ?? '';
       filename = body.filename;
+      defaults = body.defaults;
     }
     if (!source.trim()) {
       throw new GatewayError('validation', 'the dropped file was empty');
     }
-    return scripts.importFile({ source, ...(filename ? { filename } : {}) });
+    return scripts.importFile({
+      source,
+      ...(filename ? { filename } : {}),
+      ...(defaults ? { defaults } : {}),
+    });
   });
 
-  app.get('/api/scripts', async () => ({ scripts: scripts.list() }));
+  app.get('/api/scripts', async () => ({ scripts: scripts.summaries() }));
 
   app.get<{ Params: { id: string } }>('/api/scripts/:id', async (request) =>
     refreshScript(scripts.require(request.params.id), {
@@ -760,6 +808,18 @@ export function createServer(deps: ServerDeps): GatewayServer {
       voiceTranscripts: voiceTranscripts(),
     }),
   );
+
+  app.patch<{ Params: { id: string } }>('/api/scripts/:id', async (request) => {
+    const body = (request.body ?? {}) as { defaults?: ScriptDefaultsPatch };
+    if (!body.defaults || typeof body.defaults !== 'object') {
+      throw new GatewayError('validation', 'script defaults are required');
+    }
+    const updated = await scripts.patchDefaults(request.params.id, body.defaults);
+    return refreshScript(updated, {
+      cache,
+      voiceTranscripts: voiceTranscripts(),
+    });
+  });
 
   app.patch<{ Params: { id: string; cueId: string } }>(
     '/api/scripts/:id/cues/:cueId',
@@ -807,7 +867,15 @@ export function createServer(deps: ServerDeps): GatewayServer {
       onProgress: (progress) => {
         reply.raw.write(`event: progress\ndata: ${JSON.stringify(progress)}\n\n`);
       },
-      synthesize: (cue) => synthesizeCue(cue, { proxy, cache, voices, config }),
+      synthesize: (cue, currentScript) =>
+        synthesizeCue(cue, currentScript, {
+          proxy,
+          cache,
+          voices,
+          config,
+          logger,
+          intentResolver,
+        }),
     });
 
     await scripts.save(script);
@@ -866,31 +934,65 @@ export function createServer(deps: ServerDeps): GatewayServer {
  */
 async function synthesizeCue(
   cue: Cue,
+  script: ScriptRecord,
   deps: {
     proxy: ModalProxy;
     cache: ClipCache;
     voices: VoiceStore;
     config: GatewayConfig;
+    logger: Logger;
+    intentResolver: VoiceIntentResolver;
   },
 ): Promise<{ clipId: string; durationSeconds: number }> {
+  const settings = effectiveCueSettings(script, cue);
   let refAudio: Buffer | undefined;
   let refText: string | undefined;
-  let instruction = 'Speak clearly and naturally.';
+  const instruction = settings.instruction;
 
-  if (cue.voiceId) {
-    const voice = await deps.voices.read(cue.voiceId);
+  if (settings.voiceId) {
+    const voice = await deps.voices.read(settings.voiceId);
     refAudio = voice.wav;
     refText = voice.record.transcript;
-    instruction = voice.record.defaultDirection ?? instruction;
   }
+
+  const resolved = deps.intentResolver({
+    text: cue.text,
+    instruction,
+    cfgScale: settings.cfgScale,
+    seed: settings.seed,
+    ...(refAudio && refText && settings.voiceId
+      ? {
+          reference: {
+            audio: refAudio,
+            transcript: refText,
+            provenance: { kind: 'voice', id: settings.voiceId },
+          },
+        }
+      : {}),
+  });
+  deps.logger.info(
+    {
+      scriptId: script.id,
+      cueId: cue.id,
+      template: resolved.template,
+      batch: resolved.batch,
+      referenceKind: resolved.reference?.provenance.kind ?? null,
+    },
+    'script voice intent resolved',
+  );
 
   const startedAt = performance.now();
   const upstream = await deps.proxy.speech({
-    text: cue.text,
-    instruction,
-    cfgScale: cue.cfgScale,
-    seed: cue.seed,
-    ...(refAudio && refText ? { refAudio, refText } : {}),
+    text: resolved.text,
+    instruction: resolved.instruction,
+    cfgScale: resolved.cfgScale,
+    seed: resolved.seed,
+    ...(resolved.reference
+      ? {
+          refAudio: resolved.reference.audio,
+          refText: resolved.reference.transcript,
+        }
+      : {}),
   });
   const format = parseAudioFormat(upstream.headers);
 
@@ -911,12 +1013,12 @@ async function synthesizeCue(
     request: {
       text: cue.text,
       instruction,
-      mode: cue.voiceId ? 'clone' : 'design',
-      cfgScale: cue.cfgScale,
-      seed: cue.seed,
+      mode: resolved.derivedMode,
+      cfgScale: settings.cfgScale,
+      seed: settings.seed,
       ...(refText ? { refText } : {}),
-      ...(cue.voiceId ? { voiceId: cue.voiceId } : {}),
-      ...(cue.voiceName ? { voiceName: cue.voiceName } : {}),
+      ...(settings.voiceId ? { voiceId: settings.voiceId } : {}),
+      ...(settings.voiceName ? { voiceName: settings.voiceName } : {}),
     },
   });
 

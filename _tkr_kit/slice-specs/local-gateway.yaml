@@ -227,7 +227,7 @@ slice_specs:
       kind: commit
       ref: 17053ee
   - slice: 8
-    status: draft
+    status: done
     title: Staged reference resource
     purpose: Hold an uploaded recording once, with everything needed to choose a
       section of it, and send only that section.
@@ -261,8 +261,11 @@ slice_specs:
       still returns a usable reference. Two syntheses from one reference perform
       one upload and one transcription. Eviction removes the WAV and its sidecar
       together, and a voice promoted beforehand still reads.
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - slice: 9
-    status: draft
+    status: done
     title: Voice-intent resolver
     purpose: Make reference presence and one instruction the only authority for
       selecting a vendor request shape.
@@ -289,8 +292,11 @@ slice_specs:
       metadata, token ceiling, and provenance agree. Incomplete pairs and
       contradictory legacy modes cannot select the wrong template or call
       upstream.
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - slice: 10
-    status: draft
+    status: done
     title: Script defaults and cue overrides
     purpose: Persist common delivery once per script while keeping explicit cue
       differences and stale-only regeneration correct.
@@ -315,8 +321,11 @@ slice_specs:
       inheriting cues whose effective value changed. Instruction changes alter
       cache keys. Store reload restores defaults, overrides, and cue states
       exactly.
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - slice: 11
-    status: draft
+    status: done
     title: Unified speech and script API
     purpose: Expose the voice-intent contract to both one-off synthesis and
       persistent scripts without requiring a UI mode.
@@ -343,8 +352,11 @@ slice_specs:
       reopen documents, default patches persist, cue overrides win, and
       stale-only runs call the resolver once per stale cue. Legacy clients
       remain readable during migration.
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - slice: 12
-    status: draft
+    status: done
     title: Wire the voice-intent contract
     purpose: Compose one resolver and one normalized request path across the gateway
       without duplicating request-shape logic.
@@ -366,8 +378,11 @@ slice_specs:
       Both entry points invoke the same resolver. Structured logs contain
       identifiers and derived shape but no content. Restart tests confirm
       migrated records and cache entries remain usable.
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - slice: 13
-    status: draft
+    status: done
     title: Voice-intent contract regression suite
     purpose: Pin the shared contract, migrations, and selective script invalidation
       before the UI depends on them.
@@ -385,3 +400,6 @@ slice_specs:
       mismatches, incomplete pairs, default/override combinations, deleted
       voices, migration and restart, stale-only reruns, and structured-log
       redaction.
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.

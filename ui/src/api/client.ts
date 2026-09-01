@@ -12,7 +12,12 @@
 import type { Clip } from '../state/history.js';
 import type { Health } from '../state/readiness.js';
 import type { StagedReferenceResource } from '../state/reference.js';
-import type { Script } from '../state/script.js';
+import type {
+  CuePatch,
+  Script,
+  ScriptDefaults,
+  ScriptSummary,
+} from '../state/script.js';
 import type { Voice } from '../state/voices.js';
 
 /** A typed failure from the gateway. */
@@ -63,7 +68,8 @@ export interface SpeechRequest {
   readonly instruction: string;
   readonly cfgScale: number;
   readonly seed: number;
-  readonly mode: 'design' | 'clone' | 'direction';
+  /** Optional only for legacy callers; the gateway derives shape from reference presence. */
+  readonly mode?: 'design' | 'clone' | 'direction';
   /** A recorded or uploaded reference. */
   readonly refAudio?: File | Blob;
   /** A reference staged once through the gateway, with a selected window. */
@@ -93,7 +99,7 @@ export function speechForm(request: SpeechRequest): FormData {
   form.set('instruction', request.instruction);
   form.set('cfg_scale', String(request.cfgScale));
   form.set('seed', String(request.seed));
-  form.set('mode', request.mode);
+  if (request.mode) form.set('mode', request.mode);
   if (request.voiceId) form.set('voice_id', request.voiceId);
   if (request.referenceId) form.set('reference_id', request.referenceId);
   if (request.refStart !== undefined) form.set('ref_start', String(request.refStart));
@@ -242,14 +248,25 @@ export class GatewayClient {
   }
 
   /** Import a dropped VTT or text file as a cue list. */
-  async importScript(source: string, filename: string): Promise<Script> {
+  async importScript(
+    source: string,
+    filename: string,
+    defaults?: Partial<ScriptDefaults>,
+  ): Promise<Script> {
     return unwrap<Script>(
       await this.#fetch('/api/scripts', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ source, filename }),
+        body: JSON.stringify({ source, filename, ...(defaults ? { defaults } : {}) }),
       }),
     );
+  }
+
+  /** List local script documents without loading every cue body. */
+  async scripts(): Promise<ScriptSummary[]> {
+    return (
+      await unwrap<{ scripts: ScriptSummary[] }>(await this.#fetch('/api/scripts'))
+    ).scripts;
   }
 
   /** Read a script, with every cue's state refreshed against the cache. */
@@ -257,11 +274,25 @@ export class GatewayClient {
     return unwrap<Script>(await this.#fetch(`/api/scripts/${id}`));
   }
 
+  /** Update common delivery values and receive selectively invalidated cues. */
+  async updateScript(
+    id: string,
+    defaults: Partial<ScriptDefaults>,
+  ): Promise<Script> {
+    return unwrap<Script>(
+      await this.#fetch(`/api/scripts/${id}`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ defaults }),
+      }),
+    );
+  }
+
   /** Edit one cue. */
   async patchCue(
     scriptId: string,
     cueId: string,
-    patch: Record<string, unknown>,
+    patch: CuePatch | Record<string, unknown>,
   ): Promise<Script> {
     return unwrap<Script>(
       await this.#fetch(`/api/scripts/${scriptId}/cues/${cueId}`, {
@@ -313,5 +344,12 @@ export class GatewayClient {
   /** Export URLs, which the browser fetches directly. */
   scriptExportUrls(id: string): { vtt: string; wav: string } {
     return { vtt: `/api/scripts/${id}/export.vtt`, wav: `/api/scripts/${id}/export.wav` };
+  }
+
+  /** Fetch one script export so application activity covers the whole operation. */
+  async exportScript(id: string, format: 'vtt' | 'wav'): Promise<Blob> {
+    const response = await this.#fetch(`/api/scripts/${id}/export.${format}`);
+    if (!response.ok) return unwrap<Blob>(response);
+    return response.blob();
   }
 }

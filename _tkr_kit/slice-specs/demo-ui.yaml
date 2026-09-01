@@ -237,7 +237,7 @@ slice_specs:
       kind: commit
       ref: 3372dec
   - slice: 8
-    status: draft
+    status: done
     title: Single bounded reference selection
     purpose: Let the operator move one measured, word-safe reference window across a
       recording and preview exactly what will be sent, without managing two
@@ -271,8 +271,12 @@ slice_specs:
       hand edit survives movement and can be restored. Missing evidence uses and
       labels the conservative fallback. Reduced-motion and screen-reader
       behavior remain usable.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - slice: 9
-    status: draft
+    status: done
     title: Voice intent and workspace state
     purpose: Replace mode-driven UI state with task state that can move intact
       between Voices, Speak, and Scripts.
@@ -298,8 +302,12 @@ slice_specs:
       every workspace field. Legacy drafts migrate without text loss. Corrupt
       fields fall back independently. No state transition can produce two
       authoritative instructions.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - slice: 10
-    status: draft
+    status: done
     title: Task navigation and processing feedback
     purpose: Make the app read as three functional tools while keeping all work and
       processing state visible.
@@ -324,8 +332,12 @@ slice_specs:
       accurate copy; completion and rejection remove only their owner.
       `aria-live`, reduced-motion CSS, focus visibility, and
       no-toast/no-confirmation rules are asserted.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - slice: 11
-    status: draft
+    status: done
     title: Voices workspace
     purpose: Combine voice creation and durable library management into one tool
       organised around the voice lifecycle.
@@ -350,8 +362,12 @@ slice_specs:
       VoiceSpec. Reference selection stays bounded to 14.08/28.16 by active
       branch. Save, rename, delete/undo, provenance, and cross-tool actions are
       covered. Keyboard and screen-reader operation match pointer behavior.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - slice: 12
-    status: draft
+    status: done
     title: Speak workspace
     purpose: Make one-off synthesis a clear voice-plus-delivery task with exactly
       one instruction.
@@ -376,8 +392,12 @@ slice_specs:
       direction field wins. Generate blockers, readiness/wake,
       replay-without-reset, variation, promotion, activity, stream failure, and
       accessibility are covered.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - slice: 13
-    status: draft
+    status: done
     title: Scripts workspace
     purpose: Turn the existing cue editor into a persistent top-level document tool
       with common defaults and explicit exceptions.
@@ -403,8 +423,12 @@ slice_specs:
       override precedence, clearing overrides, selective stale marking,
       progress/failure continuation, drift, and exports are covered. Existing
       one-edited-cue/one-request behavior remains pinned.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - slice: 14
-    status: draft
+    status: done
     title: Wire voice lifecycle workspaces
     purpose: Compose the new tools over shared state and injected services without
       duplicating domain rules.
@@ -428,8 +452,12 @@ slice_specs:
       traverse Voices → Speak → Scripts → clip promotion. Partial-load, failure
       rollback, reload restoration, readiness, and concurrent activity are
       covered without network or browser globals leaking into pure modules.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - slice: 15
-    status: draft
+    status: done
     title: Voice workspace interaction suite
     purpose: Verify the redesigned lifecycle as users experience it and prevent old
       mode-driven behavior from returning.
@@ -448,3 +476,7 @@ slice_specs:
       overlap/failure/reduced motion, contextual errors,
       keyboard/focus/screen-reader semantics, responsive layout, and existing
       streaming/cache behavior.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.

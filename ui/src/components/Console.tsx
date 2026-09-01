@@ -88,7 +88,7 @@ export function Console(props: ConsoleProps): JSX.Element {
       </div>
 
       <label className="field">
-        <p className="caption caption--ink">Instruction</p>
+        <p className="caption caption--ink">Delivery instruction</p>
         <input
           type="text"
           aria-label="Instruction"

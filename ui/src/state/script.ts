@@ -20,8 +20,10 @@ export interface Cue {
   readonly text: string;
   readonly voiceId: string | null;
   readonly voiceName: string | null;
+  readonly instruction?: string;
   readonly cfgScale: number;
   readonly seed: number;
+  readonly overrides?: CueOverrides;
   readonly targetStart: number | null;
   readonly targetEnd: number | null;
   readonly state: CueState;
@@ -29,6 +31,25 @@ export interface Cue {
   readonly actualSeconds: number | null;
   readonly driftSeconds: number | null;
   readonly problem: string | null;
+}
+
+/** Common delivery values inherited by cues without an explicit exception. */
+export interface ScriptDefaults {
+  readonly voiceId: string | null;
+  readonly voiceName: string | null;
+  readonly instruction: string;
+  readonly cfgScale: number;
+  readonly seedMode: 'fixed' | 'increment';
+  readonly seed: number;
+}
+
+/** Nullable exceptions; null means inherit the script-level value. */
+export interface CueOverrides {
+  readonly voiceId: string | null;
+  readonly voiceName: string | null;
+  readonly instruction: string | null;
+  readonly cfgScale: number | null;
+  readonly seed: number | null;
 }
 
 /** A block of an imported file that could not be read. */
@@ -43,8 +64,177 @@ export interface Script {
   readonly id: string;
   readonly name: string;
   readonly source: 'vtt' | 'text';
+  readonly createdAt?: number;
+  readonly updatedAt?: number;
+  readonly defaults?: ScriptDefaults;
   readonly cues: Cue[];
   readonly problems: CueProblem[];
+}
+
+/** Document metadata loaded before the active cue body. */
+export interface ScriptSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly source: Script['source'];
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly cueCount: number;
+  readonly doneCount: number;
+  readonly failedCount: number;
+  readonly defaults: ScriptDefaults;
+}
+
+/** Neutral common values for old records and first imports. */
+export const INITIAL_SCRIPT_DEFAULTS: ScriptDefaults = {
+  voiceId: null,
+  voiceName: null,
+  instruction: 'Speak clearly and naturally.',
+  cfgScale: 1,
+  seedMode: 'fixed',
+  seed: 42,
+};
+
+/** Fully effective delivery values shown and sent for a cue. */
+export interface EffectiveCueSettings {
+  readonly voiceId: string | null;
+  readonly voiceName: string | null;
+  readonly instruction: string;
+  readonly cfgScale: number;
+  readonly seed: number;
+}
+
+/**
+ * Resolve cue exceptions over script defaults.
+ *
+ * @param script - Script carrying common values.
+ * @param cue - Cue carrying nullable overrides.
+ * @returns The values that determine validation and generated audio.
+ */
+export function effectiveCueSettings(
+  script: Pick<Script, 'defaults'>,
+  cue: Cue,
+): EffectiveCueSettings {
+  const defaults = script.defaults ?? INITIAL_SCRIPT_DEFAULTS;
+  const overrides = cue.overrides;
+  if (!overrides) {
+    return {
+      voiceId: cue.voiceId,
+      voiceName: cue.voiceName,
+      instruction: cue.instruction ?? defaults.instruction,
+      cfgScale: cue.cfgScale,
+      seed: cue.seed,
+    };
+  }
+  return {
+    voiceId: overrides.voiceId ?? defaults.voiceId,
+    voiceName: overrides.voiceName ?? defaults.voiceName,
+    instruction: overrides.instruction ?? defaults.instruction,
+    cfgScale: overrides.cfgScale ?? defaults.cfgScale,
+    seed:
+      overrides.seed ??
+      (defaults.seedMode === 'increment' ? defaults.seed + cue.index : defaults.seed),
+  };
+}
+
+/** API patch shape for cue text and nullable effective-setting exceptions. */
+export interface CuePatch {
+  readonly text?: string;
+  readonly overrides?: Partial<CueOverrides>;
+}
+
+/**
+ * Apply an optimistic cue patch while preserving every unrelated cue.
+ *
+ * @param script - Current document.
+ * @param cueId - Cue receiving the edit.
+ * @param patch - Text or explicit effective-setting changes.
+ * @returns A new document with exactly one stale cue.
+ */
+export function applyCuePatch(
+  script: Script,
+  cueId: string,
+  patch: CuePatch,
+): Script {
+  return {
+    ...script,
+    cues: script.cues.map((cue) =>
+      cue.id !== cueId
+        ? cue
+        : {
+            ...cue,
+            ...(patch.text === undefined ? {} : { text: patch.text }),
+            ...(patch.overrides
+              ? {
+                  overrides: {
+                    voiceId: null,
+                    voiceName: null,
+                    instruction: null,
+                    cfgScale: null,
+                    seed: null,
+                    ...cue.overrides,
+                    ...patch.overrides,
+                  },
+                }
+              : {}),
+            state: 'stale' as const,
+            actualSeconds: null,
+            driftSeconds: null,
+            problem: null,
+          },
+    ),
+  };
+}
+
+function sameEffectiveSettings(
+  left: EffectiveCueSettings,
+  right: EffectiveCueSettings,
+): boolean {
+  return (
+    left.voiceId === right.voiceId &&
+    left.voiceName === right.voiceName &&
+    left.instruction === right.instruction &&
+    left.cfgScale === right.cfgScale &&
+    left.seed === right.seed
+  );
+}
+
+/**
+ * Apply script defaults optimistically and stale only cues whose effective
+ * generation settings actually changed.
+ *
+ * @param script - Current document.
+ * @param patch - Script-level values changed by the operator.
+ * @returns A document matching the gateway's selective invalidation rule.
+ */
+export function applyScriptDefaults(
+  script: Script,
+  patch: Partial<ScriptDefaults>,
+): Script {
+  const next: Script = {
+    ...script,
+    defaults: {
+      ...INITIAL_SCRIPT_DEFAULTS,
+      ...script.defaults,
+      ...patch,
+    },
+  };
+  return {
+    ...next,
+    cues: script.cues.map((cue) =>
+      sameEffectiveSettings(
+        effectiveCueSettings(script, cue),
+        effectiveCueSettings(next, cue),
+      )
+        ? cue
+        : {
+            ...cue,
+            state: 'stale' as const,
+            actualSeconds: null,
+            driftSeconds: null,
+            problem: null,
+          },
+    ),
+  };
 }
 
 /** How each state reads on a row. */

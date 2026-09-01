@@ -14,6 +14,9 @@ import { MAX_SAMPLE_RATE, MIN_SAMPLE_RATE, SUPPORTED_FORMAT } from './transport.
 /** The three ways a voice can be specified, as the UI presents them. */
 export type VoiceMode = 'design' | 'clone' | 'direction';
 
+/** Neutral delivery used by legacy scripts and omitted from their old cache key. */
+export const DEFAULT_DELIVERY_INSTRUCTION = 'Speak clearly and naturally.';
+
 /** The request that produced a clip, kept beside it. */
 export interface ClipRequest {
   /** The line that was spoken. */
@@ -155,13 +158,23 @@ export function cueCacheKey(parts: {
   voiceId: string | null;
   cfgScale: number;
   seed: number;
+  instruction?: string;
 }): string {
-  const canonical = JSON.stringify([
+  const values: Array<string | number> = [
     parts.text,
     parts.voiceId ?? '',
     parts.cfgScale,
     parts.seed,
-  ]);
+  ];
+  // Preserve legacy cache identities for the neutral instruction. Any visible
+  // non-neutral delivery becomes part of the key so it cannot reuse stale audio.
+  if (
+    parts.instruction !== undefined &&
+    parts.instruction !== DEFAULT_DELIVERY_INSTRUCTION
+  ) {
+    values.push(parts.instruction);
+  }
+  const canonical = JSON.stringify(values);
   // FNV-1a: short, stable, and this is a cache key rather than a security
   // boundary, so a non-cryptographic hash is the right tool.
   let hash = 0x811c9dc5;

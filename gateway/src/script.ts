@@ -23,7 +23,11 @@ import { randomUUID } from 'node:crypto';
 import type { Logger } from 'pino';
 
 import type { ClipCache } from './cache.js';
-import { cueCacheKey, type VoiceMode } from './cache-index.js';
+import {
+  DEFAULT_DELIVERY_INSTRUCTION,
+  cueCacheKey,
+  type VoiceMode,
+} from './cache-index.js';
 import { GatewayError } from './proxy.js';
 import { frameWav, type AudioFormat } from './transport.js';
 import { emitVtt, parseScriptFile, type CueProblem } from './vtt.js';
@@ -289,7 +293,7 @@ export function cueMode(cue: Pick<Cue, 'voiceId'>): VoiceMode {
  * @returns The check's input.
  */
 export function cueCeilingInput(
-  cue: Pick<Cue, 'voiceId' | 'text' | 'cfgScale'>,
+  cue: Pick<Cue, 'voiceId' | 'text' | 'instruction' | 'cfgScale'>,
   transcripts: ReadonlyMap<string, string>,
 ): CeilingInput {
   const refText = cue.voiceId ? transcripts.get(cue.voiceId) : undefined;
@@ -297,6 +301,7 @@ export function cueCeilingInput(
     mode: cueMode(cue),
     cfgScale: cue.cfgScale,
     text: cue.text,
+    instruction: cue.instruction ?? DEFAULT_DELIVERY_INSTRUCTION,
     ...(refText ? { refText } : {}),
   };
 }
@@ -310,8 +315,12 @@ export interface Cue {
   voiceId: string | null;
   /** That voice's name at assignment time, so a deleted voice is still legible. */
   voiceName: string | null;
+  /** Effective delivery after script defaults and cue overrides are resolved. */
+  instruction?: string;
   cfgScale: number;
   seed: number;
+  /** Explicit exceptions. Null means inherit the script default. */
+  overrides?: CueOverrides;
   /** Imported target start, in seconds. Null for untimed plain text. */
   targetStart: number | null;
   /** Imported target end, in seconds. Null for untimed plain text. */
@@ -327,6 +336,56 @@ export interface Cue {
   problem: string | null;
 }
 
+/** How inherited cue seeds are derived. */
+export type ScriptSeedMode = 'fixed' | 'increment';
+
+/** Common settings inherited by every cue without an explicit exception. */
+export interface ScriptDefaults {
+  readonly voiceId: string | null;
+  readonly voiceName: string | null;
+  readonly instruction: string;
+  readonly cfgScale: number;
+  readonly seedMode: ScriptSeedMode;
+  readonly seed: number;
+}
+
+/** Per-cue settings. Null means the corresponding script default is authoritative. */
+export interface CueOverrides {
+  voiceId: string | null;
+  voiceName: string | null;
+  instruction: string | null;
+  cfgScale: number | null;
+  seed: number | null;
+}
+
+/** Fully resolved settings used for validation, caching, and synthesis. */
+export interface EffectiveCueSettings {
+  readonly voiceId: string | null;
+  readonly voiceName: string | null;
+  readonly instruction: string;
+  readonly cfgScale: number;
+  readonly seed: number;
+}
+
+/** Neutral defaults applied to newly imported and migrated scripts. */
+export const INITIAL_SCRIPT_DEFAULTS: ScriptDefaults = {
+  voiceId: null,
+  voiceName: null,
+  instruction: DEFAULT_DELIVERY_INSTRUCTION,
+  cfgScale: 1,
+  seedMode: 'fixed',
+  seed: 42,
+};
+
+/** No explicit cue exceptions; every value follows the script defaults. */
+export const EMPTY_CUE_OVERRIDES: CueOverrides = {
+  voiceId: null,
+  voiceName: null,
+  instruction: null,
+  cfgScale: null,
+  seed: null,
+};
+
 /** A script and its cues. */
 export interface ScriptRecord {
   readonly id: string;
@@ -335,9 +394,24 @@ export interface ScriptRecord {
   updatedAt: number;
   /** Which parser produced the cues. */
   source: 'vtt' | 'text';
+  /** Optional only so pre-contract records remain structurally readable. */
+  defaults?: ScriptDefaults;
   cues: Cue[];
   /** Blocks that could not be read, kept so nothing is silently dropped. */
   problems: CueProblem[];
+}
+
+/** Lightweight script row returned before any document body is loaded. */
+export interface ScriptSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly source: ScriptRecord['source'];
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly cueCount: number;
+  readonly doneCount: number;
+  readonly failedCount: number;
+  readonly defaults: ScriptDefaults;
 }
 
 /** The fields a cue edit may change. */
@@ -347,6 +421,112 @@ export interface CuePatch {
   voiceName?: string | null;
   cfgScale?: number;
   seed?: number;
+  instruction?: string;
+  overrides?: Partial<CueOverrides>;
+}
+
+/** Fields accepted when the script-level defaults are changed. */
+export type ScriptDefaultsPatch = Partial<ScriptDefaults>;
+
+function validCfgScale(value: number): boolean {
+  return Number.isFinite(value) && value > 0;
+}
+
+function validSeed(value: number): boolean {
+  return Number.isInteger(value);
+}
+
+function canonicalDefaults(value: ScriptDefaults | undefined): ScriptDefaults {
+  if (!value) return { ...INITIAL_SCRIPT_DEFAULTS };
+  return {
+    voiceId: typeof value.voiceId === 'string' ? value.voiceId : null,
+    voiceName: typeof value.voiceName === 'string' ? value.voiceName : null,
+    instruction:
+      typeof value.instruction === 'string' && value.instruction.trim()
+        ? value.instruction
+        : DEFAULT_DELIVERY_INSTRUCTION,
+    cfgScale: validCfgScale(value.cfgScale) ? value.cfgScale : 1,
+    seedMode: value.seedMode === 'increment' ? 'increment' : 'fixed',
+    seed: validSeed(value.seed) ? value.seed : 42,
+  };
+}
+
+function canonicalOverrides(
+  cue: Pick<Cue, 'voiceId' | 'voiceName' | 'instruction' | 'cfgScale' | 'seed' | 'overrides'>,
+  defaults: ScriptDefaults,
+): CueOverrides {
+  if (cue.overrides) {
+    return {
+      voiceId: typeof cue.overrides.voiceId === 'string' ? cue.overrides.voiceId : null,
+      voiceName: typeof cue.overrides.voiceName === 'string' ? cue.overrides.voiceName : null,
+      instruction:
+        typeof cue.overrides.instruction === 'string' && cue.overrides.instruction.trim()
+          ? cue.overrides.instruction
+          : null,
+      cfgScale:
+        typeof cue.overrides.cfgScale === 'number' && validCfgScale(cue.overrides.cfgScale)
+          ? cue.overrides.cfgScale
+          : null,
+      seed:
+        typeof cue.overrides.seed === 'number' && validSeed(cue.overrides.seed)
+          ? cue.overrides.seed
+          : null,
+    };
+  }
+
+  // Version-one records stored only effective values. Preserve each difference
+  // as an explicit exception while introducing neutral script defaults.
+  return {
+    voiceId: cue.voiceId ?? null,
+    voiceName: cue.voiceName ?? null,
+    instruction:
+      cue.instruction && cue.instruction !== defaults.instruction
+        ? cue.instruction
+        : null,
+    cfgScale: cue.cfgScale !== defaults.cfgScale ? cue.cfgScale : null,
+    seed: cue.seed !== defaults.seed ? cue.seed : null,
+  };
+}
+
+/**
+ * Resolve one cue's inherited and explicit delivery values.
+ *
+ * @param script - Script carrying the common defaults.
+ * @param cue - Cue carrying nullable exceptions.
+ * @returns The one effective settings object used by every downstream rule.
+ */
+export function effectiveCueSettings(
+  script: Pick<ScriptRecord, 'defaults'>,
+  cue: Pick<Cue, 'index' | 'voiceId' | 'voiceName' | 'instruction' | 'cfgScale' | 'seed' | 'overrides'>,
+): EffectiveCueSettings {
+  const defaults = canonicalDefaults(script.defaults);
+  const overrides = canonicalOverrides(cue, defaults);
+  return {
+    voiceId: overrides.voiceId ?? defaults.voiceId,
+    voiceName: overrides.voiceName ?? defaults.voiceName,
+    instruction: overrides.instruction ?? defaults.instruction,
+    cfgScale: overrides.cfgScale ?? defaults.cfgScale,
+    seed:
+      overrides.seed ??
+      (defaults.seedMode === 'increment' ? defaults.seed + cue.index : defaults.seed),
+  };
+}
+
+function materializeCue(script: ScriptRecord, cue: Cue): void {
+  const effective = effectiveCueSettings(script, cue);
+  cue.voiceId = effective.voiceId;
+  cue.voiceName = effective.voiceName;
+  cue.instruction = effective.instruction;
+  cue.cfgScale = effective.cfgScale;
+  cue.seed = effective.seed;
+  cue.overrides = canonicalOverrides(cue, canonicalDefaults(script.defaults));
+  cue.clipId = clipIdFor(cue);
+}
+
+function migrateScript(record: ScriptRecord): ScriptRecord {
+  record.defaults = canonicalDefaults(record.defaults);
+  for (const cue of record.cues) materializeCue(record, cue);
+  return record;
 }
 
 /**
@@ -355,12 +535,15 @@ export interface CuePatch {
  * @param cue - The cue whose audio is being keyed.
  * @returns A stable key over text, voice, cfg and seed.
  */
-export function clipIdFor(cue: Pick<Cue, 'text' | 'voiceId' | 'cfgScale' | 'seed'>): string {
+export function clipIdFor(
+  cue: Pick<Cue, 'text' | 'voiceId' | 'instruction' | 'cfgScale' | 'seed'>,
+): string {
   return `cue-${cueCacheKey({
     text: cue.text,
     voiceId: cue.voiceId,
     cfgScale: cue.cfgScale,
     seed: cue.seed,
+    instruction: cue.instruction ?? DEFAULT_DELIVERY_INSTRUCTION,
   })}`;
 }
 
@@ -380,7 +563,7 @@ export function refreshScript(
   context: { cache: ClipCache; voiceTranscripts: ReadonlyMap<string, string> },
 ): ScriptRecord {
   for (const cue of script.cues) {
-    cue.clipId = clipIdFor(cue);
+    materializeCue(script, cue);
 
     if (cue.voiceId && !context.voiceTranscripts.has(cue.voiceId)) {
       cue.state = 'unrunnable';
@@ -437,7 +620,7 @@ export class ScriptStore {
       try {
         const parsed = JSON.parse(await readFile(join(this.#dir, entry), 'utf8')) as ScriptRecord;
         if (parsed && typeof parsed.id === 'string' && Array.isArray(parsed.cues)) {
-          this.#records.set(parsed.id, parsed);
+          this.#records.set(parsed.id, migrateScript(parsed));
         }
       } catch (error) {
         this.#log.warn({ entry, err: error }, 'script unreadable; skipping');
@@ -462,11 +645,16 @@ export class ScriptStore {
     name?: string;
     cfgScale?: number;
     seed?: number;
+    defaults?: ScriptDefaultsPatch;
   }): Promise<ScriptRecord> {
     const parsed = parseScriptFile(input.source, input.filename);
     const now = Date.now();
-    const cfgScale = input.cfgScale ?? 1.0;
-    const seed = input.seed ?? 42;
+    const defaults = canonicalDefaults({
+      ...INITIAL_SCRIPT_DEFAULTS,
+      ...(input.cfgScale === undefined ? {} : { cfgScale: input.cfgScale }),
+      ...(input.seed === undefined ? {} : { seed: input.seed }),
+      ...input.defaults,
+    });
 
     const record: ScriptRecord = {
       id: randomUUID(),
@@ -474,22 +662,27 @@ export class ScriptStore {
       createdAt: now,
       updatedAt: now,
       source: parsed.format,
+      defaults,
       problems: parsed.problems,
       cues: parsed.cues.map((cue, index) => {
         const base = {
           text: cue.text,
-          voiceId: null as string | null,
-          cfgScale,
-          seed,
+          voiceId: defaults.voiceId,
+          instruction: defaults.instruction,
+          cfgScale: defaults.cfgScale,
+          seed:
+            defaults.seedMode === 'increment' ? defaults.seed + index : defaults.seed,
         };
         return {
           id: randomUUID(),
           index,
           text: cue.text,
-          voiceId: null,
-          voiceName: null,
-          cfgScale,
-          seed,
+          voiceId: base.voiceId,
+          voiceName: defaults.voiceName,
+          instruction: base.instruction,
+          cfgScale: base.cfgScale,
+          seed: base.seed,
+          overrides: { ...EMPTY_CUE_OVERRIDES },
           targetStart: cue.targetStart,
           targetEnd: cue.targetEnd,
           state: 'queued' as CueState,
@@ -515,6 +708,27 @@ export class ScriptStore {
   }
 
   /**
+   * List document metadata without requiring clients to load every cue body.
+   *
+   * @returns Newest documents first.
+   */
+  summaries(): ScriptSummary[] {
+    return this.list().map((record) => ({
+      id: record.id,
+      name: record.name,
+      source: record.source,
+      createdAt: record.createdAt,
+      updatedAt: record.updatedAt,
+      cueCount: record.cues.length,
+      doneCount: record.cues.filter((cue) => cue.state === 'done').length,
+      failedCount: record.cues.filter(
+        (cue) => cue.state === 'failed' || cue.state === 'unrunnable',
+      ).length,
+      defaults: canonicalDefaults(record.defaults),
+    }));
+  }
+
+  /**
    * Fetch a script.
    *
    * @param id - The script id.
@@ -524,7 +738,7 @@ export class ScriptStore {
   require(id: string): ScriptRecord {
     const record = this.#records.get(id);
     if (!record) throw new GatewayError('not-found', `no script with id ${id}`);
-    return record;
+    return migrateScript(record);
   }
 
   /**
@@ -544,15 +758,75 @@ export class ScriptStore {
     const cue = record.cues.find((candidate) => candidate.id === cueId);
     if (!cue) throw new GatewayError('not-found', `no cue with id ${cueId}`);
 
+    const previousClipId = cue.clipId;
     if (patch.text !== undefined) cue.text = patch.text;
-    if (patch.voiceId !== undefined) cue.voiceId = patch.voiceId;
-    if (patch.voiceName !== undefined) cue.voiceName = patch.voiceName;
-    if (patch.cfgScale !== undefined) cue.cfgScale = patch.cfgScale;
-    if (patch.seed !== undefined) cue.seed = patch.seed;
-    cue.clipId = clipIdFor(cue);
+    const overrides: CueOverrides = {
+      ...EMPTY_CUE_OVERRIDES,
+      ...cue.overrides,
+      ...patch.overrides,
+    };
+    if (patch.voiceId !== undefined) overrides.voiceId = patch.voiceId;
+    if (patch.voiceName !== undefined) overrides.voiceName = patch.voiceName;
+    if (patch.instruction !== undefined) overrides.instruction = patch.instruction;
+    if (patch.cfgScale !== undefined) overrides.cfgScale = patch.cfgScale;
+    if (patch.seed !== undefined) overrides.seed = patch.seed;
+    if (overrides.cfgScale !== null && !validCfgScale(overrides.cfgScale)) {
+      throw new GatewayError('validation', 'cue cfgScale must be a positive number');
+    }
+    if (overrides.seed !== null && !validSeed(overrides.seed)) {
+      throw new GatewayError('validation', 'cue seed must be an integer');
+    }
+    cue.overrides = overrides;
+    materializeCue(record, cue);
     cue.problem = null;
-    if (cue.state === 'failed') cue.state = 'queued';
+    if (cue.clipId !== previousClipId) {
+      cue.state = 'stale';
+      cue.actualSeconds = null;
+      cue.driftSeconds = null;
+    } else if (cue.state === 'failed') cue.state = 'queued';
 
+    record.updatedAt = Date.now();
+    await this.#persist(record);
+    return record;
+  }
+
+  /**
+   * Change common script delivery and invalidate only inheriting cues whose
+   * effective cache identity changes.
+   *
+   * @param scriptId - Script to update.
+   * @param patch - Validated common settings.
+   * @returns The updated canonical script.
+   */
+  async patchDefaults(
+    scriptId: string,
+    patch: ScriptDefaultsPatch,
+  ): Promise<ScriptRecord> {
+    const record = this.require(scriptId);
+    if (patch.cfgScale !== undefined && !validCfgScale(patch.cfgScale)) {
+      throw new GatewayError('validation', 'script cfgScale must be a positive number');
+    }
+    if (patch.seed !== undefined && !validSeed(patch.seed)) {
+      throw new GatewayError('validation', 'script seed must be an integer');
+    }
+    if (patch.instruction !== undefined && !patch.instruction.trim()) {
+      throw new GatewayError('validation', 'script instruction cannot be empty');
+    }
+
+    const previousIds = new Map(record.cues.map((cue) => [cue.id, cue.clipId]));
+    record.defaults = canonicalDefaults({
+      ...canonicalDefaults(record.defaults),
+      ...patch,
+    });
+    for (const cue of record.cues) {
+      materializeCue(record, cue);
+      if (previousIds.get(cue.id) !== cue.clipId) {
+        cue.state = 'stale';
+        cue.actualSeconds = null;
+        cue.driftSeconds = null;
+        cue.problem = null;
+      }
+    }
     record.updatedAt = Date.now();
     await this.#persist(record);
     return record;
@@ -567,7 +841,8 @@ export class ScriptStore {
    */
   async replaceCues(scriptId: string, cues: Cue[]): Promise<ScriptRecord> {
     const record = this.require(scriptId);
-    record.cues = cues.map((cue, index) => ({ ...cue, index, clipId: clipIdFor(cue) }));
+    record.cues = cues.map((cue, index) => ({ ...cue, index }));
+    for (const cue of record.cues) materializeCue(record, cue);
     record.updatedAt = Date.now();
     await this.#persist(record);
     return record;
@@ -579,6 +854,7 @@ export class ScriptStore {
    * @param record - The script to write.
    */
   async save(record: ScriptRecord): Promise<void> {
+    migrateScript(record);
     record.updatedAt = Date.now();
     await this.#persist(record);
   }

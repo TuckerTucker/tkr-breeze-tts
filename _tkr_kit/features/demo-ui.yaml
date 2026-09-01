@@ -226,7 +226,7 @@ features:
       kind: commit
       ref: 3372dec
   - name: reference-trimmer
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - ui/src/App.tsx
@@ -260,8 +260,12 @@ features:
       - Transcription and trim-at-send (local-gateway reference-staging).
       - Saving a trimmed reference as a voice, which belongs to the voice
         lifecycle workspace.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - name: voice-workspaces
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - ui/src/App.tsx
@@ -326,3 +330,7 @@ features:
       local-gateway/feature/voice-intent-contract: Speak and Scripts consume the
         unified request shape, persisted script defaults, and cue overrides
         before final UI wiring.
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.

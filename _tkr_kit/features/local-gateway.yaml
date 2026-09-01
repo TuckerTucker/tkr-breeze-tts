@@ -234,7 +234,7 @@ features:
       kind: commit
       ref: 17053ee
   - name: reference-staging
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - gateway/src/index.ts
@@ -270,8 +270,11 @@ features:
       - Drawing the waveform or dragging the handles (demo-ui).
       - The voice library, which keeps its own copy and outlives any staged
         reference.
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - name: voice-intent-contract
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - gateway/src/index.ts
@@ -318,3 +321,6 @@ features:
       - local-gateway/feature/voice-library
       - local-gateway/feature/script-runner
       - local-gateway/feature/input-ceiling
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.

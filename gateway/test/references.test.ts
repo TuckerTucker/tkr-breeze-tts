@@ -24,6 +24,11 @@ import { ScriptStore } from '../src/script.js';
 import { frameWav } from '../src/transport.js';
 import { VoiceStore } from '../src/voices.js';
 import {
+  resolveVoiceIntent,
+  type VoiceIntent,
+  type VoiceIntentResolver,
+} from '../src/voice-intent.js';
+import {
   makeAudioFixtures,
   makePcm,
   silentLogger,
@@ -77,12 +82,14 @@ interface TestServer {
   readonly config: ReturnType<typeof stubConfig>;
   readonly references: ReferenceStore;
   readonly voices: VoiceStore;
+  readonly scripts: ScriptStore;
 }
 
 async function buildServer(options: {
   asrEndpoint?: string | null;
   asrFetch?: typeof fetch;
   speechFetch?: ReturnType<typeof stubFetch>;
+  intentResolver?: VoiceIntentResolver;
 } = {}): Promise<TestServer> {
   root = await mkdtemp(join(tmpdir(), 'breeze-staged-reference-'));
   const config = stubConfig({
@@ -122,9 +129,10 @@ async function buildServer(options: {
     references,
     asr: new AsrProxy({ config, logger, fetchImpl: options.asrFetch }),
     ffmpeg: FFMPEG,
+    ...(options.intentResolver ? { intentResolver: options.intentResolver } : {}),
   });
   servers.push(server);
-  return { server, config, references, voices };
+  return { server, config, references, voices, scripts };
 }
 
 async function stage(server: GatewayServer, wav: Buffer): Promise<ReferenceRecord> {
@@ -233,7 +241,6 @@ describe('intake and reuse', () => {
         url: '/api/speech',
         payload: {
           text,
-          mode: 'clone',
           cfg_scale: 1,
           reference_id: reference.id,
           ref_start: 0,
@@ -250,6 +257,47 @@ describe('intake and reuse', () => {
       expect(form.get('ref_text')).toBe('hello world');
       expect(form.get('ref_audio')).toBeInstanceOf(Blob);
     }
+  });
+
+  it('routes mode-free one-off and script speech through the injected resolver', async () => {
+    const intents: VoiceIntent[] = [];
+    const intentResolver: VoiceIntentResolver = (intent) => {
+      intents.push(intent);
+      return resolveVoiceIntent(intent);
+    };
+    const speechFetch = stubFetch([{}, {}]);
+    const { server, scripts } = await buildServer({ speechFetch, intentResolver });
+    const script = await scripts.importFile({ source: 'Script line.' });
+
+    const oneOff = await server.inject({
+      method: 'POST',
+      url: '/api/speech',
+      payload: {
+        text: 'One-off line.',
+        instruction: 'The one visible delivery.',
+        cfg_scale: 1,
+        seed: 42,
+      },
+    });
+    expect(oneOff.statusCode).toBe(200);
+
+    const runResponse = await server.inject({
+      method: 'POST',
+      url: `/api/scripts/${script.id}/run`,
+    });
+    expect(runResponse.statusCode).toBe(200);
+    expect(intents.map((intent) => intent.text)).toEqual([
+      'One-off line.',
+      'Script line.',
+    ]);
+    expect(intents[0]).toMatchObject({
+      instruction: 'The one visible delivery.',
+    });
+    expect(intents[0]).not.toHaveProperty('reference');
+    expect(intents[1]).toMatchObject({
+      instruction: 'Speak clearly and naturally.',
+    });
+    expect(intents[1]).not.toHaveProperty('reference');
   });
 });
 

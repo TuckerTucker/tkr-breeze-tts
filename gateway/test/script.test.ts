@@ -14,6 +14,7 @@ import {
   ScriptStore,
   clipIdFor,
   concatenateScript,
+  effectiveCueSettings,
   estimateTokens,
   exportVtt,
   refreshScript,
@@ -148,6 +149,82 @@ describe('the cue list is the document', () => {
     expect(after.cues[0]!.clipId).toBe(before[0]);
     expect(after.cues[2]!.clipId).toBe(before[2]);
     expect(after.cues[1]!.clipId).not.toBe(before[1]);
+  });
+
+  it('resolves nullable cue overrides before script defaults', async () => {
+    const script = await scripts.importFile({
+      source: 'First line.\n\nSecond line.',
+      defaults: {
+        voiceId: 'default-voice',
+        voiceName: 'Default voice',
+        instruction: 'Default delivery',
+        cfgScale: 4,
+        seedMode: 'increment',
+        seed: 100,
+      },
+    });
+    const cue = script.cues[1]!;
+    expect(effectiveCueSettings(script, cue)).toEqual({
+      voiceId: 'default-voice',
+      voiceName: 'Default voice',
+      instruction: 'Default delivery',
+      cfgScale: 4,
+      seed: 101,
+    });
+
+    await scripts.patchCue(script.id, cue.id, {
+      overrides: { instruction: 'Cue delivery', cfgScale: 1, seed: 7 },
+    });
+    expect(effectiveCueSettings(script, cue)).toMatchObject({
+      instruction: 'Cue delivery',
+      cfgScale: 1,
+      seed: 7,
+    });
+
+    await scripts.patchCue(script.id, cue.id, {
+      overrides: { instruction: null, cfgScale: null, seed: null },
+    });
+    expect(effectiveCueSettings(script, cue)).toMatchObject({
+      instruction: 'Default delivery',
+      cfgScale: 4,
+      seed: 101,
+    });
+  });
+
+  it('stales only cues that inherit a changed script default', async () => {
+    const script = await scripts.importFile({ source: 'First.\n\nSecond.' });
+    const pinned = script.cues[0]!;
+    const inherited = script.cues[1]!;
+    await scripts.patchCue(script.id, pinned.id, {
+      overrides: { instruction: 'Pinned delivery' },
+    });
+    pinned.state = 'done';
+    pinned.actualSeconds = 1;
+    inherited.state = 'done';
+    inherited.actualSeconds = 1;
+    const pinnedId = pinned.clipId;
+    const inheritedId = inherited.clipId;
+
+    await scripts.patchDefaults(script.id, { instruction: 'A new default delivery' });
+
+    expect(pinned.clipId).toBe(pinnedId);
+    expect(pinned.state).toBe('done');
+    expect(pinned.actualSeconds).toBe(1);
+    expect(inherited.clipId).not.toBe(inheritedId);
+    expect(inherited.state).toBe('stale');
+    expect(inherited.actualSeconds).toBeNull();
+  });
+
+  it('includes the effective instruction in cue cache identity', () => {
+    const base = {
+      text: 'Same line.',
+      voiceId: null,
+      cfgScale: 1,
+      seed: 42,
+    };
+    expect(clipIdFor({ ...base, instruction: 'Quietly.' })).not.toBe(
+      clipIdFor({ ...base, instruction: 'Urgently.' }),
+    );
   });
 
   it('marks a cue whose voice was deleted as unrunnable with the reason', async () => {

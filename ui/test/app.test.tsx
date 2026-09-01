@@ -172,7 +172,7 @@ describe('the app shell', () => {
 
     expect(await screen.findByRole('status', { name: 'Application activity' }))
       .toHaveTextContent('Generating speech…');
-    expect(document.querySelector('.app')).toHaveAttribute('aria-busy', 'true');
+    expect(document.querySelector('.app-shell')).toHaveAttribute('aria-busy', 'true');
 
     resolveSpeech!(new Response(new Uint8Array(48_000), {
       headers: {
@@ -187,7 +187,56 @@ describe('the app shell', () => {
       expect(screen.queryByRole('status', { name: 'Application activity' }))
         .not.toBeInTheDocument(),
     );
-    expect(document.querySelector('.app')).toHaveAttribute('aria-busy', 'false');
+    expect(document.querySelector('.app-shell')).toHaveAttribute('aria-busy', 'false');
+  });
+
+  it('keeps cached replay activity visible until audio actually starts', async () => {
+    let resolvePlayback: (() => void) | null = null;
+    const playbackStarted = new Promise<void>((resolve) => {
+      resolvePlayback = resolve;
+    });
+    vi.stubGlobal('Audio', class CachedAudio {
+      play(): Promise<void> { return playbackStarted; }
+      pause(): void {}
+    });
+    const clip = {
+      id: 'clip-replay',
+      createdAt: Date.now(),
+      bytes: 48_000,
+      sampleRate: 24_000,
+      durationSeconds: 1,
+      ttfaMs: 38,
+      transport: 'streaming',
+      request: {
+        text: 'Replay this cached line.',
+        instruction: 'Naturally.',
+        mode: 'design',
+        cfgScale: 1,
+        seed: 42,
+      },
+    };
+
+    render(
+      <App
+        client={new GatewayClient(stubFetch({ '/api/clips': { clips: [clip] } }))}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Application activity' }))
+        .not.toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Replay this cached line/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replay' }));
+
+    expect(await screen.findByRole('status', { name: 'Application activity' }))
+      .toHaveTextContent('Loading replay…');
+    resolvePlayback!();
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Application activity' }))
+        .not.toBeInTheDocument(),
+    );
   });
 
   it('shows reference preparation as activity while intake and ASR are pending', async () => {
@@ -209,8 +258,8 @@ describe('the app shell', () => {
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
-    fireEvent.change(screen.getByLabelText('Upload a reference file'), {
+    fireEvent.click(screen.getByRole('button', { name: 'Temporary reference' }));
+    fireEvent.change(screen.getByLabelText('Upload reference audio'), {
       target: {
         files: [new File(['RIFF'], 'narrator.wav', { type: 'audio/wav' })],
       },
@@ -266,7 +315,8 @@ describe('the app shell', () => {
         storage={stubStorage()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    fireEvent.click(screen.getByRole('tab', { name: /voices/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Create voice' }));
     await waitFor(() =>
       expect(screen.getByText(/has not run against this deployment/i)).toBeInTheDocument(),
     );
@@ -314,11 +364,11 @@ describe('the app shell', () => {
         storage={stubStorage()}
       />,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Temporary reference' }));
     fireEvent.change(screen.getByLabelText('Text to speak'), {
       target: { value: 'A newly cloned line.' },
     });
-    fireEvent.change(screen.getByLabelText('Upload a reference file'), {
+    fireEvent.change(screen.getByLabelText('Upload reference audio'), {
       target: {
         files: [new File(['RIFF'], 'narrator.wav', { type: 'audio/wav' })],
       },
@@ -370,6 +420,36 @@ describe('the app shell', () => {
     // is exactly what it exists for.
     expect(screen.getByText(/could not start, so this played through the buffered path/i))
       .toBeInTheDocument();
+  });
+
+  it('sends the one visible delivery instruction exactly and no legacy mode', async () => {
+    let speechBody: FormData | null = null;
+    const base = stubFetch();
+    const recordingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/speech') speechBody = init?.body as FormData;
+      return base(input, init);
+    }) as typeof fetch;
+
+    render(
+      <App
+        client={new GatewayClient(recordingFetch)}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+    expect(screen.getAllByLabelText('Instruction')).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'Send this line.' },
+    });
+    fireEvent.change(screen.getByLabelText('Instruction'), {
+      target: { value: '  Keep this delivery exactly.  ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+    await waitFor(() => expect(speechBody).not.toBeNull());
+    expect(speechBody!.get('instruction')).toBe('  Keep this delivery exactly.  ');
+    expect(speechBody!.has('mode')).toBe(false);
   });
 
   it('says so when the stream ends early, rather than reporting a short clip as fast', async () => {
@@ -461,11 +541,11 @@ describe('the app shell', () => {
     );
     render(<App client={client} audio={stubAudio()} storage={stubStorage()} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Clone' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Temporary reference' }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Record' })).toBeDisabled(),
     );
-    expect(screen.getByRole('button', { name: 'Upload a file' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Upload audio' })).toBeEnabled();
     expect(screen.getByText(/brew install ffmpeg/)).toBeInTheDocument();
   });
 
@@ -477,7 +557,7 @@ describe('the app shell', () => {
     fireEvent.change(screen.getByLabelText('Text to speak'), {
       target: { value: 'nothing typed is lost' },
     });
-    await waitFor(() => expect(storage.getItem('breeze.draft.v1')).toContain('nothing typed'));
+    await waitFor(() => expect(storage.getItem('breeze.workspace.v2')).toContain('nothing typed'));
     unmount();
 
     render(

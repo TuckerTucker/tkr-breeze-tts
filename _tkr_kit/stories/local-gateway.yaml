@@ -252,7 +252,7 @@ stories:
       kind: commit
       ref: 17053ee
   - name: attach-a-recording-once-and-cut-from-it
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Hand over a recording once and then work with sections of it, rather
@@ -290,8 +290,11 @@ stories:
         then: it is evicted, and a voice promoted from it is unaffected because a voice
           owns its own copy
     feature: reference-staging
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - name: derive-the-vendor-request-from-voice-intent
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Have the visible voice and delivery controls become exactly one valid
@@ -329,8 +332,11 @@ stories:
         when: the request is validated
         then: it is refused locally with the missing half named before Modal is called
     feature: voice-intent-contract
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - name: inherit-script-delivery-with-cue-overrides
-    status: draft
+    status: done
     number: 2
     actor: Operator
     intent: Set common script delivery once while preserving explicit differences on
@@ -367,3 +373,6 @@ stories:
         then: conservative defaults are materialised without losing cue text,
           assignments, timings, or cached clip ids
     feature: voice-intent-contract
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.

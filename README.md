@@ -26,7 +26,7 @@ browser ──► gateway (localhost) ──► Modal ──► GPU
 | `infra/` | The Modal image, weights Volume, serving class, and deployment config |
 | `bench/` | The measurement harness and the cfg fall-off probe; findings land in `bench/findings/` |
 | `gateway/` | The local Node service: credential custody, transports, clip cache, voice library, script runner |
-| `ui/` | The browser surface: three voice modes, staged reference trimming, streaming playback, wake state, history, script editor |
+| `ui/` | The browser surface: Voices, Speak, and Scripts workspaces; staged reference trimming; streaming playback; wake state; history |
 
 ## Getting it running
 
@@ -106,8 +106,8 @@ The gateway serves the built UI from its own origin. For UI development,
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests   # 134
-npm --prefix gateway test                                          # 156
-npm --prefix ui test                                               # 165
+npm --prefix gateway test                                          # 171
+npm --prefix ui test                                               # 182
 ```
 
 None of them need a GPU, a network, or a deployed service: the Modal SDK is only
@@ -138,8 +138,9 @@ as reference audio plus its exact transcript, and that store is entirely local.
 multi-turn dialogue with a per-turn `speaker_id`, but `breeze_infer/api.py`
 exposes only `text`, `instruction`, `cfg_scale`, `ref_audio`, `ref_text` and
 `seed`, and `templates.py` hardcodes speaker `S0`. Cues are cached on
-text + voice + cfg + seed, so correcting one line in a forty-line script costs
-one GPU request rather than forty.
+text + voice + instruction + cfg + seed, so correcting one line in a forty-line
+script costs one GPU request rather than forty. Common voice, delivery, CFG, and
+seed behavior live at the script level; explicit cue overrides stay independent.
 
 **Drift is reported, never corrected.** Where a cue came from a timed VTT, the
 generated duration is shown against its slot with the difference. There is no

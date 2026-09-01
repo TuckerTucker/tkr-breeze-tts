@@ -112,6 +112,23 @@ describe('staged reference client', () => {
 });
 
 describe('staged reference synthesis form', () => {
+  it('does not require or invent a legacy mode', () => {
+    const form = speechForm({
+      text: 'Generate this line',
+      instruction: 'One visible delivery.',
+      cfgScale: 4,
+      seed: 42,
+    });
+
+    expect(Object.fromEntries(form.entries())).toEqual({
+      text: 'Generate this line',
+      instruction: 'One visible delivery.',
+      cfg_scale: '4',
+      seed: '42',
+    });
+    expect(form.has('mode')).toBe(false);
+  });
+
   it('sends the id, exact window, and transcript without re-uploading audio', () => {
     const form = speechForm({
       text: 'Generate this line',

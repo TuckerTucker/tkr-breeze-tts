@@ -1,48 +1,48 @@
 /**
- * The application shell.
+ * Application composition root for the voice lifecycle workspaces.
  *
- * It owns the state the panels share and nothing else; every panel below is a
- * function of props, which is what lets each one be tested on its own.
+ * State ownership stays here while each workspace remains a prop-driven view.
+ * Gateway, audio, and storage are injected so resource failure, persistence,
+ * and complete user journeys remain testable without browser globals.
  *
  * @module
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 
-import { Console } from './components/Console.js';
+import { ApiError, GatewayClient, type SpeechRequest } from './api/client.js';
+import {
+  StreamingPlayer,
+  playCachedClip,
+  type AudioBackend,
+  type PlaybackResult,
+} from './audio/player.js';
 import { ActivityIndicator } from './components/ActivityIndicator.js';
-import { History } from './components/History.js';
-import { ScriptEditor } from './components/ScriptEditor.js';
-import { VoiceLibrary } from './components/VoiceLibrary.js';
-import { VoiceModes } from './components/VoiceModes.js';
+import { ScriptsWorkspace } from './components/ScriptsWorkspace.js';
+import { SpeakWorkspace } from './components/SpeakWorkspace.js';
+import {
+  INITIAL_VOICE_CREATION_DRAFT,
+  VoiceWorkspace,
+  type VoiceCreationDraft,
+} from './components/VoiceWorkspace.js';
+import { WorkspaceNav } from './components/WorkspaceNav.js';
 import { FirstAudioReadout, ReadinessBadge, WakeState } from './components/WakeState.js';
-import { ApiError, GatewayClient } from './api/client.js';
-import { StreamingPlayer, playCachedClip, type AudioBackend, type PlaybackResult } from './audio/player.js';
 import {
-  generateBlockedReason,
-  loadDraft,
-  rollSeed,
-  saveDraft,
-  tokenCeilingFor,
-  type Draft,
-} from './state/draft.js';
-import {
-  INITIAL_MODE,
-  cfgControlFrom,
-  instructionFor,
-  modeBlocker,
-  switchMode,
-  type CfgControl,
-  type ModeState,
-  type ReferenceSource,
-  type VoiceMode,
-} from './state/mode.js';
-import { promoteToReference, restoreFromClip, type Clip } from './state/history.js';
+  activitySummary,
+  addActivity,
+  removeActivity,
+  type Activity,
+} from './state/activity.js';
+import { generateBlockedReason, rollSeed, tokenCeilingFor } from './state/draft.js';
+import { restoreFromClip, type Clip } from './state/history.js';
+import { cfgControlFrom, type CfgControl } from './state/mode.js';
+import { suggestName } from './state/name.js';
 import {
   createInitialReferenceSelection,
   moveReferenceWindow,
   referenceCeilingFor,
   referenceSelectionBlocker,
+  type StagedReferenceSelection,
 } from './state/reference.js';
 import {
   incompleteStreamFailure,
@@ -50,15 +50,25 @@ import {
   shouldShowWake,
   type Health,
 } from './state/readiness.js';
-import { applyDelete, applyUndo, type PendingUndo, type Voice } from './state/voices.js';
-import { suggestName } from './state/name.js';
-import type { Cue, Script } from './state/script.js';
 import {
-  activitySummary,
-  addActivity,
-  removeActivity,
-  type Activity,
-} from './state/activity.js';
+  applyCuePatch,
+  applyScriptDefaults,
+  type CuePatch,
+  type Script,
+  type ScriptDefaults,
+  type ScriptSummary,
+} from './state/script.js';
+import { applyDelete, applyUndo, type PendingUndo, type Voice } from './state/voices.js';
+import {
+  legacyModeFor,
+  loadWorkspaceState,
+  projectSpeechRequest,
+  resolveVoiceSpec,
+  saveWorkspaceState,
+  type SpeakDraft,
+  type Workspace,
+  type WorkspaceState,
+} from './state/workspace.js';
 
 /** What the app needs injected, so it can be mounted in a test. */
 export interface AppProps {
@@ -67,41 +77,67 @@ export interface AppProps {
   readonly storage: Storage;
 }
 
+interface ContextFailure {
+  readonly message: string;
+  readonly remedy?: string;
+}
+
+function failureFrom(error: unknown, fallback: string): ContextFailure {
+  const body = error instanceof ApiError ? error.failure : null;
+  return {
+    message: body?.message ?? (error instanceof Error ? error.message : fallback),
+    ...(body?.remedy ? { remedy: body.remedy } : {}),
+  };
+}
+
+function failureLine(failure: ContextFailure | null): string | null {
+  if (!failure) return null;
+  return `${failure.message}${failure.remedy ? ` — ${failure.remedy}` : ''}`;
+}
+
 /**
- * Render the application.
+ * Render and compose Voices, Speak, and Scripts over one normalized state graph.
  *
- * @param props - Injected client, audio backend and storage.
- * @returns The application element.
+ * @param props - Injected gateway, audio backend, and durable storage.
+ * @returns The complete application.
  */
 export function App(props: AppProps): JSX.Element {
   const { client } = props;
-
-  const [draft, setDraft] = useState<Draft>(() => loadDraft(props.storage));
-  const [mode, setMode] = useState<ModeState>(INITIAL_MODE);
+  const [workspace, setWorkspace] = useState<WorkspaceState>(() =>
+    loadWorkspaceState(props.storage),
+  );
+  const [creation, setCreation] = useState<VoiceCreationDraft>(
+    INITIAL_VOICE_CREATION_DRAFT,
+  );
   const [health, setHealth] = useState<Health | null>(null);
-  const [cfgControl, setCfgControl] = useState<CfgControl>(cfgControlFrom(null));
+  const [cfgControl, setCfgControl] = useState<CfgControl>(() => cfgControlFrom(null));
   const [cfgUnmeasured, setCfgUnmeasured] = useState(true);
   const [referenceFinding, setReferenceFinding] = useState<unknown>(null);
   const [clips, setClips] = useState<Clip[]>([]);
   const [voices, setVoices] = useState<Voice[]>([]);
+  const [summaries, setSummaries] = useState<ScriptSummary[]>([]);
+  const [script, setScript] = useState<Script | null>(null);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [pendingUndo, setPendingUndo] = useState<PendingUndo | null>(null);
-  const [script, setScript] = useState<Script | null>(null);
-  const [running, setRunning] = useState(false);
-
+  const [activities, setActivities] = useState<readonly Activity[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [scriptLoading, setScriptLoading] = useState(false);
   const [waking, setWaking] = useState(false);
   const [wakeElapsedMs, setWakeElapsedMs] = useState(0);
   const [playback, setPlayback] = useState<PlaybackResult | null>(null);
-  const [failure, setFailure] = useState<{ message: string; remedy?: string } | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [activities, setActivities] = useState<readonly Activity[]>([]);
+  const [speakFailure, setSpeakFailure] = useState<ContextFailure | null>(null);
+  const [voiceFailure, setVoiceFailure] = useState<ContextFailure | null>(null);
+  const [scriptFailure, setScriptFailure] = useState<ContextFailure | null>(null);
 
   const player = useRef<StreamingPlayer | null>(null);
   const replay = useRef<HTMLAudioElement | null>(null);
   const nextActivityId = useRef(0);
+  const initialLastScriptId = useRef(workspace.lastScriptId);
+  const defaultsRevision = useRef(0);
+  const cueRevisions = useRef(new Map<string, number>());
 
-  useEffect(() => saveDraft(props.storage, draft), [draft, props.storage]);
+  useEffect(() => saveWorkspaceState(props.storage, workspace), [props.storage, workspace]);
 
   const trackActivity = useCallback(async <T,>(
     label: string,
@@ -117,28 +153,61 @@ export function App(props: AppProps): JSX.Element {
     }
   }, []);
 
-  const loadWorkspace = useCallback(async (): Promise<void> => {
+  const refreshHealth = useCallback(async (): Promise<void> => {
     try {
-      const [nextHealth, nextClips, nextVoices] = await Promise.all([
-        client.health(),
-        client.clips(),
-        client.voices(),
-      ]);
-      setHealth(nextHealth);
-      setClips(nextClips);
-      setVoices(nextVoices);
+      setHealth(await client.health());
     } catch {
       setHealth(null);
     }
   }, [client]);
 
-  const refresh = useCallback(
-    async (): Promise<void> => trackActivity('Syncing workspace…', loadWorkspace),
-    [loadWorkspace, trackActivity],
-  );
+  const refreshClips = useCallback(async (): Promise<void> => {
+    try {
+      setClips(await client.clips());
+    } catch (error) {
+      setSpeakFailure(failureFrom(error, 'Recent clips could not be loaded.'));
+    }
+  }, [client]);
+
+  const refreshVoices = useCallback(async (): Promise<void> => {
+    try {
+      setVoices(await client.voices());
+    } catch (error) {
+      setVoiceFailure(failureFrom(error, 'The voice library could not be loaded.'));
+    }
+  }, [client]);
+
+  const refreshSummaries = useCallback(async (): Promise<ScriptSummary[]> => {
+    try {
+      const next = await client.scripts();
+      setSummaries(next);
+      return next;
+    } catch (error) {
+      setScriptFailure(failureFrom(error, 'Script documents could not be loaded.'));
+      return [];
+    }
+  }, [client]);
+
+  const openScript = useCallback(async (id: string): Promise<void> => {
+    setScriptLoading(true);
+    setScriptFailure(null);
+    try {
+      const next = await trackActivity('Opening script…', () => client.script(id));
+      setScript(next);
+      setWorkspace((current) => ({ ...current, lastScriptId: next.id }));
+    } catch (error) {
+      setScript(null);
+      setScriptFailure(failureFrom(error, 'The script could not be opened.'));
+      setWorkspace((current) => ({ ...current, lastScriptId: null }));
+    } finally {
+      setScriptLoading(false);
+    }
+  }, [client, trackActivity]);
 
   useEffect(() => {
-    void refresh();
+    void trackActivity('Checking readiness…', refreshHealth);
+    void trackActivity('Loading recent clips…', refreshClips);
+    void trackActivity('Loading voice library…', refreshVoices);
     void trackActivity('Loading measured limits…', async () => {
       try {
         const finding = await client.findings();
@@ -146,14 +215,18 @@ export function App(props: AppProps): JSX.Element {
         setCfgUnmeasured(!(finding as { measured?: boolean }).measured);
         setReferenceFinding(finding);
       } catch {
-        // The conservative default is already in place.
+        // Conservative controls are already active and identify themselves.
       }
     });
-  }, [client, refresh, trackActivity]);
+    void trackActivity('Loading scripts…', async () => {
+      const next = await refreshSummaries();
+      const wanted = initialLastScriptId.current;
+      if (wanted && next.some((summary) => summary.id === wanted)) {
+        await openScript(wanted);
+      }
+    });
+  }, [client, openScript, refreshClips, refreshHealth, refreshSummaries, refreshVoices, trackActivity]);
 
-  // The wake clock. Nothing here polls the gateway, and nothing polls upstream:
-  // `/health` on a scaled-to-zero container would start the cold start it was
-  // checking for.
   useEffect(() => {
     if (!waking) return undefined;
     const startedAt = Date.now();
@@ -161,471 +234,536 @@ export function App(props: AppProps): JSX.Element {
     return () => clearInterval(timer);
   }, [waking]);
 
-  const findingReferenceCeiling = referenceCeilingFor(referenceFinding, mode.cfgScale);
-  const healthReferenceCeiling = referenceCeilingFor(
-    health?.limits.referenceSeconds
+  const setActive = (active: Workspace): void =>
+    setWorkspace((current) => ({ ...current, active }));
+
+  const measuredReferenceShape = health?.limits.referenceSeconds
+    ? { referenceCeiling: { measured: true, ...health.limits.referenceSeconds } }
+    : null;
+  const findingSpeakCeiling = referenceCeilingFor(
+    referenceFinding,
+    workspace.speakDraft.cfgScale,
+  );
+  const findingCreationCeiling = referenceCeilingFor(
+    referenceFinding,
+    creation.cfgScale,
+  );
+  const speakCeiling = findingSpeakCeiling.measured
+    ? findingSpeakCeiling
+    : referenceCeilingFor(measuredReferenceShape, workspace.speakDraft.cfgScale);
+  const creationCeiling = findingCreationCeiling.measured
+    ? findingCreationCeiling
+    : referenceCeilingFor(measuredReferenceShape, creation.cfgScale);
+
+  const effectiveSpeakDraft: SpeakDraft =
+    workspace.speakDraft.voice.kind === 'staged' && workspace.speakDraft.voice.reference
       ? {
-          referenceCeiling: {
-            measured: true,
-            ...health.limits.referenceSeconds,
+          ...workspace.speakDraft,
+          voice: {
+            kind: 'staged',
+            reference: moveReferenceWindow(
+              workspace.speakDraft.voice.reference,
+              workspace.speakDraft.voice.reference.start,
+              speakCeiling.maxSeconds,
+            ),
           },
         }
-      : null,
-    mode.cfgScale,
-  );
-  const referenceCeiling = findingReferenceCeiling.measured
-    ? findingReferenceCeiling
-    : healthReferenceCeiling;
-  const referenceTokenCeiling = tokenCeilingFor(mode.mode, mode.cfgScale);
-  const stagedReference =
-    mode.reference?.source === 'upload' || mode.reference?.source === 'record'
-      ? mode.reference
+      : workspace.speakDraft;
+  const effectiveCreation: VoiceCreationDraft = creation.reference
+    ? {
+        ...creation,
+        reference: moveReferenceWindow(
+          creation.reference,
+          creation.reference.start,
+          creationCeiling.maxSeconds,
+        ),
+      }
+    : creation;
+
+  const resolution = resolveVoiceSpec(effectiveSpeakDraft, voices);
+  const requestMode = resolution.spec
+    ? legacyModeFor(resolution.spec)
+    : effectiveSpeakDraft.voice.kind === 'described'
+      ? 'design'
+      : 'clone';
+  const selectedTranscript =
+    resolution.spec?.kind === 'referenced'
+      ? resolution.spec.reference.transcript
+      : effectiveSpeakDraft.voice.kind === 'staged'
+        ? effectiveSpeakDraft.voice.reference?.transcript
+        : undefined;
+  const selectionBlocker =
+    effectiveSpeakDraft.voice.kind === 'staged' && effectiveSpeakDraft.voice.reference
+      ? referenceSelectionBlocker(
+          effectiveSpeakDraft.voice.reference,
+          speakCeiling.maxSeconds,
+          tokenCeilingFor('clone', effectiveSpeakDraft.cfgScale),
+        )
       : null;
-  const boundedStagedReference = stagedReference
-    ? moveReferenceWindow(
-        stagedReference,
-        stagedReference.start,
-        referenceCeiling.maxSeconds,
-      )
-    : null;
-  const effectiveMode = boundedStagedReference
-    ? { ...mode, reference: { ...boundedStagedReference, source: stagedReference!.source } }
-    : mode;
-  const referenceBlocker = boundedStagedReference
-    ? referenceSelectionBlocker(
-        boundedStagedReference,
-        referenceCeiling.maxSeconds,
-        referenceTokenCeiling,
-      )
-    : null;
-  const blocker = modeBlocker(effectiveMode) ?? referenceBlocker;
   const blockedReason = generateBlockedReason({
-    draft,
+    draft: effectiveSpeakDraft,
     gatewayReachable: health !== null,
-    busy,
+    busy: false,
     generating,
-    modeBlocker: blocker,
-    cfgScale: mode.cfgScale,
-    mode: mode.mode,
-    ...(effectiveMode.reference?.transcript
-      ? { refText: effectiveMode.reference.transcript }
-      : {}),
+    modeBlocker: resolution.blocker ?? selectionBlocker,
+    cfgScale: effectiveSpeakDraft.cfgScale,
+    mode: requestMode,
+    ...(selectedTranscript ? { refText: selectedTranscript } : {}),
   });
-
-  const statusLine = failure
-    ? `${failure.message}${failure.remedy ? ` — ${failure.remedy}` : ''}`
-    : readinessSummary(health?.readiness ?? 'unknown', health?.measured ?? null);
-
-  const generate = async (): Promise<void> => {
-    await trackActivity('Generating speech…', async () => {
-      setFailure(null);
-      setPlayback(null);
-      setGenerating(true);
-
-      const cold = shouldShowWake(health?.readiness ?? 'unknown');
-      setWaking(cold);
-      setWakeElapsedMs(0);
-
-      const seed = draft.seedLocked ? draft.seed : rollSeed();
-      if (!draft.seedLocked) setDraft({ ...draft, seed });
-
-      const startedAt = performance.now();
-      try {
-        const response = await client.speech({
-          text: draft.text,
-          instruction: instructionFor(mode, draft.instruction),
-          cfgScale: mode.cfgScale,
-          seed,
-          mode: mode.mode,
-          ...(effectiveMode.reference?.source === 'library'
-            ? { voiceId: effectiveMode.reference.voiceId }
-            : effectiveMode.reference
-              ? {
-                  referenceId: effectiveMode.reference.referenceId,
-                  refStart: effectiveMode.reference.start,
-                  refEnd: effectiveMode.reference.end,
-                }
-              : {}),
-          ...(effectiveMode.reference?.transcript
-            ? { refText: effectiveMode.reference.transcript }
-            : {}),
-        });
-
-        await player.current?.stop();
-        const active = new StreamingPlayer(props.audio);
-        player.current = active;
-
-        const result = await active.play(response, startedAt, {
-          onFirstAudio: () => setWaking(false),
-        });
-        setPlayback(result);
-        setSelectedClipId(result.clipId);
-        // A truncated stream arrives as a `200` with too few bytes, so nothing
-        // above throws and nothing below would say so. The player is the only
-        // layer that can see it, and this is where it becomes visible.
-        if (result.incomplete) setFailure(incompleteStreamFailure(result));
-      } catch (error) {
-        const failureBody = error instanceof ApiError ? error.failure : null;
-        if (failureBody?.type === 'busy') setBusy(true);
-        setFailure({
-          message: failureBody?.message ?? (error as Error).message,
-          ...(failureBody?.remedy ? { remedy: failureBody.remedy } : {}),
-        });
-      } finally {
-        setGenerating(false);
-        setWaking(false);
-        setBusy(false);
-        await loadWorkspace();
-      }
-    });
-  };
-
-  const onModeChange = (next: VoiceMode): void => {
-    if (next === 'design' && stagedReference) {
-      void client.deleteReference(stagedReference.referenceId).catch(() => {
-        // The store is age-bounded. A failed eager cleanup does not lose work
-        // or make the next request invalid, so it needs no operator action.
-      });
-    }
-    setMode(switchMode(mode, next));
-  };
-
-  const prepareReference = async (
-    file: File,
-    source: Exclude<ReferenceSource, 'library'>,
-    transcriptOverride?: string,
-  ): Promise<void> => {
-    try {
-      const resource = await client.stageReference(file);
-      const initial = createInitialReferenceSelection(
-        resource,
-        file.name,
-        referenceCeiling.maxSeconds,
-      );
-      const reference = transcriptOverride
-        ? {
-            ...initial,
-            transcript: transcriptOverride,
-            transcriptEdited: transcriptOverride.trim() !== initial.transcript.trim(),
-          }
-        : initial;
-      const previousId = stagedReference?.referenceId ?? null;
-      setMode((current) => ({
-        ...current,
-        reference: { ...reference, source },
-      }));
-      await loadWorkspace();
-      if (previousId && previousId !== resource.id) {
-        void client.deleteReference(previousId).catch(() => {
-          // Age-bounded cleanup is the fallback if eager replacement cleanup fails.
-        });
-      }
-    } catch (error) {
-      const body = error instanceof ApiError ? error.failure : null;
-      const message =
-        body?.message ??
-        (error instanceof Error
-          ? error.message
-          : 'The reference could not be prepared. The current reference is unchanged.');
-      throw new Error(body?.remedy ? `${message} ${body.remedy}` : message);
-    }
-  };
+  const speakStatus =
+    failureLine(speakFailure) ??
+    readinessSummary(health?.readiness ?? 'unknown', health?.measured ?? null);
 
   const stageReference = async (
     file: File,
-    source: Exclude<ReferenceSource, 'library'>,
-  ): Promise<void> => trackActivity(
-    'Preparing reference…',
-    async () => prepareReference(file, source),
-  );
+    _source: 'upload' | 'record',
+    maxSeconds: number,
+  ): Promise<StagedReferenceSelection> =>
+    trackActivity('Preparing reference…', async () => {
+      const resource = await client.stageReference(file);
+      return createInitialReferenceSelection(resource, file.name, maxSeconds);
+    });
 
-  const loadIntoConsole = (clip: Clip): void => {
-    const restore = restoreFromClip(clip);
-    const voice = restore.voiceId
-      ? voices.find((candidate) => candidate.id === restore.voiceId) ?? null
-      : null;
-    if (stagedReference) {
-      void client.deleteReference(stagedReference.referenceId).catch(() => {
-        // The age limit still bounds a failed eager cleanup.
+  const playResponse = async (
+    response: Response,
+    startedAt: number,
+  ): Promise<PlaybackResult> => {
+    await player.current?.stop();
+    const active = new StreamingPlayer(props.audio);
+    player.current = active;
+    const result = await active.play(response, startedAt, {
+      onFirstAudio: () => setWaking(false),
+    });
+    setPlayback(result);
+    setSelectedClipId(result.clipId);
+    return result;
+  };
+
+  const generate = async (): Promise<void> => {
+    if (!resolution.spec) return;
+    const spec = resolution.spec;
+    await trackActivity('Generating speech…', async () => {
+      setSpeakFailure(null);
+      setPlayback(null);
+      setGenerating(true);
+      const cold = shouldShowWake(health?.readiness ?? 'unknown');
+      setWaking(cold);
+      setWakeElapsedMs(0);
+      const seed = effectiveSpeakDraft.seedLocked ? effectiveSpeakDraft.seed : rollSeed();
+      if (!effectiveSpeakDraft.seedLocked) {
+        setWorkspace((current) => ({
+          ...current,
+          speakDraft: { ...current.speakDraft, seed },
+        }));
+      }
+      const request = projectSpeechRequest({ ...effectiveSpeakDraft, seed }, spec);
+      const startedAt = performance.now();
+      try {
+        const result = await playResponse(await client.speech(request), startedAt);
+        if (result.incomplete) setSpeakFailure(incompleteStreamFailure(result));
+      } catch (error) {
+        setSpeakFailure(failureFrom(error, 'Speech could not be generated.'));
+      } finally {
+        setGenerating(false);
+        setWaking(false);
+        await Promise.all([refreshHealth(), refreshClips()]);
+      }
+    });
+  };
+
+  const auditionVoice = async (): Promise<void> => {
+    setVoiceFailure(null);
+    await trackActivity('Auditioning voice…', async () => {
+      let request: SpeechRequest;
+      if (effectiveCreation.method === 'clone-audio') {
+        const reference = effectiveCreation.reference;
+        if (!reference) {
+          setVoiceFailure({ message: 'Prepare a reference before auditioning.' });
+          return;
+        }
+        const blocker = referenceSelectionBlocker(
+          reference,
+          creationCeiling.maxSeconds,
+          tokenCeilingFor('clone', effectiveCreation.cfgScale),
+        );
+        if (blocker) {
+          setVoiceFailure({ message: blocker });
+          return;
+        }
+        request = {
+          text: effectiveCreation.sampleText,
+          instruction: effectiveCreation.description,
+          cfgScale: effectiveCreation.cfgScale,
+          seed: effectiveCreation.seed,
+          referenceId: reference.referenceId,
+          refStart: reference.start,
+          refEnd: reference.end,
+          refText: reference.transcript,
+        };
+      } else {
+        request = {
+          text: effectiveCreation.sampleText,
+          instruction: effectiveCreation.description,
+          cfgScale: effectiveCreation.cfgScale,
+          seed: effectiveCreation.seed,
+        };
+      }
+      try {
+        const startedAt = performance.now();
+        const result = await playResponse(await client.speech(request), startedAt);
+        if (result.incomplete) {
+          setVoiceFailure(incompleteStreamFailure(result));
+          return;
+        }
+        if (!result.clipId) throw new Error('The audition completed without a reusable clip.');
+        setCreation((current) => ({ ...current, auditionClipId: result.clipId }));
+        await refreshClips();
+      } catch (error) {
+        setVoiceFailure(failureFrom(error, 'The voice audition failed.'));
+      }
+    });
+  };
+
+  const saveCreatedVoice = async (): Promise<void> => {
+    const clipId =
+      effectiveCreation.method === 'from-clip'
+        ? effectiveCreation.sourceClipId
+        : effectiveCreation.auditionClipId;
+    if (!clipId) return;
+    setVoiceFailure(null);
+    try {
+      await trackActivity('Saving voice…', async () => {
+        await client.saveVoice({
+          clipId,
+          name: effectiveCreation.name,
+          defaultDirection: effectiveCreation.description || null,
+        });
+        await refreshVoices();
       });
+      setCreation({ ...INITIAL_VOICE_CREATION_DRAFT, open: false });
+    } catch (error) {
+      setVoiceFailure(failureFrom(error, 'The voice could not be saved.'));
     }
-    setDraft({ ...draft, text: restore.text, instruction: restore.instruction, seed: restore.seed });
-    setMode({
-      ...mode,
-      mode: restore.mode,
-      cfgScale: restore.cfgScale,
-      reference:
-        restore.mode !== 'design' && voice
-          ? {
-              source: 'library',
-              voiceId: voice.id,
-              name: voice.name,
-              durationSeconds: voice.durationSeconds,
-              transcript: voice.transcript,
-            }
-          : null,
+  };
+
+  const useVoiceInSpeak = (voice: Voice): void => {
+    setWorkspace((current) => ({
+      ...current,
+      active: 'speak',
+      selectedVoiceId: voice.id,
+      speakDraft: {
+        ...current.speakDraft,
+        instruction: voice.defaultDirection ?? current.speakDraft.instruction,
+        voice: { kind: 'saved', voiceId: voice.id, voiceName: voice.name },
+      },
+    }));
+  };
+
+  const updateScriptDefaults = (patch: Partial<ScriptDefaults>): void => {
+    if (!script) return;
+    defaultsRevision.current += 1;
+    const revision = defaultsRevision.current;
+    setScript((current) => (current ? applyScriptDefaults(current, patch) : current));
+    void trackActivity('Saving script defaults…', async () => {
+      try {
+        const updated = await client.updateScript(script.id, patch);
+        if (defaultsRevision.current === revision) setScript(updated);
+        await refreshSummaries();
+      } catch (error) {
+        setScriptFailure(failureFrom(error, 'Script defaults could not be saved.'));
+      }
     });
   };
 
-  const promote = async (clip: Clip): Promise<void> => {
-    await trackActivity('Preparing clip as a reference…', async () => {
-      // Switch to Clone rather than silently attaching a reference the current
-      // mode cannot send, and fill ref_text from the text that produced it.
-      const promotion = promoteToReference(clip);
-      const blob = await client.clipAudio(clip.id);
-      setMode((current) => ({ ...current, mode: promotion.mode }));
-      await prepareReference(
-        new File([blob], promotion.referenceName, { type: 'audio/wav' }),
-        'upload',
-        promotion.refText,
-      );
-    });
-  };
-
-  const saveAsVoice = async (clip: Clip): Promise<void> => {
-    await trackActivity('Saving voice…', async () => {
-      await client.saveVoice({ clipId: clip.id, name: suggestName(clip.request.instruction) });
-      await loadWorkspace();
-    });
+  const useVoiceInScript = (voice: Voice): void => {
+    setWorkspace((current) => ({
+      ...current,
+      active: 'scripts',
+      selectedVoiceId: voice.id,
+    }));
+    if (script) updateScriptDefaults({ voiceId: voice.id, voiceName: voice.name });
   };
 
   const deleteVoice = async (voice: Voice): Promise<void> => {
+    const previous = voices;
     const applied = applyDelete(voices, voice.id, Date.now());
     setVoices(applied.voices);
     setPendingUndo(applied.undo);
-    await trackActivity('Deleting voice…', async () => client.deleteVoice(voice.id));
+    try {
+      await trackActivity('Deleting voice…', async () => client.deleteVoice(voice.id));
+    } catch (error) {
+      setVoices(previous);
+      setPendingUndo(null);
+      setVoiceFailure(failureFrom(error, 'The voice could not be deleted.'));
+    }
   };
 
   const undoDelete = async (undo: PendingUndo): Promise<void> => {
-    setVoices(applyUndo(voices, undo.voice));
+    setVoices((current) => applyUndo(current, undo.voice));
     setPendingUndo(null);
-    await trackActivity('Restoring voice…', async () => client.restoreVoice(undo.voice.id));
-  };
-
-  const reportOperationFailure = (error: unknown, fallback: string): void => {
-    const body = error instanceof ApiError ? error.failure : null;
-    setFailure({
-      message:
-        body?.message ??
-        (error instanceof Error ? error.message : fallback),
-      ...(body?.remedy ? { remedy: body.remedy } : {}),
-    });
+    try {
+      await trackActivity('Restoring voice…', async () => client.restoreVoice(undo.voice.id));
+    } catch (error) {
+      setVoices((current) => current.filter((voice) => voice.id !== undo.voice.id));
+      setVoiceFailure(failureFrom(error, 'The voice could not be restored.'));
+    }
   };
 
   const importScript = async (source: string, filename: string): Promise<void> => {
-    const imported = await trackActivity(
-      'Importing script…',
-      async () => client.importScript(source, filename),
-    );
-    setScript(imported);
+    setScriptFailure(null);
+    try {
+      const imported = await trackActivity('Importing script…', () =>
+        client.importScript(source, filename, {
+          ...(workspace.selectedVoiceId
+            ? {
+                voiceId: workspace.selectedVoiceId,
+                voiceName:
+                  voices.find((voice) => voice.id === workspace.selectedVoiceId)?.name ?? null,
+              }
+            : {}),
+        }),
+      );
+      setScript(imported);
+      setWorkspace((current) => ({ ...current, lastScriptId: imported.id }));
+      await refreshSummaries();
+    } catch (error) {
+      setScriptFailure(failureFrom(error, 'The script could not be imported.'));
+    }
   };
 
-  const editCue = async (cueId: string, patch: Partial<Cue>): Promise<void> => {
+  const editScriptCue = (cueId: string, patch: CuePatch): void => {
     if (!script) return;
-    const updated = await trackActivity(
-      'Saving script edit…',
-      async () => client.patchCue(script.id, cueId, patch),
-    );
-    setScript(updated);
+    const revision = (cueRevisions.current.get(cueId) ?? 0) + 1;
+    cueRevisions.current.set(cueId, revision);
+    setScript((current) => (current ? applyCuePatch(current, cueId, patch) : current));
+    void trackActivity('Saving cue edit…', async () => {
+      try {
+        const updated = await client.patchCue(script.id, cueId, patch);
+        if (cueRevisions.current.get(cueId) === revision) setScript(updated);
+      } catch (error) {
+        setScriptFailure(failureFrom(error, 'The cue edit could not be saved.'));
+      }
+    });
   };
 
   const runCurrentScript = async (): Promise<void> => {
     if (!script) return;
     setRunning(true);
+    setScriptFailure(null);
     try {
-      await trackActivity('Running script…', async () => {
-        try {
-          await client.runScript(script.id, () => {
-            void client.script(script.id).then(setScript).catch((error: unknown) => {
-              reportOperationFailure(error, 'Script progress could not be refreshed.');
-            });
-          });
-        } finally {
-          try {
-            setScript(await client.script(script.id));
-          } finally {
-            await loadWorkspace();
-          }
-        }
+      await trackActivity('Running stale script cues…', async () => {
+        await client.runScript(script.id, () => {
+          void client.script(script.id).then(setScript).catch(() => {});
+        });
+        setScript(await client.script(script.id));
+        await Promise.all([refreshSummaries(), refreshClips()]);
       });
+    } catch (error) {
+      setScriptFailure(failureFrom(error, 'The script run could not be completed.'));
     } finally {
       setRunning(false);
     }
   };
 
-  const renameVoice = async (voice: Voice, name: string): Promise<void> => {
-    await trackActivity('Renaming voice…', async () => {
-      await client.updateVoice(voice.id, { name });
-      await loadWorkspace();
-    });
+  const exportScript = async (format: 'vtt' | 'wav'): Promise<void> => {
+    if (!script) return;
+    try {
+      await trackActivity(`Exporting ${format.toUpperCase()}…`, async () => {
+        const blob = await client.exportScript(script.id, format);
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${script.name.replace(/\.(vtt|txt)$/i, '')}.${format}`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      });
+    } catch (error) {
+      setScriptFailure(failureFrom(error, `The ${format.toUpperCase()} export failed.`));
+    }
   };
 
-  const exportUrls = useMemo(
-    () => (script ? client.scriptExportUrls(script.id) : null),
-    [client, script],
-  );
+  const loadVariation = (clip: Clip): void => {
+    const restored = restoreFromClip(clip);
+    const voice = restored.voiceId
+      ? voices.find((candidate) => candidate.id === restored.voiceId)
+      : undefined;
+    setWorkspace((current) => ({
+      ...current,
+      active: 'speak',
+      selectedVoiceId: voice?.id ?? null,
+      speakDraft: {
+        ...current.speakDraft,
+        text: restored.text,
+        instruction: restored.instruction,
+        cfgScale: restored.cfgScale,
+        seed: restored.seed,
+        voice: voice
+          ? { kind: 'saved', voiceId: voice.id, voiceName: voice.name }
+          : { kind: 'described' },
+      },
+    }));
+  };
+
+  const replayClip = async (clip: Clip): Promise<void> => {
+    setSpeakFailure(null);
+    try {
+      await trackActivity('Loading replay…', async () => {
+        replay.current?.pause();
+        const cached = playCachedClip(client.clipUrl(clip.id));
+        replay.current = cached.element;
+        await cached.started;
+      });
+    } catch (error) {
+      setSpeakFailure(failureFrom(error, 'The cached clip could not be replayed.'));
+    }
+  };
 
   const currentActivity = activitySummary(activities);
+  const branchLimits = health?.limits.referenceSeconds?.ceilingByBranchMode ?? null;
+  const recordReason =
+    health?.ffmpeg.available === false
+      ? `Recording requires ffmpeg. ${health.ffmpeg.remedy ?? ''}`
+      : null;
+  const playbackReadout =
+    playback && playback.bytes > 0 ? (
+      <FirstAudioReadout
+        ttfaMs={playback.ttfaMs}
+        rtf={health?.measured?.rtf ?? null}
+        transport={playback.mode}
+        fellBack={playback.fellBack}
+      />
+    ) : null;
 
   return (
-    <div className="app" aria-busy={currentActivity !== null}>
+    <div className="app-shell" aria-busy={currentActivity !== null}>
       <header className="masthead">
-        <h1>Breeze TTS 2</h1>
+        <div className="brand-block">
+          <span className="brand-mark" aria-hidden="true">B</span>
+          <div><h1>Breeze Voice Studio</h1><p>Create a voice once. Use it everywhere.</p></div>
+        </div>
         <div className="masthead__signals">
           {currentActivity && <ActivityIndicator label={currentActivity} />}
-          <ReadinessBadge
-            readiness={health?.readiness ?? 'unknown'}
-            measured={health?.measured ?? null}
-          />
+          <ReadinessBadge readiness={health?.readiness ?? 'unknown'} measured={health?.measured ?? null} />
         </div>
       </header>
 
-      <main>
+      <WorkspaceNav active={workspace.active} onSelect={setActive} />
+
+      <main className="workspace-stage">
         {waking && <WakeState elapsedMs={wakeElapsedMs} measured={health?.measured ?? null} />}
 
-        <VoiceModes
-          state={mode}
-          onChange={(next) => {
-            if (stagedReference && next.reference?.source === 'library') {
-              void client.deleteReference(stagedReference.referenceId).catch(() => {
-                // The age limit still bounds a failed eager cleanup.
+        {workspace.active === 'voices' && (
+          <VoiceWorkspace
+            voices={voices}
+            clips={clips}
+            draft={effectiveCreation}
+            onDraftChange={setCreation}
+            cfgControl={cfgControl}
+            cfgUnmeasured={cfgUnmeasured}
+            busy={currentActivity !== null}
+            problem={failureLine(voiceFailure)}
+            pendingUndo={pendingUndo}
+            onAudition={() => void auditionVoice()}
+            onSave={() => void saveCreatedVoice()}
+            onRename={(voice, name) => {
+              void trackActivity('Renaming voice…', async () => {
+                try {
+                  await client.updateVoice(voice.id, { name });
+                  await refreshVoices();
+                } catch (error) {
+                  setVoiceFailure(failureFrom(error, 'The voice could not be renamed.'));
+                }
               });
-            }
-            setMode(next);
-          }}
-          onModeChange={onModeChange}
-          cfgControl={cfgControl}
-          cfgUnmeasured={cfgUnmeasured}
-          voices={voices}
-          canRecord={health?.ffmpeg.available ?? false}
-          recordDisabledReason={
-            health?.ffmpeg.available === false
-              ? `Reference intake unavailable: ffmpeg is not installed. ${health.ffmpeg.remedy ?? ''}`
-              : null
-          }
-          onStageReference={(file, source) => stageReference(file, source)}
-          referenceMaxSeconds={referenceCeiling.maxSeconds}
-          referenceMaxMeasured={referenceCeiling.measured}
-          referenceBranchLimits={
-            health?.limits.referenceSeconds?.ceilingByBranchMode ?? null
-          }
-          referenceTokenCeiling={referenceTokenCeiling}
-          referenceAudioUrl={(id, start, end) => client.referenceAudioUrl(id, start, end)}
-          asrRemedy={health?.asr?.available === false ? health.asr.remedy : null}
-        />
-
-        <Console
-          draft={draft}
-          onDraftChange={setDraft}
-          blockedReason={blockedReason}
-          statusLine={statusLine}
-          cfgScale={mode.cfgScale}
-          mode={mode.mode}
-          onGenerate={() => void generate()}
-          onRerollSeed={() => setDraft({ ...draft, seed: rollSeed() })}
-        />
-
-        {playback && playback.bytes > 0 && (
-          <FirstAudioReadout
-            ttfaMs={playback.ttfaMs}
-            rtf={health?.measured?.rtf ?? null}
-            transport={playback.mode}
-            fellBack={playback.fellBack}
+            }}
+            onDelete={(voice) => void deleteVoice(voice)}
+            onUndo={(undo) => void undoDelete(undo)}
+            onUseInSpeak={useVoiceInSpeak}
+            onUseInScript={useVoiceInScript}
+            voiceAudioUrl={(id) => `/api/voices/${encodeURIComponent(id)}/audio`}
+            onStage={(file, source) => stageReference(file, source, creationCeiling.maxSeconds)}
+            canRecord={health?.ffmpeg.available ?? false}
+            recordDisabledReason={recordReason}
+            referenceMaxSeconds={creationCeiling.maxSeconds}
+            referenceMaxMeasured={creationCeiling.measured}
+            referenceBranchLimits={branchLimits}
+            referenceTokenCeiling={tokenCeilingFor('clone', effectiveCreation.cfgScale)}
+            referenceAudioUrl={(id, start, end) => client.referenceAudioUrl(id, start, end)}
+            asrRemedy={health?.asr.available === false ? health.asr.remedy : null}
           />
         )}
 
-        <ScriptEditor
-          script={script}
-          voices={voices}
-          running={running}
-          exportUrls={exportUrls}
-          onImport={(source, filename) => {
-            void importScript(source, filename).catch((error: unknown) => {
-              reportOperationFailure(error, 'The script could not be imported.');
-            });
-          }}
-          onEditCue={(cueId, patch) => {
-            void editCue(cueId, patch).catch((error: unknown) => {
-              reportOperationFailure(error, 'The script edit could not be saved.');
-            });
-          }}
-          onRun={() => {
-            void runCurrentScript().catch((error: unknown) => {
-              reportOperationFailure(error, 'The script could not be completed.');
-            });
-          }}
-        />
-      </main>
-
-      <aside className="sidebar">
-        <History
-          clips={clips}
-          selectedId={selectedClipId}
-          clipUrl={(id) => client.clipUrl(id)}
-          readOnlyReason={health === null ? 'The gateway is unreachable — history is read-only.' : null}
-          onSelect={(clip) => setSelectedClipId(clip.id)}
-          onReplay={(clip) => {
-            // Replay does not clear or reset the console, so an A/B comparison
-            // never destroys the work in progress that prompted it.
-            replay.current?.pause();
-            replay.current = playCachedClip(client.clipUrl(clip.id));
-          }}
-          onLoadIntoConsole={loadIntoConsole}
-          onPromoteToReference={(clip) => {
-            void promote(clip).catch((error: unknown) => {
-              reportOperationFailure(error, 'The clip could not be prepared as a reference.');
-            });
-          }}
-          onSaveAsVoice={(clip) => {
-            void saveAsVoice(clip).catch((error: unknown) => {
-              reportOperationFailure(error, 'The voice could not be saved.');
-            });
-          }}
-        />
-
-        <div style={{ marginTop: 32 }}>
-          <VoiceLibrary
+        {workspace.active === 'speak' && (
+          <SpeakWorkspace
+            draft={effectiveSpeakDraft}
+            onDraftChange={(speakDraft) => setWorkspace((current) => ({ ...current, speakDraft }))}
             voices={voices}
-            selectedId={
-              mode.reference?.source === 'library' ? mode.reference.voiceId : null
-            }
-            pendingUndo={pendingUndo}
-            onSelect={(voice) => {
-              if (stagedReference) {
-                void client.deleteReference(stagedReference.referenceId).catch(() => {
-                  // The age limit still bounds a failed eager cleanup.
-                });
-              }
-              setMode({
-                ...mode,
-                mode: mode.mode === 'design' ? 'clone' : mode.mode,
-                reference: {
-                  source: 'library',
-                  voiceId: voice.id,
-                  name: voice.name,
-                  durationSeconds: voice.durationSeconds,
-                  transcript: voice.transcript,
-                },
+            cfgControl={cfgControl}
+            cfgUnmeasured={cfgUnmeasured}
+            blockedReason={blockedReason}
+            statusLine={speakStatus}
+            onGenerate={() => void generate()}
+            onRerollSeed={() => setWorkspace((current) => ({ ...current, speakDraft: { ...current.speakDraft, seed: rollSeed() } }))}
+            generating={generating}
+            clips={clips}
+            selectedClipId={selectedClipId}
+            onSelectClip={(clip) => setSelectedClipId(clip.id)}
+            onReplay={(clip) => {
+              void replayClip(clip);
+            }}
+            onLoadVariation={loadVariation}
+            onCreateVoiceFromClip={(clip) => {
+              setCreation({
+                ...INITIAL_VOICE_CREATION_DRAFT,
+                open: true,
+                method: 'from-clip',
+                sourceClipId: clip.id,
+                name: suggestName(clip.request.instruction),
+              });
+              setActive('voices');
+            }}
+            onSaveVoice={(clip) => {
+              void trackActivity('Saving voice…', async () => {
+                try {
+                  await client.saveVoice({ clipId: clip.id, name: suggestName(clip.request.instruction) });
+                  await refreshVoices();
+                } catch (error) {
+                  setSpeakFailure(failureFrom(error, 'The voice could not be saved.'));
+                }
               });
             }}
-            onRename={(voice, name) => {
-              void renameVoice(voice, name).catch((error: unknown) => {
-                reportOperationFailure(error, 'The voice could not be renamed.');
-              });
-            }}
-            onDelete={(voice) => {
-              void deleteVoice(voice).catch((error: unknown) => {
-                reportOperationFailure(error, 'The voice could not be deleted.');
-              });
-            }}
-            onUndo={(undo) => {
-              void undoDelete(undo).catch((error: unknown) => {
-                reportOperationFailure(error, 'The voice could not be restored.');
-              });
-            }}
+            clipUrl={(id) => client.clipUrl(id)}
+            historyReadOnlyReason={health === null ? 'The gateway is unreachable — history is read-only.' : null}
+            playbackReadout={playbackReadout}
+            onStage={(file, source) => stageReference(file, source, speakCeiling.maxSeconds)}
+            canRecord={health?.ffmpeg.available ?? false}
+            recordDisabledReason={recordReason}
+            referenceMaxSeconds={speakCeiling.maxSeconds}
+            referenceMaxMeasured={speakCeiling.measured}
+            referenceBranchLimits={branchLimits}
+            referenceTokenCeiling={tokenCeilingFor('clone', effectiveSpeakDraft.cfgScale)}
+            referenceAudioUrl={(id, start, end) => client.referenceAudioUrl(id, start, end)}
+            asrRemedy={health?.asr.available === false ? health.asr.remedy : null}
           />
-        </div>
-      </aside>
+        )}
+
+        {workspace.active === 'scripts' && (
+          <ScriptsWorkspace
+            summaries={summaries}
+            script={script}
+            voices={voices}
+            running={running}
+            loading={scriptLoading}
+            problem={failureLine(scriptFailure)}
+            onOpen={(id) => void openScript(id)}
+            onImport={(source, filename) => void importScript(source, filename)}
+            onCreate={() => void importScript('New line.', 'Untitled script.txt')}
+            onUpdateDefaults={updateScriptDefaults}
+            onEditCue={editScriptCue}
+            onRun={() => void runCurrentScript()}
+            onExport={(format) => void exportScript(format)}
+          />
+        )}
+      </main>
     </div>
   );
 }

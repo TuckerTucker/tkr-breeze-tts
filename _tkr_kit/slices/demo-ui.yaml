@@ -288,7 +288,11 @@ slices:
         itself as conservative.
     title: Single bounded reference selection with a following transcript
     layer: ui
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - number: 9
     feature: voice-workspaces
     depends_on:
@@ -315,7 +319,11 @@ slices:
         and request payloads from voice/reference presence.
     title: Model voice intent and persistent workspace state
     layer: domain
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - number: 10
     feature: voice-workspaces
     depends_on:
@@ -344,7 +352,11 @@ slices:
         confirmation-dialog paths.
     title: Task navigation and application-wide activity
     layer: ui
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - number: 11
     feature: voice-workspaces
     depends_on:
@@ -372,7 +384,11 @@ slices:
         selected voice without rebuilding it.
     title: "Voices workspace: create, keep, and reuse"
     layer: ui
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - number: 12
     feature: voice-workspaces
     depends_on:
@@ -403,7 +419,11 @@ slices:
         and does not restore a required mode field.
     title: Speak workspace with one delivery instruction
     layer: ui
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - number: 13
     feature: voice-workspaces
     depends_on:
@@ -434,7 +454,11 @@ slices:
         for persisted defaults and overrides.
     title: Scripts workspace with defaults and cue overrides
     layer: ui
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - number: 14
     feature: voice-workspaces
     depends_on:
@@ -469,7 +493,11 @@ slices:
       - Responsive, accessible layout and state restoration across reload.
     title: Wire voice lifecycle workspaces
     layer: integration
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - number: 15
     feature: voice-workspaces
     depends_on:
@@ -498,4 +526,8 @@ slices:
         no-toast/no-confirmation assertions.
     title: Test voice lifecycle workspaces
     layer: integration
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.

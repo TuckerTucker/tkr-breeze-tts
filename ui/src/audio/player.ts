@@ -257,10 +257,12 @@ export function browserBackend(workletUrl: string): AudioBackend {
  * so this path is deliberately the simple one.
  *
  * @param url - The gateway's clip route.
- * @returns The audio element, already playing.
+ * @returns The audio element and a promise that settles when playback starts.
  */
-export function playCachedClip(url: string): HTMLAudioElement {
+export function playCachedClip(url: string): {
+  readonly element: HTMLAudioElement;
+  readonly started: Promise<void>;
+} {
   const element = new Audio(url);
-  void element.play().catch(() => {});
-  return element;
+  return { element, started: element.play() };
 }

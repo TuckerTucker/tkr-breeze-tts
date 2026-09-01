@@ -617,7 +617,7 @@ stories:
       kind: commit
       ref: 3372dec
   - name: pick-the-seconds-that-sound-like-the-voice
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Move one safe, duration-bounded window across a long recording and hear
@@ -660,8 +660,12 @@ stories:
         then: the edit is preserved and its divergence from automatic tracking is shown
           in place
     feature: reference-trimmer
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - name: move-through-the-voice-lifecycle
-    status: draft
+    status: done
     number: 1
     actor: Operator
     intent: Move from making a voice, to keeping it, to using it for one line or a
@@ -699,8 +703,12 @@ stories:
         then: the active workspace and persisted drafts return without asking the
           operator to choose again
     feature: voice-workspaces
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - name: create-and-manage-a-voice
-    status: draft
+    status: done
     number: 2
     actor: Operator
     intent: Create a reusable voice by describing it, cloning audio, or promoting a
@@ -742,8 +750,12 @@ stories:
         when: the operator changes their mind
         then: undo restores it without a confirmation dialog or toast
     feature: voice-workspaces
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - name: speak-with-one-voice-and-one-direction
-    status: draft
+    status: done
     number: 3
     actor: Operator
     intent: Generate one line with a chosen voice and one clear delivery
@@ -785,8 +797,12 @@ stories:
         then: Generate disables with a contextual remedy before any request is
           dispatched
     feature: voice-workspaces
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - name: resume-and-direct-a-script
-    status: draft
+    status: done
     number: 4
     actor: Operator
     intent: Return to any stored script, set its common voice and delivery once, and
@@ -829,8 +845,12 @@ stories:
         then: progress, failures, drift, and remedies are contextual and never
           toast-only
     feature: voice-workspaces
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.
   - name: see-processing-where-it-happens
-    status: draft
+    status: done
     number: 5
     actor: Operator
     intent: Always know what the app is processing and whether other work is still
@@ -866,3 +886,7 @@ stories:
         then: the indicator clears that operation and the actionable error remains
           beside the affected control
     feature: voice-workspaces
+    evidence:
+      kind: manual
+      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+        browser QA passed with a clean console on 2026-09-01.

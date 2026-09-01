@@ -287,7 +287,10 @@ slices:
         unaffected, because a voice already takes its own copy."
     title: "Staged reference: peaks, timed transcript, trimmed window"
     layer: api
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - number: 9
     feature: voice-intent-contract
     depends_on:
@@ -313,7 +316,10 @@ slices:
         inputs before any upstream request.
     title: Derive synthesis shape from voice intent
     layer: domain
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - number: 10
     feature: voice-intent-contract
     depends_on:
@@ -338,7 +344,10 @@ slices:
         instruction, so a visible change cannot reuse stale audio.
     title: Persist script defaults and cue overrides
     layer: data
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - number: 11
     feature: voice-intent-contract
     depends_on:
@@ -366,7 +375,10 @@ slices:
         contradict the derived request.
     title: Expose the unified voice-intent API
     layer: api
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - number: 12
     feature: voice-intent-contract
     depends_on:
@@ -390,7 +402,10 @@ slices:
         failures without reference audio or transcript content.
     title: Wire the voice-intent contract
     layer: integration
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
   - number: 13
     feature: voice-intent-contract
     depends_on:
@@ -414,4 +429,7 @@ slices:
         Modal.
     title: Test the voice-intent contract
     layer: integration
-    status: draft
+    status: done
+    evidence:
+      kind: manual
+      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
