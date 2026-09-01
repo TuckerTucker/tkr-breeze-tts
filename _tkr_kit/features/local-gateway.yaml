@@ -1,7 +1,7 @@
 capability: local-gateway
 features:
   - name: credential-proxy
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - gateway/src/index.ts
@@ -26,8 +26,11 @@ features:
     scope_out:
       - Transport selection between buffered and streaming (dual-transport).
       - Anything rendered in the browser (demo-ui).
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: dual-transport
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - gateway/src/index.ts
@@ -53,8 +56,11 @@ features:
     scope_out:
       - Browser-side playback of either transport (demo-ui).
       - Caching (clip-cache).
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: reference-intake
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - gateway/src/index.ts
@@ -84,8 +90,11 @@ features:
       - Microphone capture in the browser (demo-ui).
       - Transcript accuracy — the operator supplies ref_text; the model requires
         it to be exact.
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: clip-cache
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - gateway/src/index.ts
@@ -113,8 +122,11 @@ features:
     scope_out:
       - History presentation and re-audition UI (demo-ui).
       - Transport selection (dual-transport).
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: voice-library
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - gateway/src/index.ts
@@ -147,8 +159,11 @@ features:
       - Clip caching, which stores generations rather than voices (clip-cache).
       - Any server-side notion of a voice on Modal — the model has no
         saved-voice primitive; this store is entirely local.
+    evidence:
+      kind: commit
+      ref: 69103a2
   - name: script-runner
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - gateway/src/index.ts
@@ -182,3 +197,76 @@ features:
         them.
       - Any time-stretching or pitch correction to force audio into a target
         duration — explicitly rejected.
+    evidence:
+      kind: commit
+      ref: 69103a2
+  - name: input-ceiling
+    status: done
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/src/script.ts
+    user_story: As the operator, I want every string that becomes a text-encoder
+      segment measured against the ceiling its own branch mode carries, so that
+      a request the frozen graphs cannot serve is refused here rather than
+      aborted mid-stream on the GPU.
+    acceptance_criteria:
+      - "The ceiling is keyed on (mode, cfg), not cfg alone: Design at 1.0 is a
+        single text segment at batch 1 and caps at 256; Clone and Direction
+        carry two segments and reach batch 2 even at cfg 1.0, so they cap at
+        512."
+      - Every string sent is measured — text, instruction, and the reference
+        transcript — and the largest decides, because the graph bucket is the
+        padded maximum across the batch and one long segment sets it for every
+        row.
+      - A refusal names which field was too long and what its ceiling is, so the
+        operator is not left to guess which box to shorten.
+      - The estimate stays conservative for text that is not English, since a
+        four-characters-per-token rule is an English average and being
+        optimistic costs a hard failure rather than a warning.
+    scope_in:
+      - The ceiling table, the estimator, and the refusal that carries both.
+    scope_out:
+      - Showing the count as the operator types (demo-ui).
+      - Reference duration, which the backbone governs rather than the text
+        encoder (measurement).
+    evidence:
+      kind: commit
+      ref: 17053ee
+  - name: reference-staging
+    status: draft
+    wiring_assignment:
+      territory:
+        - gateway/src/index.ts
+        - gateway/src/config.ts
+    user_story: As the operator, I want a reference uploaded once and held with its
+      waveform and its timed transcript, so that choosing a section of it costs
+      no re-upload, no second transcription, and no chance of the transcript
+      drifting from the audio it describes.
+    acceptance_criteria:
+      - A reference is uploaded once and referred to by id thereafter; the
+        console stops re-sending the whole file on every synthesis.
+      - Normalisation, waveform peaks and transcription happen on intake, so the
+        browser receives everything it needs to draw and cut in one response.
+      - A window is expressed as a start and an end; the gateway trims with
+        ffmpeg at send time and sends the transcript that window actually
+        covers.
+      - The transcript for a window is sliced from word timestamps rather than
+        re-transcribed, so dragging a handle costs nothing.
+      - Microphone capture routes through the same intake, so recording and
+        upload stop being two paths.
+      - When no ASR endpoint is configured the intake still works and the
+        transcript is simply empty, degrading exactly as a missing ffmpeg
+        already does.
+    scope_in:
+      - The staged reference store, its intake, its window preview, and its
+        eviction.
+      - The ASR proxy, with the credential attached server-side as every other
+        upstream call already is.
+      - Peak computation and transcript slicing as pure functions, so their
+        rules are testable without a filesystem.
+    scope_out:
+      - Running the recogniser (modal-inference speech-recognition).
+      - Drawing the waveform or dragging the handles (demo-ui).
+      - The voice library, which keeps its own copy and outlives any staged
+        reference.

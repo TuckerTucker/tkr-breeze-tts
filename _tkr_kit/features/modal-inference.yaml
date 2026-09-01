@@ -1,7 +1,7 @@
 capability: modal-inference
 features:
   - name: runtime-image
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - infra/__init__.py
@@ -25,8 +25,11 @@ features:
       - Model weights — they live on a Volume, never in the image
         (weights-volume).
       - Runtime configuration such as GPU type or warm window (service-config).
+    evidence:
+      kind: commit
+      ref: 997f0e0
   - name: weights-volume
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - infra/__init__.py
@@ -48,8 +51,11 @@ features:
     scope_out:
       - Loading weights into GPU memory (inference-service).
       - Image contents (runtime-image).
+    evidence:
+      kind: commit
+      ref: 997f0e0
   - name: inference-service
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - infra/__init__.py
@@ -75,8 +81,11 @@ features:
     scope_out:
       - Choosing the GPU or warm window (service-config).
       - Modifying vendor request handling or the 409 lock — used as shipped.
+    evidence:
+      kind: commit
+      ref: 997f0e0
   - name: service-config
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - infra/__init__.py
@@ -107,3 +116,38 @@ features:
     scope_out:
       - Client-side credential custody (local-gateway).
       - Deciding the final scaledown value — that is evidence from measurement.
+    evidence:
+      kind: commit
+      ref: 997f0e0
+  - name: speech-recognition
+    status: draft
+    wiring_assignment:
+      territory:
+        - infra/asr.py
+        - infra/tests/test_asr.py
+    user_story: As the operator, I want a reference recording transcribed with
+      word-level timestamps, so that the transcript the cloning path requires is
+      derived from the audio instead of typed against it.
+    acceptance_criteria:
+      - A separate Modal app, so the ASR container's warm window and GPU are
+        chosen for a once-per-sitting workload rather than inherited from an
+        interactive one.
+      - Word-level timestamps are returned, because they are what lets a trimmed
+        window carry its own transcript without a second pass.
+      - Language is detected and reported, never supplied — the UI's EN/ZH
+        toggle drives the vocal-event palette only, and giving it a second
+        meaning would break that.
+      - The same proxy token pair authenticates it; the pair is workspace-wide,
+        so no second credential is introduced.
+      - The response shape follows OpenAI's transcriptions endpoint, so it reads
+        as a convention rather than an invention.
+    scope_in:
+      - The ASR image, its model weights on the existing Volume, and the serving
+        class.
+      - Its own deployment posture — GPU, scaledown window, proxy auth —
+        expressed through the same configuration surface as the TTS service.
+    scope_out:
+      - Staging, trimming, or slicing a transcript (local-gateway
+        reference-staging).
+      - Any change to the Breeze serving class — the two apps share a Volume and
+        a token pair, nothing else.

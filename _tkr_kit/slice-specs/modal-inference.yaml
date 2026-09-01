@@ -106,3 +106,37 @@ slice_specs:
     evidence:
       kind: commit
       ref: 183a1a0
+  - slice: 5
+    status: draft
+    title: Whisper ASR service
+    purpose: Derive a reference transcript from its audio, with the per-word times
+      that let a trimmed window carry its own transcript.
+    interface: "A Modal app `breeze-tts-asr` exposing POST /v1/audio/transcriptions
+      (multipart: file) → {text, language, duration, words: [{word, start,
+      end}]}. Its own ServiceConfig instance: gpu L4, scaledown_window_s 120,
+      requires_proxy_auth on. Weights filled by `modal run infra/asr_weights.py`
+      onto the shared Volume. Deployed with `modal deploy infra/asr.py`; the
+      endpoint URL goes to MODAL_ASR_URL in the repo-root .env."
+    behavior: "Load faster-whisper large-v3 from the shared weights Volume inside
+      @modal.enter(), never in the ASGI lifespan — Modal marks a container warm
+      when enter() returns, and the same reasoning that governs the Breeze
+      serving class governs this one. Transcribe with word_timestamps=True and
+      vad_filter=True, so cost tracks speech rather than file length. Detect
+      language and return it; accept no language input, because the UI's EN/ZH
+      toggle means the vocal-event palette and nothing else. Weights live on the
+      shared breeze-tts-weights Volume under their own subdirectory, filled by a
+      function in asr_weights.py that imports the Volume handle from weights.py
+      rather than modifying it. That module carries its own required-file list,
+      applying the completeness check weights.py established so a partial
+      download is caught at fill time rather than at first transcription."
+    errors: Unreadable audio → 400 naming the detected container, since the gateway
+      normalises before sending and a failure here means normalisation did not
+      happen. Missing weights → the fill's completeness check raises at deploy
+      rather than at first request. A request without proxy auth → closed by
+      Modal at the edge, as the TTS endpoint already is.
+    tests: "The Modal SDK is constructed but never called: the class decorates, its
+      config resolves, and the response schema is asserted against a fixture —
+      no GPU, no network, matching the existing infra tests. Word timestamps are
+      monotonic and lie within the reported duration. No request field carries a
+      language. The ASR required-file list is checked the way weights.py's
+      already is, and asr_weights.py imports the Volume without redefining it."

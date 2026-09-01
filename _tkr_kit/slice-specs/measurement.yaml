@@ -57,3 +57,29 @@ slice_specs:
     evidence:
       kind: commit
       ref: 183a1a0
+  - slice: 3
+    status: draft
+    title: Reference-duration ceiling probe
+    purpose: Establish, by measurement, the longest reference audio the frozen
+      backbone_prefill graphs will serve — so the trim control's maximum is
+      observed rather than chosen.
+    interface: "A CLI producing bench/findings/reference-ceiling.json: per-duration
+      served/refused, the raised graph shape verbatim, and the ceiling per
+      branch-batch mode."
+    behavior: Generate reference WAVs of increasing duration at the model's own
+      24kHz, holding text, instruction, seed and container warm constant so
+      duration is the only varying quantity. Submit each at cfg 1.0 and at one
+      cfg != 1.0, because backbone_prefill is keyed on branch_batch_size and a
+      single figure would be wrong for one mode. Record the last duration that
+      served and the first that raised. Capture the RuntimeError's graph shape
+      verbatim rather than paraphrasing it — the shape is what identifies which
+      frozen stage refused. Discard any sample whose request crossed a cold
+      start, since that would attribute a container event to duration.
+    errors: A 409 → retried after a bounded wait rather than recorded as a refusal,
+      since contention is not a ceiling. A cold start mid-walk → affected
+      samples discarded. An auth failure → abort with the remedy named, as the
+      existing harness already does.
+    tests: Generated reference durations are exact against a known byte count. A
+      refusal is distinguished from a timeout and from a 409. The finding
+      records a per-mode ceiling, never a single number. The finding is written
+      at a stable path that the gateway's findings reader already resolves.

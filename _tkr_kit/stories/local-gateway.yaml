@@ -216,3 +216,77 @@ stories:
     evidence:
       kind: commit
       ref: 69103a2
+  - name: refuse-an-input-the-graphs-cannot-serve
+    status: done
+    number: 1
+    actor: Operator
+    intent: Be told a line is too long before a GPU is woken for it, and be told
+      which line.
+    preconditions:
+      - The gateway is running
+    trigger_action: The operator submits a request whose longest text segment
+      exceeds its mode's ceiling
+    steps:
+      - actor: Operator
+        action: Clones with a long reference transcript and a short line
+        system_response: The request is refused naming the transcript, not the line, as
+          the field over its ceiling
+      - actor: Operator
+        action: Clones at cfg 1.0 with a 400-token line
+        system_response: It is accepted, because Clone reaches batch 2 even at cfg 1.0
+          and so carries the 512 ceiling rather than 256
+    acceptance_criteria:
+      - given: a Clone request at cfg 1.0
+        when: the ceiling is resolved
+        then: it is 512, because two text segments reach batch 2 regardless of branch
+          count
+      - given: a short line and a long reference transcript
+        when: the ceiling is checked
+        then: the transcript is measured too and the largest segment decides, since the
+          graph bucket is the padded maximum across the batch
+      - given: a refusal
+        when: the operator reads it
+        then: it names which field was too long and the ceiling that field had
+    feature: input-ceiling
+    evidence:
+      kind: commit
+      ref: 17053ee
+  - name: attach-a-recording-once-and-cut-from-it
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Hand over a recording once and then work with sections of it, rather
+      than re-uploading a file for every attempt.
+    preconditions:
+      - ffmpeg is available
+      - The gateway is running
+    trigger_action: The operator uploads or records reference audio
+    steps:
+      - actor: Operator
+        action: Uploads a long recording
+        system_response: One response carries its duration, its waveform peaks, and its
+          transcript with per-word times
+      - actor: Operator
+        action: Chooses a window and generates
+        system_response: The gateway trims to that window and sends the transcript
+          covering exactly it
+      - actor: Operator
+        action: Generates a second line from the same reference
+        system_response: Nothing is re-uploaded and nothing is re-transcribed
+    acceptance_criteria:
+      - given: a window between two times
+        when: its transcript is needed
+        then: it is sliced from word timestamps rather than obtained by transcribing
+          again
+      - given: a staged reference
+        when: synthesis is requested
+        then: the request carries an id and a window, not the audio
+      - given: no ASR endpoint configured
+        when: a reference is staged
+        then: intake still succeeds with an empty transcript, degrading as a missing
+          ffmpeg already does rather than failing
+      - given: a staged reference that is never used
+        when: its age passes the retention window
+        then: it is evicted, and a voice promoted from it is unaffected because a voice
+          owns its own copy
+    feature: reference-staging

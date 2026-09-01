@@ -62,3 +62,32 @@ slices:
     evidence:
       kind: commit
       ref: 183a1a0
+  - number: 3
+    feature: reference-ceiling-probe
+    depends_on:
+      - 1
+    story_ids:
+      - measure-the-reference-duration-wall
+    paths:
+      - bench/reference_probe.py
+      - bench/tests/test_reference_probe.py
+      - bench/findings/reference-ceiling.json
+    delivers:
+      - The number the trim control is sized against. backbone_prefill is frozen
+        at the same 24 shapes as the text encoder, keyed on sequence_length —
+        which counts the reference audio's frames — so reference duration has a
+        hard wall and nobody has measured where it is.
+      - A walk upward through reference durations against a warm container,
+        recording for each whether it served or raised, with the graph shape
+        from the RuntimeError captured verbatim rather than paraphrased.
+      - The ceiling recorded per branch-batch mode, because backbone_prefill is
+        keyed on branch_batch_size exactly as the text encoder is, and one
+        number for both modes would be wrong for one of them.
+      - A finding stating plainly that the wall is a hard failure and not a
+        slowdown, so no consumer treats it as a soft limit worth approaching.
+      - The finding written where the gateway already reads cfg-falloff.json, so
+        the UI reads a measured maximum instead of carrying a constant somebody
+        picked.
+    title: Reference-duration ceiling probe
+    layer: integration
+    status: draft

@@ -616,3 +616,45 @@ stories:
     evidence:
       kind: commit
       ref: 3372dec
+  - name: pick-the-seconds-that-sound-like-the-voice
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Find and cut the few good seconds inside a long recording, seeing the
+      words while doing it.
+    preconditions:
+      - A reference has been staged
+      - The mode is Clone or Direction
+    trigger_action: The operator drags the range handles across the waveform
+    steps:
+      - actor: Operator
+        action: Drags a handle
+        system_response: It settles on the nearest word boundary and the transcript
+          beneath narrows to the words inside the window
+      - actor: Operator
+        action: Fixes a misrecognised name in the transcript, then adjusts the window
+          again
+        system_response: The correction survives; the edited transcript is not
+          overwritten by the new slice
+      - actor: Operator
+        action: Plays the selection
+        system_response: Only the chosen window plays, so a bad reference is caught
+          before a generation is spent on it
+    acceptance_criteria:
+      - given: a drag that lands mid-word
+        when: the handle settles
+        then: it snaps to the word boundary, because a window that cuts a word produces
+          a transcript that lies about its audio
+      - given: a selection whose transcript exceeds the mode's token ceiling
+        when: it is shown
+        then: the count is displayed against that ceiling and Generate is disabled,
+          rather than the request failing upstream
+      - given: no recorded reference-duration measurement
+        when: the trimmer sets its maximum window
+        then: it offers the conservative maximum and says the wall has not been
+          measured, rather than quoting a number nobody observed
+      - given: a hand-edited transcript
+        when: the window changes
+        then: the edit is kept and the operator is shown that it no longer tracks the
+          selection
+    feature: reference-trimmer

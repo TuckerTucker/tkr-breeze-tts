@@ -62,3 +62,34 @@ stories:
     evidence:
       kind: commit
       ref: 183a1a0
+  - name: measure-the-reference-duration-wall
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Know how long a reference may be before the frozen graphs refuse it,
+      rather than discovering the wall during a demo.
+    preconditions:
+      - The latency harness works
+      - The service runs with the fast path enabled
+    trigger_action: The operator runs the reference probe against a warm container
+    steps:
+      - actor: Operator
+        action: Runs the probe, which submits progressively longer reference audio
+        system_response: Each duration is recorded as served or refused, with the raised
+          graph shape captured verbatim
+      - actor: Operator
+        action: Reads the finding
+        system_response: The longest duration that served is stated per branch-batch
+          mode, with the failure named as a hard error
+    acceptance_criteria:
+      - given: a duration past the captured ceiling
+        when: it is submitted
+        then: the run records a refusal rather than a slow success, because
+          freeze_after_warmup raises instead of falling back
+      - given: a cold start part-way through the walk
+        when: results are assembled
+        then: the affected samples are discarded rather than read as a duration effect
+      - given: a completed run
+        when: the UI needs a maximum for its trim control
+        then: it reads the measured figure from findings rather than carrying a constant
+    feature: reference-ceiling-probe

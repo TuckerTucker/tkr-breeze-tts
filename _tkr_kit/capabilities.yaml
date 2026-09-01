@@ -23,6 +23,11 @@ capabilities:
         @modal.enter(), the vendor FastAPI app mounted via @modal.asgi_app()."
       - "Deployment configuration: GPU selection, scaledown_window,
         min_containers, requires_proxy_auth."
+      - "The speech-recognition sibling app: its own image, its own GPU and
+        warm window, its own subdirectory of the shared weights Volume. A
+        separate app because a once-per-sitting transcription and an
+        interactive synthesis want opposite warm profiles, and ServiceConfig is
+        frozen per service; one Volume because setup should stay one fill."
     scope_out:
       - Measuring what the deployed service does (measurement).
       - Credential custody on the client side, audio transcoding, caching

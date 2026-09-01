@@ -236,3 +236,33 @@ slice_specs:
     evidence:
       kind: commit
       ref: 3372dec
+  - slice: 8
+    status: draft
+    title: Reference trimmer
+    purpose: Let the operator see a recording's waveform and its words together and
+      cut the seconds worth cloning, without typing a transcript.
+    interface: "`<ReferenceTrimmer reference words peaks maxSeconds onChange />`
+      rendered inside VoiceModes when a staged reference is present. Reference
+      state becomes {referenceId, start, end, transcript, transcriptEdited} in
+      place of a File."
+    behavior: Draw peaks to a canvas at the container's width, redrawn on resize
+      rather than scaled, so the waveform stays honest. Two handles, keyboard-
+      and pointer-operable, each settling on the nearest word boundary. The
+      transcript beneath re-slices as the window moves; once hand-edited it
+      stops tracking and says so in place, with an undo rather than a
+      confirmation. Play only the window, from the gateway's window route. Show
+      the selection's duration against the measured reference ceiling and its
+      token count against the mode's ceiling, disabling Generate rather than
+      letting the request fail upstream. Where no reference-ceiling finding
+      exists, offer the conservative maximum and say the wall is unmeasured —
+      the same posture the CFG control already takes.
+    errors: No transcript, because ASR is unconfigured → the trimmer still works and
+      the transcript box is empty and required, with the health remedy shown
+      beside it. A selection past a ceiling → the readout turns and Generate
+      disables, never a toast and never a post-submission error.
+    tests: A drag landing mid-word settles on the boundary. The transcript matches
+      the window's words exactly. A hand edit survives a subsequent drag and the
+      divergence is announced. Generate is disabled, not merely warned, when the
+      selection exceeds either ceiling. With no findings file the maximum is the
+      conservative one and the copy says so. No toast and no confirmation dialog
+      is rendered on any path.

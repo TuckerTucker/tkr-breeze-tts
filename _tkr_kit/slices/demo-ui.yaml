@@ -260,3 +260,36 @@ slices:
     evidence:
       kind: commit
       ref: 3372dec
+  - number: 8
+    feature: reference-trimmer
+    depends_on:
+      - 2
+    story_ids:
+      - pick-the-seconds-that-sound-like-the-voice
+    paths:
+      - ui/src/components/ReferenceTrimmer.tsx
+      - ui/src/state/reference.ts
+      - ui/src/components/VoiceModes.tsx
+      - ui/test/reference-trimmer.test.tsx
+    delivers:
+      - The waveform and the words shown together, with one selection moving
+        both. Choosing eight seconds out of forty minutes by scrubbing a
+        waveform blind is the version of this feature that does not work.
+      - Handles that snap to word boundaries, because a window cutting mid-word
+        yields a transcript that claims audio it does not have — and an inexact
+        transcript is precisely what the cloning path cannot take.
+      - A transcript that stays editable for recognition errors, with an edit
+        remembered rather than silently overwritten by the next drag, and the
+        divergence shown in place instead of hidden.
+      - Window playback before use, so a reference that sounds wrong costs a
+        listen rather than a generation and a cold start.
+      - The selection's token count shown against the ceiling its mode carries,
+        with Generate disabled rather than permitted to fail upstream — making
+        the wrong thing hard instead of reporting it afterwards.
+      - A maximum window read from bench/findings rather than carried as a
+        constant. Where nothing has been measured the control offers the
+        conservative maximum and says the wall is unmeasured, exactly as the CFG
+        control already does.
+    title: Waveform trim with a transcript that follows the selection
+    layer: ui
+    status: draft

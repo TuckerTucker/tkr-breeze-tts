@@ -1,7 +1,7 @@
 capability: measurement
 features:
   - name: latency-harness
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - bench/__init__.py
@@ -26,8 +26,11 @@ features:
     scope_out:
       - The cfg fall-off experiment specifically (cfg-falloff-probe).
       - Any change to the service being measured (modal-inference).
+    evidence:
+      kind: commit
+      ref: 432dd1f
   - name: cfg-falloff-probe
-    status: draft
+    status: done
     wiring_assignment:
       territory:
         - bench/__init__.py
@@ -52,3 +55,32 @@ features:
     scope_out:
       - General latency measurement (latency-harness).
       - Implementing whichever CFG control the result selects (demo-ui).
+    evidence:
+      kind: commit
+      ref: 432dd1f
+  - name: reference-ceiling-probe
+    status: draft
+    wiring_assignment:
+      territory:
+        - bench/__init__.py
+        - bench/pyproject.toml
+    user_story: As the operator, I want the longest reference audio the frozen
+      graphs will actually serve to be a measured number, so that the trim
+      control offers a maximum the model honours instead of one I picked.
+    acceptance_criteria:
+      - Reference duration is walked upward until the frozen backbone_prefill
+        graph raises, and the last duration that served is recorded.
+      - The probe runs warm only — a cold start mid-walk would be attributed to
+        the wrong cause.
+      - The ceiling is recorded per branch-batch mode, because backbone_prefill
+        is keyed on branch_batch_size exactly as the text encoder is.
+      - The finding names the failure as a hard RuntimeError rather than a
+        slowdown, so nothing downstream treats the wall as a soft limit.
+      - The result is written where the gateway and UI can read it, as
+        cfg-falloff.json already is.
+    scope_in:
+      - The duration walk, its warm-only execution, and its recorded finding.
+    scope_out:
+      - Transcript token length, which the text encoder governs and the cfg
+        probe already measured.
+      - Enforcing the ceiling anywhere (local-gateway, demo-ui).

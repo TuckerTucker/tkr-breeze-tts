@@ -124,3 +124,32 @@ stories:
     evidence:
       kind: commit
       ref: 183a1a0
+  - name: transcribe-a-reference-recording
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Get the exact words of a recording, timed, without typing them.
+    preconditions:
+      - The ASR app is deployed and reachable with the proxy token pair
+      - The recording has been normalised to a WAV the recogniser can read
+    trigger_action: The gateway posts a normalised reference to the transcription endpoint
+    steps:
+      - actor: Gateway
+        action: Posts a normalised WAV to /v1/audio/transcriptions
+        system_response: The full text comes back with a start and end time for every word
+      - actor: Gateway
+        action: Posts a recording in Chinese without saying so
+        system_response: The detected language is reported back rather than assumed or required
+    acceptance_criteria:
+      - given: a multi-minute recording
+        when: it is transcribed
+        then: silence is skipped rather than decoded, so the wait is proportional to
+          speech and not to file length
+      - given: a returned transcript
+        when: a caller wants the words between two times
+        then: per-word start and end times make that a slice rather than a second
+          request
+      - given: no language field in the request
+        when: the recogniser runs
+        then: it detects the language and names it in the response
+    feature: speech-recognition

@@ -141,3 +141,43 @@ slices:
     evidence:
       kind: commit
       ref: 183a1a0
+  - number: 5
+    feature: speech-recognition
+    depends_on:
+      - 2
+    story_ids:
+      - transcribe-a-reference-recording
+    paths:
+      - infra/asr.py
+      - infra/asr_image.py
+      - infra/asr_weights.py
+      - infra/tests/test_asr.py
+    delivers:
+      - A second Modal app rather than a second class on the serving one. The
+        two workloads want opposite warm profiles — TTS is interactive and holds
+        a 600s window, ASR fires once at the start of a sitting — and
+        ServiceConfig is frozen per service, so separate apps is what expressing
+        that honestly looks like.
+      - An L4 rather than an H100. Transcription is not the latency claim this
+        demo makes, and an H100 for it is waste; ALLOWED_GPUS already carries
+        L4, so this is configuration and not a new decision.
+      - faster-whisper large-v3 with word_timestamps enabled — the timestamps
+        are the whole point, because they are what lets a trimmed window carry
+        its own transcript without a second pass.
+      - vad_filter enabled, so a multi-minute recording costs its speech rather
+        than its length.
+      - Weights on the existing breeze-tts-weights Volume, under their own
+        subdirectory, filled by their own function. One Volume keeps setup to
+        one fill command; a separate module keeps this slice out of weights.py,
+        which a shipped slice owns — asr_weights.py imports the Volume handle
+        rather than editing the module that defines it, and carries its own
+        required-file list so a partial download is caught beside the model it
+        describes.
+      - Language detected and returned, never accepted as input. The UI's EN/ZH
+        toggle drives the vocal-event palette only, and a second meaning for it
+        would be a second thing to keep true.
+      - The OpenAI transcriptions response shape, so the endpoint reads as a
+        convention rather than something invented here.
+    title: Whisper ASR as a sibling app, with word timestamps
+    layer: service
+    status: draft

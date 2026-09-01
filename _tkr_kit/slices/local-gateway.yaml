@@ -202,3 +202,89 @@ slices:
     evidence:
       kind: commit
       ref: 69103a2
+  - number: 7
+    feature: input-ceiling
+    depends_on: []
+    story_ids:
+      - refuse-an-input-the-graphs-cannot-serve
+    paths:
+      - gateway/src/script.ts
+      - gateway/test/ceiling.test.ts
+      - ui/src/state/draft.ts
+      - gateway/src/index.ts
+      - gateway/src/cue-queue.ts
+      - ui/src/state/script.ts
+      - ui/src/components/Console.tsx
+      - ui/test/console.test.tsx
+    delivers:
+      - A ceiling keyed on (mode, cfg) rather than cfg alone. Design at 1.0 is
+        one text segment at batch 1 and caps at 256; Clone and Direction carry
+        two segments and so reach batch 2 even at cfg 1.0, capping at 512.
+        Keying on cfg alone is right for Design and wrong for the other two.
+      - A check over every string that becomes a segment — text, instruction,
+        and the reference transcript — taking the largest, because the graph
+        bucket is the padded maximum across the batch and one long segment sets
+        it for every row.
+      - "The defect this closes, stated so it is not reintroduced: the check
+        measured `text` alone, so a 2707-character reference transcript reached
+        the GPU and raised `text encoder CUDA graph (2, 640) was not declared in
+        the warmup profile` after a 170s cold start. The estimator was not at
+        fault — 4.3 characters per token is what that input actually was."
+      - A refusal that names which field was too long and the ceiling that field
+        had, since three boxes can each be the cause and 'shorten the line' does
+        not say which line.
+      - An estimator that stays conservative for text that is not English,
+        because four characters per token is an English average on a bilingual
+        model and being optimistic costs a hard failure rather than a warning.
+      - The UI's mirror of the table updated in the same slice — two copies of a
+        ceiling that disagree is worse than one that is wrong.
+    title: Mode-aware input ceiling across every text segment
+    layer: domain
+    status: done
+    evidence:
+      kind: commit
+      ref: 17053ee
+  - number: 8
+    feature: reference-staging
+    depends_on:
+      - 3
+      - 7
+    story_ids:
+      - attach-a-recording-once-and-cut-from-it
+    paths:
+      - gateway/src/references.ts
+      - gateway/src/reference-slice.ts
+      - gateway/src/asr.ts
+      - gateway/src/index.ts
+      - gateway/src/config.ts
+      - gateway/test/references.test.ts
+      - gateway/test/reference-slice.test.ts
+    delivers:
+      - A reference uploaded once and referred to by id thereafter. Today the
+        browser holds a File and re-sends the whole thing on every synthesis; a
+        forty-minute source recording makes that indefensible.
+      - Intake that normalises, computes waveform peaks, and transcribes in one
+        pass, so the browser gets everything it needs to draw and to cut from a
+        single response.
+      - Two pure modules — peaks from PCM, and a transcript sliced from word
+        timestamps with boundary snapping. No filesystem, so their rules are
+        testable alone, as cache-index.ts and vtt.ts already are.
+      - A window expressed as a start and an end, trimmed with ffmpeg at send
+        time and paired with the transcript covering exactly that window.
+        Trimming without re-deriving the transcript would recreate the pair
+        drift that produced the (2, 640) failure, so the two move together by
+        construction.
+      - Microphone capture routed through the same intake, so recording and
+        upload stop being two paths and a recorded reference gets its transcript
+        for free.
+      - "Graceful absence: with no ASR endpoint configured, intake still
+        succeeds and the transcript is simply empty — the same shape checkFfmpeg
+        already uses, reported through /api/health so the UI can say why rather
+        than appearing broken."
+      - "Retention: staged references are neither clips nor voices but working
+        material. Bounded by age eviction on load and on write, declared here
+        rather than left for the audit to find. Promotion to a voice is
+        unaffected, because a voice already takes its own copy."
+    title: "Staged reference: peaks, timed transcript, trimmed window"
+    layer: api
+    status: draft

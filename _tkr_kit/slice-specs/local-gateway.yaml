@@ -192,3 +192,72 @@ slice_specs:
     evidence:
       kind: commit
       ref: 69103a2
+  - slice: 7
+    status: done
+    title: Mode-aware input ceiling
+    purpose: Refuse, before a GPU is woken, any request whose longest text segment
+      exceeds the ceiling its branch mode actually carries.
+    interface: "`textEncoderBatch(mode, cfgScale): 1 | 2 | 4` and
+      `tokenCeilingFor(mode, cfgScale): 256 | 512`, replacing
+      `tokenCeilingFor(cfgScale)`. A check over the segments a request will
+      produce, returning which field exceeded and by how much. The same table is
+      mirrored in ui/src/state/draft.ts."
+    behavior: "Resolve the batch from the template and the branch count:
+      tts_instruction is one text segment, ref_edit_tata is two; cfg 1.0 is a
+      single branch, anything else dual. So Design/1.0 → batch 1 → 256;
+      Design/!=1.0 and Clone/1.0 → batch 2 → 512; Clone/!=1.0 → batch 4 → 512
+      (available only because extend_warmup_profile.py declares it). Measure
+      text, instruction and refText, and compare the LARGEST against the ceiling
+      — the graph's token_length is the padded maximum across the batch, so a
+      sum would over-refuse and measuring text alone under-refuses. Keep the
+      estimator conservative for text that is not Latin script, since four
+      characters per token is an English average on a bilingual model."
+    errors: Over the ceiling → a typed validation failure naming the field, its
+      estimated tokens, and its ceiling, with a remedy that says which box to
+      shorten. Never a 500, and never a request that reaches Modal — the whole
+      point is that the cold start is not spent to learn this.
+    tests: The ceiling table is asserted for all six (mode, cfg) combinations. A
+      short line with a long reference transcript is refused, naming the
+      transcript — the exact 2707-character input that produced `(2, 640)` in
+      production is the fixture. Clone at cfg 1.0 accepts a 400-token line,
+      which the old cfg-only table wrongly refused. A non-Latin input of the
+      same character count estimates higher than an English one. The gateway and
+      UI tables agree, asserted rather than assumed.
+    evidence:
+      kind: commit
+      ref: 17053ee
+  - slice: 8
+    status: draft
+    title: Staged reference resource
+    purpose: Hold an uploaded recording once, with everything needed to choose a
+      section of it, and send only that section.
+    interface: "POST /api/reference (multipart) → {id, durationSeconds, sampleRate,
+      peaks[], words[], transcript, language}. GET
+      /api/reference/:id/audio?start=&end= → WAV of the window. DELETE
+      /api/reference/:id. POST /api/speech accepts reference_id + ref_start +
+      ref_end in place of ref_audio. Pure: `peaksFrom(pcm, format, buckets)` and
+      `sliceTranscript(words, start, end)`. New config: MODAL_ASR_URL,
+      REFERENCE_STORE_DIR, REFERENCE_MAX_AGE_MS."
+    behavior: "On intake: normalise through the existing normaliseReference, compute
+      peaks from the resulting PCM, then transcribe via the ASR proxy with the
+      credential attached server-side. Persist the WAV plus one sidecar holding
+      peaks, words, duration and language — the same one-format-on-disk
+      discipline the clip cache already keeps. On synthesis: trim with ffmpeg
+      -ss/-to and send the transcript sliceTranscript returns for that window,
+      so the pair cannot drift. Snap window edges to word boundaries in the pure
+      module, not in the UI, so the rule is testable and both callers get it.
+      Route microphone capture through the same intake. Sample rate and format
+      come from the normalised file, never hardcoded."
+    errors: "No MODAL_ASR_URL → intake succeeds with an empty transcript and
+      /api/health reports asr unavailable with its remedy, exactly as a missing
+      ffmpeg already degrades. ASR upstream failure → same, logged, never fatal
+      to intake: a typed transcript is still possible by hand. Unknown
+      reference_id → typed not-found. A window outside the audio, or inverted →
+      typed validation naming the duration it had."
+    tests: Peaks and transcript slicing are tested as pure functions with no
+      filesystem. Snapping never yields a window whose transcript contains a
+      word the audio does not fully contain. A trimmed window is byte-exact
+      against ffmpeg run directly. Intake with the ASR proxy stubbed absent
+      still returns a usable reference. Two syntheses from one reference perform
+      one upload and one transcription. Eviction removes the WAV and its sidecar
+      together, and a voice promoted beforehand still reads.
