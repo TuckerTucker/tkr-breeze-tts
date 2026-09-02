@@ -1,7 +1,7 @@
 meta:
   fmt: 14
   name: breeze-tts-demo
-  ts: "2026-09-01T20:32:07Z"
+  ts: "2026-09-02T03:45:23Z"
   what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
     Modal; a local gateway holds the credential and absorbs audio chores; a browser
     UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
@@ -32,19 +32,19 @@ capabilities:
   - id: local-gateway
     state: done
     dir: gateway/
-    evidence: "commit a01edea"
-    provides: "credential proxy, dual transport, staged reference + ASR proxy, trim-at-send, clip cache, voice library, script runner"
-    verified: "156 tests + real ffmpeg intake and injected ASR/upstream boundaries"
+    evidence: "commits a01edea, b1c07c0"
+    provides: "credential proxy, dual transport, staged reference + ASR proxy, trim-at-send, clip cache, voice library, script runner, prompt-capacity enforcement"
+    verified: "183 tests + real ffmpeg intake and injected ASR/upstream boundaries"
   - id: demo-ui
     state: done
     dir: ui/
-    evidence: "commit f4a188c"
-    provides: "console, three voice modes, bounded reference selection, concurrent activity feedback, streaming playback, wake state, history, voice library, script editor"
-    verified: "165 tests + real AudioWorklet driven in Chrome"
+    evidence: "commits f4a188c, defd083, 4b0ae90"
+    provides: "saved-voice-focused console, capability-gated workspaces, streaming playback, wake state, history, voice library, script editor and cached cue preview"
+    verified: "194 tests + real AudioWorklet driven in Chrome"
 
 state:
   built:
-    - "All four capabilities' source and tests: 455 tests, all passing offline."
+    - "All four capabilities' source and tests: 511 tests, all passing offline."
     - "DEPLOYED. Image built, 7.68GB checkpoint on the Volume, service live at
        tuckertucker--breeze-tts-breezeservice-serve.modal.run, proxy auth enforced."
     - "Measured on an H100: warm TTFA 161ms, RTF 0.39, graph-capture warmup 162.6s
@@ -57,6 +57,12 @@ state:
     - "UI verified in Chrome: real AudioWorklet, 19ms first audio, no fallback."
     - "Reference audio is staged and transcribed once, then one bounded selection
        moves as a unit and is trimmed only when synthesis is sent."
+    - "Gateway preflight models text-encoder and backbone-prefill graph families
+       independently, including reference-audio codes; oversized plain-text script
+       lines are split at natural boundaries before they can reach a frozen graph."
+    - "The active browser surface exposes Voices and Speak with saved voices. The
+       implemented Scripts, described-voice, and temporary-reference paths retain
+       their state but are dormant behind centralized availability gates."
   deferred:
     - "Cold TTFA is unmeasured client-side; the figure is known from container
        logs only, so the UI's wake state says 'not yet measured'."
@@ -68,8 +74,11 @@ state:
     - "cfg is NOT graph-keyed. warmup_profile.py maps it to a binary mode, so a
        continuous slider is viable — for Design. The brief says otherwise; the
        brief is wrong."
-    - "The token ceiling is PER BRANCH MODE and exceeding it is a hard failure,
-       not a slowdown: 256 at cfg 1.0, 512 otherwise, then RuntimeError."
+    - "Text encoding and backbone prefill are separate frozen graph families.
+       At cfg 1.0 the assembled backbone prompt is capped at 256 even when Clone's
+       two text segments reach text-encoder batch 2; above cfg 1.0 it is 512.
+       Reference audio contributes 12.5 tokens/second. Exceeding either is a hard
+       failure, not a slowdown."
     - "The measured reference ceiling is 14.08 seconds at cfg 1.0 and 28.16
        seconds above cfg 1.0. There is no supported 30-second branch."
     - "The vendor's fast.json does NOT warm ref_edit_tata — its warmup_request is
@@ -118,8 +127,8 @@ deps:
 struct:
   infra:     { n: 7,  lines: 981,  tests: 5, role: "Modal deployment surface" }
   bench:     { n: 3,  lines: 1331, tests: 4, role: "measurement clients + findings/" }
-  gateway/src: { n: 15, lines: 5542, tests: 10, role: "local Node service" }
-  ui/src:    { n: 25, lines: 4864, tests: 12, role: "React browser surface" }
+  gateway/src: { n: 17, lines: 6584, tests: 12, role: "local Node service" }
+  ui/src:    { n: 32, lines: 7259, tests: 16, role: "React browser surface" }
   ui/public: { n: 1, role: "pcm-processor.js — served untransformed, deliberately not bundled" }
 
 nav:
@@ -131,9 +140,11 @@ nav:
     ui: ui/src/main.tsx
   data_flow: "browser → gateway/src/index.ts → proxy.ts → Modal → vendor FastAPI →
     PCM stream → tee to cache.ts + pipe to ui/src/audio/player.ts → AudioWorklet;
-    reference upload → ASR proxy + staged WAV/transcript → bounded trim at speech send"
+    reference upload → ASR proxy + staged WAV/transcript → bounded trim at speech send;
+    plain-text script → text-chunker.ts → capacity-safe cues → cached cue preview"
   pure_logic: [gateway/src/cache-index.ts, gateway/src/voices-index.ts,
-               gateway/src/reference-slice.ts, gateway/src/vtt.ts, ui/src/state/]
+               gateway/src/reference-slice.ts, gateway/src/text-chunker.ts,
+               gateway/src/vtt.ts, ui/src/state/]
 
 api:
   gateway:
@@ -175,9 +186,11 @@ relations:
      and timed transcript expire together, and each request trims the selected window."
   - "A script cue's clipId is a hash of text+voice+cfg+seed, so staleness is derived
      rather than tracked and one edit costs one GPU request."
+  - "Plain-text imports use the same prompt-capacity rule as dispatch, then generated
+     script cues preview only their cached WAV route and never synthesize on playback."
 
 testing:
-  totals: { infra: 68, bench: 66, gateway: 156, ui: 165, all: 455 }
+  totals: { infra: 68, bench: 66, gateway: 183, ui: 194, all: 511 }
   runners: { python: pytest, gateway: vitest, ui: "vitest + jsdom + testing-library" }
   principle: "No test needs a GPU, a network, or a deployed service — the Modal SDK
     is only constructed, and every HTTP/audio boundary is injected."
