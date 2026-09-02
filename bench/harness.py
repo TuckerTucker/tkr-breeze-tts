@@ -54,7 +54,7 @@ BUSY_MAX_RETRIES: Final[int] = 5
 COLD_CONTAMINATION_MS: Final[float] = 10_000.0
 
 # A "cold" sample faster than this did not pay a cold start. Container startup
-# plus a 7.7GB load plus 53 graph captures cannot complete in under a second,
+# plus a 7.7GB load plus 69 graph captures cannot complete in under a second,
 # so a sub-second cold sample means the request reached a container that was
 # still draining rather than one that had gone. Recording it would put a
 # 373ms figure behind the UI's "cold start, about …" copy, which is precisely

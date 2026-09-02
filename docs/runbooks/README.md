@@ -9,4 +9,4 @@ Run-time operations: the steps a person follows when the system needs a hand.
 
 Available procedures:
 
-- [`release.md`](release.md) — synchronize versions, cut a tag, and drive the GitHub Packages workflow.
+- [`local-demo.md`](local-demo.md) — provision, deploy, measure, verify, and run the local demo.

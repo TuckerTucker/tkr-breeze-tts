@@ -292,7 +292,7 @@ stories:
     feature: reference-staging
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - name: derive-the-vendor-request-from-voice-intent
     status: done
     number: 1
@@ -334,7 +334,7 @@ stories:
     feature: voice-intent-contract
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - name: inherit-script-delivery-with-cue-overrides
     status: done
     number: 2
@@ -375,4 +375,4 @@ stories:
     feature: voice-intent-contract
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.

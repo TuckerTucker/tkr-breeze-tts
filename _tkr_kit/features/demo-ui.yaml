@@ -39,12 +39,13 @@ features:
         - ui/src/main.tsx
         - ui/package.json
         - ui/tsconfig.json
-    user_story: As the operator, I want the three ways of controlling a voice
-      presented as three clear choices, so that I understand what distinguishes
-      design from cloning from direction without reading documentation.
+    user_story: As the operator, I want the model's three request behaviors
+      represented without invalid field combinations, so later task-oriented
+      workspaces can project them safely.
     acceptance_criteria:
-      - Design, clone, and direction are selectable, and each shows only the
-        fields it needs.
+      - The completed mode components represent design, clone, and direction
+        request shapes; the active release supersedes their top-level selector
+        with task-oriented workspaces and availability gates.
       - Choosing clone or direction reveals reference intake and the
         exact-transcript field together, never one alone.
       - Reference intake offers file upload and microphone capture as peer
@@ -262,7 +263,7 @@ features:
         lifecycle workspace.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - name: voice-workspaces
     status: done
@@ -273,20 +274,21 @@ features:
         - ui/src/styles.css
         - ui/package.json
         - ui/tsconfig.json
-    user_story: As the operator, I want the app organised around creating voices,
-      speaking with them, and producing scripts, so that I never have to
+    user_story: As the operator, I want the active app organised around creating
+      voices and speaking with saved voices, with completed script production
+      kept dormant until its product gate is enabled, so that I never have to
       translate the model terms Design, Clone, and Direction into the task I am
       trying to finish.
     acceptance_criteria:
-      - The primary navigation is Voices, Speak, and Scripts; Design, Clone, and
-        Direction are no longer top-level modes.
+      - The active primary navigation is Voices and Speak; the completed Scripts
+        workspace is removed from navigation by `WORKSPACE_AVAILABILITY`.
       - Voices owns creation and library management, with creation methods
         Describe, Clone audio, and Create from a generated clip.
-      - Speak owns one-off generation with one voice source, one delivery
-        instruction, text, CFG, seed, playback, and recent clips.
-      - Scripts is a top-level persistent workspace that lists, opens, imports,
-        and resumes documents instead of exposing only the most recently
-        imported script.
+      - Speak owns one-off generation with a saved voice, one delivery
+        instruction, text, CFG, seed, playback, and recent clips; described and
+        staged sources are disabled by `SPEAK_VOICE_SOURCE_AVAILABILITY`.
+      - Scripts remains a completed persistent workspace that lists, opens,
+        imports, and resumes documents when its centralized gate is enabled.
       - "The voice lifecycle is visible through contextual actions: Save to
         Library, Use in Speak, Use in Script, and Create voice from clip."
       - Clone remains a voice-creation method, not a lifecycle stage; Use
@@ -305,8 +307,8 @@ features:
       - Drafts, selected voice, active workspace, and open script survive
         workspace switches and reloads.
     scope_in:
-      - Task-based navigation and persistent workspace state for Voices, Speak,
-        and Scripts.
+      - Task-based navigation and persistent workspace state for Voices and
+        Speak, plus retained dormant state for Scripts.
       - Voice creation and management flows, one-off synthesis, clip promotion,
         and script document reopening.
       - A shared voice selector, one delivery-instruction model, CFG/seed
@@ -332,5 +334,5 @@ features:
         before final UI wiring.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.

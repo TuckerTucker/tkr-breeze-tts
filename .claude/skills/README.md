@@ -1,15 +1,5 @@
-# Skills — the Handbook home
+# Project skills
 
-Trigger-loaded `tkr-*` reference skills (the handbook) plus the action skills that encapsulate a
-single concern.
-
-- **Authoring bar:** trigger-rich `description` with a "Do NOT load" clause; facts verified against
-  the repo or labelled UNVERIFIED; a Provenance footer pinning `against HEAD <sha>` with a
-  volatile-fact to re-verification-command table.
-- **Written by:** `/handbook` for the `tkr-*` reference family; human, from the kit's
-  SKILL-TEMPLATE, for action skills.
-- **Retention:** bounded — replace-on-write; the reference family is capped by its taxonomy and no
-  writer appends per run.
-
-Decision *rationale* may be cited here; a Decision *record* may not — `docs/adr/` is the one
-Decision log (ADR-023).
+No repository-local Claude skills are installed. This directory is reserved for future skills
+that encapsulate one project-specific capability. Current project instructions live in the
+repository's agent guidance and current architecture documentation, not in an implied handbook.

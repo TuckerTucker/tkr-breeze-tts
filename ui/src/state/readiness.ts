@@ -2,8 +2,8 @@
  * Readiness and the wake state.
  *
  * Cold start is the interaction most likely to misrepresent a model sold on
- * latency: at roughly twenty times the cost of the generation it precedes, and
- * paid again after every gap longer than the scaledown window, a spinner turns
+ * latency: it includes the full weight load and CUDA-graph capture, and is paid
+ * again after every gap longer than the scaledown window. A spinner turns
  * "serverless is waking" into "the model is slow". So it gets its own named
  * state, its own expected duration drawn from measured data, and the warm
  * figure that follows it shown alongside.
@@ -126,7 +126,7 @@ export function wakeCopy(
 /** Why a cold start happens at all, shown in place rather than hidden. */
 export const WAKE_EXPLANATION = [
   'The container scaled to zero after the idle window.',
-  'Loading 7.7 GB of weights and capturing 53 CUDA graphs takes time.',
+  'Loading 7.7 GB of weights and capturing 69 CUDA graphs takes time.',
   'This cost is paid once, then every clip is fast.',
 ];
 
@@ -134,7 +134,7 @@ export const WAKE_EXPLANATION = [
  * Format a millisecond figure as human seconds.
  *
  * @param ms - Milliseconds.
- * @returns A short string such as `45s`.
+ * @returns A short string such as `170s`.
  */
 export function formatSeconds(ms: number): string {
   if (ms < 1000) return `${Math.round(ms)}ms`;

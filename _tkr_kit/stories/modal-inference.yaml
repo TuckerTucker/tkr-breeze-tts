@@ -113,7 +113,7 @@ stories:
     acceptance_criteria:
       - given: session-warm as the default posture
         when: the service is deployed
-        then: scaledown_window is 5 minutes and min_containers is unset
+        then: scaledown_window is 10 minutes and min_containers is unset
       - given: proxy auth enabled
         when: a request arrives without a valid token pair
         then: it is rejected before reaching the model

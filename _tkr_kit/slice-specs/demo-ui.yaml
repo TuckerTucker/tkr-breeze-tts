@@ -273,13 +273,13 @@ slice_specs:
       behavior remain usable.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - slice: 9
     status: done
     title: Voice intent and workspace state
     purpose: Replace mode-driven UI state with task state that can move intact
-      between Voices, Speak, and Scripts.
+      between active tools while retaining dormant script state.
     interface: "`VoiceSpec = {kind: 'described', instruction: string} | {kind:
       'referenced', reference: Reference, instruction: string}`. `WorkspaceState
       = {active: 'voices' | 'speak' | 'scripts', selectedVoiceId, speakDraft,
@@ -304,15 +304,16 @@ slice_specs:
       authoritative instructions.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - slice: 10
     status: done
     title: Task navigation and processing feedback
-    purpose: Make the app read as three functional tools while keeping all work and
+    purpose: Make the app expose only available tools while keeping all work and
       processing state visible.
-    interface: "`<WorkspaceNav active onSelect />` with three tabs/links labelled
-      Voices, Speak, Scripts. The app shell owns `Activity[]` through
+    interface: "`<WorkspaceNav active onSelect />` filters destinations through
+      `WORKSPACE_AVAILABILITY`; Voices and Speak are active and Scripts is
+      dormant. The app shell owns `Activity[]` through
       `trackActivity(label, operation)` and renders `<ActivityIndicator
       label={activitySummary(...)} />` whenever work remains."
     behavior: Switch tools in place and preserve their drafts; do not remount away
@@ -334,7 +335,7 @@ slice_specs:
       no-toast/no-confirmation rules are asserted.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - slice: 11
     status: done
@@ -364,7 +365,7 @@ slice_specs:
       covered. Keyboard and screen-reader operation match pointer behavior.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - slice: 12
     status: done
@@ -394,19 +395,20 @@ slice_specs:
       accessibility are covered.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - slice: 13
     status: done
     title: Scripts workspace
-    purpose: Turn the existing cue editor into a persistent top-level document tool
-      with common defaults and explicit exceptions.
+    purpose: Implement the cue editor as a persistent document tool with common
+      defaults and explicit exceptions; the active release keeps it dormant
+      behind `WORKSPACE_AVAILABILITY`.
     interface: "`<ScriptsWorkspace summaries activeScript defaults voices onOpen
       onImport onUpdateDefaults onEditCue onRun onExport />`. Client additions:
       `scripts()`, `script(id)`, `updateScript(id, defaults)`, and cue patches
       carrying nullable overrides. Local workspace state persists
       `lastScriptId`."
-    behavior: Load document summaries first and reopen the last script
+    behavior: When enabled, load document summaries first and reopen the last script
       progressively. Show all local scripts without pagination. Import VTT or
       text into the same list. A defaults bar sets voice, one delivery
       instruction, CFG, and seed behavior; each cue displays inherited values
@@ -425,7 +427,7 @@ slice_specs:
       one-edited-cue/one-request behavior remains pinned.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - slice: 14
     status: done
@@ -437,8 +439,9 @@ slice_specs:
       readiness, activity, and failure state; workspaces receive typed props and
       callbacks. The client targets the completed local-gateway voice-intent
       contract before legacy mode is removed."
-    behavior: Load health, clips, voices, script summaries, findings, and persisted
-      workspace progressively. Keep data ownership in App or pure stores while
+    behavior: Load health, clips, voices, and persisted workspace progressively;
+      load script summaries only when Scripts is available. Keep data ownership
+      in App or pure stores while
       each workspace remains a prop-driven view. Wire lifecycle actions through
       one state transition per action. Preserve global readiness/activity and
       local contextual errors. Apply responsive layout without full-page
@@ -454,7 +457,7 @@ slice_specs:
       covered without network or browser globals leaking into pure modules.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - slice: 15
     status: done
@@ -478,5 +481,5 @@ slice_specs:
       streaming/cache behavior.
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.

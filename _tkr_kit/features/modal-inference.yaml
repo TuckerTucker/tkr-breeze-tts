@@ -98,7 +98,7 @@ features:
     acceptance_criteria:
       - GPU type is a single configuration value; changing it requires no image
         rebuild.
-      - scaledown_window defaults to 5 minutes and is adjustable without code
+      - scaledown_window defaults to 10 minutes and is adjustable without code
         changes.
       - An always-on mode is available by setting min_containers, off by default.
       - requires_proxy_auth is enabled, so the endpoint is unreachable without a

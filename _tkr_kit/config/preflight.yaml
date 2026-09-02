@@ -26,11 +26,12 @@ probes:
       - 'grep -qE "^MODAL_KEY=wk-" .env && grep -qE "^MODAL_SECRET=ws-" .env'
     timeoutMs: 5000
 
-  # Once modal-inference/slice/3 is deployed and MODAL_ENDPOINT_URL is filled in,
-  # add a live probe that the pair actually authenticates — presence is not proof
-  # the token still works, and a revoked token should fail the wave, not the first
-  # synthesis. Deliberately not enabled yet: it would fail closed on every wave
-  # until the service exists.
+  # Do not add an authenticated health probe to routine preflight. The service is
+  # deployed, but an authenticated GET /health wakes a scaled-to-zero GPU and
+  # would pay the model-load and graph-capture cost on every wave. Gateway startup
+  # instead sends an unauthenticated request: Modal rejects it at the edge without
+  # waking the container, proving reachability and proxy-auth enforcement. Token
+  # validity is exercised only by a deliberate wake or synthesis.
   #
   # - name: modal-endpoint-auth
   #   command:
@@ -41,9 +42,6 @@ probes:
   #        "$MODAL_ENDPOINT_URL/health"'
   #   timeoutMs: 30000
 
-# The `tests` gate's substantiveness floor. Left at the default (1): a gate that
-# passes on an empty suite is decoration. Revisit when infra/ and bench/ land —
-# the kit notes pytest cannot be attributed per-case and may need `minTests: 0`,
-# which would weaken the floor for the TypeScript capabilities too. That trade is
-# a decision to make once, with both suites in front of us, not pre-emptively.
+# The `tests` gate's substantiveness floor. The repository currently has 134
+# Python, 183 gateway, and 194 UI tests, so a zero-test pass is never acceptable.
 minTests: 1

@@ -114,7 +114,7 @@ class BreezeService:
 
         # The vendor's lifespan will call `_load_app` again when the ASGI
         # server starts. Make that call a no-op rather than a second 7.7 GB
-        # load and a second 53-graph capture. `_lifespan` resolves the global
+        # load and a second 69-graph capture. `_lifespan` resolves the global
         # by name at call time, so replacing the module attribute is enough.
         original_load_app = vendor_api._load_app
 

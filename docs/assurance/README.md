@@ -19,6 +19,10 @@ must say what it accepted when the answer is a qualified yes.
   is the record. A new review is a new file, never an edit to an old verdict.
 
 **Renewal:** an Assurance record goes stale when what it reviewed changes — a dependency or lock
-change renews dependency, threat and trust-boundary review (see
-[`.claude/rules/tkr-kit/security-philosophy.md`](../../.claude/rules/tkr-kit/security-philosophy.md)
-and the security triage record). Renewal means a new dated record, not a rewrite.
+change renews dependency, threat, and trust-boundary review. Renewal means a new dated record,
+not a rewrite.
+
+## Index
+
+No Assurance verdict has been committed yet. Proxy-auth behavior is tested and documented, but
+that evidence is not represented as a human-adopted shipping verdict.

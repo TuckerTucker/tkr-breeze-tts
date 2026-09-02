@@ -1126,8 +1126,8 @@ export function filenameFor(text: string): string {
  * An *unauthenticated* request proves two things for free: the endpoint is
  * reachable, and proxy auth is actually enforced. Modal rejects it at the edge
  * and never starts a container. An authenticated preflight would prove the
- * pair is accepted, but it would also start a container — roughly twenty times
- * the cost of the generation it precedes — on every gateway start.
+ * pair is accepted, but it would also pay the full container wake, weight-load,
+ * and graph-capture cost on every gateway start.
  *
  * @param config - The gateway configuration.
  * @param logger - Where to report what was found.

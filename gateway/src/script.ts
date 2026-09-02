@@ -8,11 +8,12 @@
  * `templates.py` hardcodes speaker `S0`. A multi-voice script therefore cannot
  * be a single dialogue call.
  *
- * Staleness is *derived*, not tracked. A cue's clip id is a hash of the four
- * things its audio depends on — text, voice, cfg and seed — so editing any of
- * them changes the id, the new id is not in the cache, and the cue is stale by
- * construction. Everything else still points at cached audio. Correcting one
- * line costs one GPU request rather than forty.
+ * Staleness is *derived*, not tracked. A cue's clip id is a hash of the five
+ * inputs its audio depends on — text, voice, instruction, cfg and seed — so
+ * editing any of them changes the id, the new id is not in the cache, and the
+ * cue is stale by construction. The neutral instruction retains its legacy
+ * identity. Everything else still points at cached audio. Correcting one line
+ * costs one GPU request rather than forty.
  *
  * @module
  */

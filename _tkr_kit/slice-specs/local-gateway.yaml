@@ -263,7 +263,7 @@ slice_specs:
       together, and a voice promoted beforehand still reads.
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - slice: 9
     status: done
     title: Voice-intent resolver
@@ -294,7 +294,7 @@ slice_specs:
       upstream.
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - slice: 10
     status: done
     title: Script defaults and cue overrides
@@ -323,7 +323,7 @@ slice_specs:
       exactly.
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - slice: 11
     status: done
     title: Unified speech and script API
@@ -354,7 +354,7 @@ slice_specs:
       remain readable during migration.
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - slice: 12
     status: done
     title: Wire the voice-intent contract
@@ -380,7 +380,7 @@ slice_specs:
       migrated records and cache entries remain usable.
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - slice: 13
     status: done
     title: Voice-intent contract regression suite
@@ -402,4 +402,4 @@ slice_specs:
       redaction.
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.

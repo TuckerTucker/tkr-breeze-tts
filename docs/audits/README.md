@@ -9,9 +9,8 @@ Distinct from its neighbours:
 |---|---|---|
 | `docs/audits/` | dated measurements + numbered findings | — |
 | `docs/adr/` | decisions | an audit records what *is*, not what was decided |
-| `docs/drp/` | the doc-review-protocol campaign and its corpora | that campaign's own findings live with it |
-| `_review/` | frozen point-in-time reviews of superseded builds | audits here are live work queues |
-| `.tkr-kit/work/findings/` | machine-recorded raw findings (gitignored, ephemeral) | audits here are durable and citable |
+| `docs/models/` | current descriptions of what is built | an audit records a dated measurement |
+| `.tkr-kit/work/findings/` | machine-local raw findings (gitignored, ephemeral) | audits here are durable and citable |
 
 ## Conventions
 
@@ -20,12 +19,6 @@ Distinct from its neighbours:
 - **Written by:** human, or an agent sweep whose output a human re-verifies before it lands.
 - **Retention:** unbounded by design — an audit record is the durable trace of what was measured and
   when. Findings are closed in place, never deleted; superseded audits stay for the history.
-
-> **Routing status:** registered as a canonical artifact type in `LAYOUT_HOMES`
-> (`core/governance/layout-conformance.ts`) and the `docs/canonical-layout.md` table per
-> [ADR-028](../adr/028-audit-records-are-a-canonical-artifact-type.md), so
-> `governance.layout_conformance` measures this home (README bar + retention) like every other. This
-> closed finding B-15 — the home no longer passes conformance by being invisible to it.
 
 - **One file per audit**, named `YYYY-MM-DD-<slug>.md`.
 - **Stable finding IDs** (`A-01`, `B-03`, …) scoped to the file. IDs are never reused or
@@ -36,11 +29,10 @@ Distinct from its neighbours:
 - **Provenance and maintenance** section closes every file: authored date, HEAD pin, and a table
   of volatile facts mapped to one-line re-verification commands.
 
-Findings are closed by editing the entry in place (status → RESOLVED, with the commit that did
-it), not by deleting it. A deleted finding is indistinguishable from one that was never found —
-which is the failure mode `2026-07-21-silent-failure-modes.md` exists to document.
+Findings are closed by editing the entry in place (status → RESOLVED, with the implementation that
+did it), not by deleting it. A deleted finding is indistinguishable from one that was never found.
 
 ## Index
 
-- [`2026-07-21-silent-failure-modes.md`](2026-07-21-silent-failure-modes.md) — code paths whose
-  "did nothing" outcome is encoded identically to "nothing to do". 51 findings, 5 detection checks.
+- [`2026-08-31-cfg-branch-batch.md`](2026-08-31-cfg-branch-batch.md) — A-01, resolved: reference
+  templates required batch-4 text-encoder graphs for CFG values other than 1.0.

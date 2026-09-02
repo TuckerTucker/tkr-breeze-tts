@@ -9,3 +9,7 @@ Reusable build-time solutions: how a Rule is discharged while writing code.
   `tkr op governance.citation_audit`.
 - **Written by:** human; candidates surfaced by `knowledge.detect_patterns`.
 - **Retention:** bounded — a pattern with no live usage is retired, not accumulated.
+
+## Index
+
+No reusable Pattern records have been committed yet.

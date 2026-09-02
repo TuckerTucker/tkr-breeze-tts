@@ -149,7 +149,7 @@ class ServiceConfig:
             an open URL is a materially different act from running them
             locally, so this defaults on.
         timeout_s: Per-request ceiling. Generous, because a cold start's weight
-            load and 53-graph capture happen inside the first request's window.
+            load and 69-graph capture happen inside the first request's window.
         fast: The CUDA-graph posture.
     """
 

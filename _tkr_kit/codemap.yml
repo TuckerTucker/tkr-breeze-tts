@@ -1,7 +1,7 @@
 meta:
   fmt: 14
   name: breeze-tts-demo
-  ts: "2026-09-02T03:45:23Z"
+  ts: "2026-09-02T04:19:46Z"
   what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
     Modal; a local gateway holds the credential and absorbs audio chores; a browser
     UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
@@ -13,7 +13,7 @@ meta:
     start: "npm start"
     test: "npm test && npm run test:python"
     deploy: "modal run infra/weights.py && modal deploy infra/service.py"
-    measure: "python -m bench.harness && python -m bench.cfg_probe && python -m bench.reference_probe"
+    measure: ".venv/bin/python -m bench.harness && .venv/bin/python -m bench.cfg_probe && .venv/bin/python -m bench.reference_probe"
 
 capabilities:
   - id: modal-inference
@@ -22,7 +22,7 @@ capabilities:
     evidence: "commit d4b5f0c; deployed and serving on an H100"
     provides: "Modal image, weights Volume, warm serving class, deployment config,
       build-time warmup-profile extension"
-    verified: "43 tests; image built, flash-attn ABI check passed, 7.68GB on the Volume"
+    verified: "68 tests; image built, flash-attn ABI check passed, 7.68GB on the Volume"
   - id: measurement
     state: done
     dir: bench/
@@ -44,14 +44,16 @@ capabilities:
 
 state:
   built:
-    - "All four capabilities' source and tests: 511 tests, all passing offline."
-    - "DEPLOYED. Image built, 7.68GB checkpoint on the Volume, service live at
-       tuckertucker--breeze-tts-breezeservice-serve.modal.run, proxy auth enforced."
+    - "All four capabilities' source and tests: 511 tests, all passing without a
+       GPU, external network, or deployed service."
+    - "DEPLOYED. Image built, 7.68GB checkpoint on the Volume, service live at an
+       operator-held endpoint, proxy auth enforced."
     - "Measured on an H100: warm TTFA 161ms, RTF 0.39, graph-capture warmup 162.6s
        over 69 graphs, cold start ~170s. Published claims are <40ms and 0.32;
        the operator has accepted the measured times."
-    - "All three voice modes work: Design at any cfg, Clone and Direction at any
-       cfg after the warmup-profile extension."
+    - "The described and referenced request shapes work across the continuous CFG
+       control after the warmup-profile extension; delivery is one instruction on
+       either shape."
     - "Gateway verified end to end: streaming first byte 17ms vs 176ms total;
        replay served from cache with the upstream killed; 409 typed as busy."
     - "UI verified in Chrome: real AudioWorklet, 19ms first audio, no fallback."
@@ -68,12 +70,13 @@ state:
        logs only, so the UI's wake state says 'not yet measured'."
     - "bench/findings/latency.json predates the warmup extension — its warmup_ms
        is the pre-extension 148.6s. The current 162.6s/69-graph figures live in
-       docs/audits/2026-08-31-cfg-branch-batch.md. Only cfg-falloff.json is read
-       by the gateway, so nothing user-facing is stale."
+       docs/audits/2026-08-31-cfg-branch-batch.md. The gateway reads latency,
+       CFG, and reference findings; the UI uses the valid warm TTFA/RTF while
+       leaving client-observed cold TTFA null."
   do_not_assume:
     - "cfg is NOT graph-keyed. warmup_profile.py maps it to a binary mode, so a
-       continuous slider is viable — for Design. The brief says otherwise; the
-       brief is wrong."
+       continuous slider is viable for both described and referenced request
+       shapes after the batch-4 extension. The retired brief says otherwise."
     - "Text encoding and backbone prefill are separate frozen graph families.
        At cfg 1.0 the assembled backbone prompt is capped at 256 even when Clone's
        two text segments reach text-encoder batch 2; above cfg 1.0 it is 512.
@@ -125,14 +128,14 @@ deps:
   external: { ffmpeg: "required for reference intake; checked at startup, degrades to WAV-only uploads" }
 
 struct:
-  infra:     { n: 7,  lines: 981,  tests: 5, role: "Modal deployment surface" }
-  bench:     { n: 3,  lines: 1331, tests: 4, role: "measurement clients + findings/" }
-  gateway/src: { n: 17, lines: 6584, tests: 12, role: "local Node service" }
-  ui/src:    { n: 32, lines: 7259, tests: 16, role: "React browser surface" }
+  infra:     { n: 12, lines: 1802, tests: 6, role: "Modal deployment surface" }
+  bench:     { n: 5,  lines: 2144, tests: 5, role: "measurement clients + findings/" }
+  gateway/src: { n: 17, lines: 6585, tests: 13, role: "local Node service" }
+  ui/src:    { n: 32, lines: 7260, tests: 17, role: "React browser surface" }
   ui/public: { n: 1, role: "pcm-processor.js — served untransformed, deliberately not bundled" }
 
 nav:
-  read_first: [_tkr_kit/breeze-tts-2-modal-brief.md, README.md,
+  read_first: [docs/models/architecture.md, README.md,
                docs/audits/2026-08-31-cfg-branch-batch.md]
   entry_points:
     modal: infra/service.py
@@ -156,6 +159,7 @@ api:
     voices:  ["GET /api/voices", "POST /api/voices", "PATCH /api/voices/:id",
               "DELETE /api/voices/:id", "GET /api/voices/:id/audio"]
     scripts: ["POST /api/scripts", "GET /api/scripts", "GET /api/scripts/:id",
+              "PATCH /api/scripts/:id",
               "PATCH /api/scripts/:id/cues/:cueId", "PUT /api/scripts/:id/cues",
               "DELETE /api/scripts/:id", "POST /api/scripts/:id/run (SSE)",
               "GET /api/scripts/:id/export.vtt", "GET /api/scripts/:id/export.wav"]
@@ -184,7 +188,8 @@ relations:
      their own copy of the audio and survive their source clip."
   - "Staged references have a third lifecycle: upload and ASR happen once, the WAV
      and timed transcript expire together, and each request trims the selected window."
-  - "A script cue's clipId is a hash of text+voice+cfg+seed, so staleness is derived
+  - "A script cue's clipId is a hash of text+voice+instruction+cfg+seed (with the
+     neutral instruction retaining its legacy identity), so staleness is derived
      rather than tracked and one edit costs one GPU request."
   - "Plain-text imports use the same prompt-capacity rule as dispatch, then generated
      script cues preview only their cached WAV route and never synthesize on playback."
@@ -192,9 +197,10 @@ relations:
 testing:
   totals: { infra: 68, bench: 66, gateway: 183, ui: 194, all: 511 }
   runners: { python: pytest, gateway: vitest, ui: "vitest + jsdom + testing-library" }
-  principle: "No test needs a GPU, a network, or a deployed service — the Modal SDK
-    is only constructed, and every HTTP/audio boundary is injected."
-  real_io: "gateway/test/reference.test.ts uses real ffmpeg fixtures; container
+  principle: "No test needs a GPU, external network, or deployed service — the
+    Modal SDK is only constructed and upstream boundaries are injected."
+  real_io: "Three gateway abort tests bind ephemeral 127.0.0.1 sockets to exercise
+    post-header failures. Reference intake uses real ffmpeg fixtures; container
     detection against a fabricated header would pass while the real thing failed."
 
 arch:
@@ -206,13 +212,13 @@ arch:
   logging: { python: structlog, node: pino }
 
 ops:
-  scripts: { root: [install:all, build, start, test, test:python, typecheck] }
+  scripts: { root: ["install:all", build, start, test, "test:python", typecheck] }
   gitignored: [.env, .cache/, node_modules/, dist/, .venv/]
 
 semantic:
-  ~cold_start: "~20x the cost of the generation it precedes, and paid again after
-    every gap > scaledown_window. It is the interaction most likely to
-    misrepresent a model sold on latency, which is why it is a named UI state."
+  ~cold_start: "The full 7.7GB weight load and 69-graph capture, observed at roughly
+    170s in container logs and paid again after every gap > scaledown_window.
+    Client-observed cold TTFA remains unmeasured, so the named UI state says so."
   ~flash_attn: "Mandatory on every path, including the one documented as eager —
     config.json pins it on the text encoder, which the eager arg never reaches."
   ~cfg_scale: "The most interesting control and the least documented. It is the

@@ -58,9 +58,9 @@ slices:
       - choose-a-voice-mode
       - supply-a-reference-file
     delivers:
-      - Design, Clone and Direction as three selectable modes, each showing only
-        the fields it needs — progressive disclosure rather than one form
-        carrying every possibility.
+      - The original Design, Clone and Direction components as validated request
+        shapes. The active release supersedes their top-level selector with
+        task-oriented workspaces and centralized availability gates.
       - "Reference intake offering file upload and microphone capture as peer
         options. Upload is not a fallback: a clean existing recording is usually
         better reference material than a laptop microphone, and far more likely
@@ -129,9 +129,9 @@ slices:
         likely to misrepresent the model: a guided session pays one cold start
         and amortises it, while irregular use pays it again after every gap
         longer than the scaledown window."
-      - Expected wake duration drawn from measured data, shown alongside the
-        warm latency that follows it — 'cold start 45s, then 38ms' is both truer
-        and more interesting than a spinner.
+      - Expected wake duration drawn from measured data when available, shown
+        alongside the warm latency that follows it. The checked-in finding has
+        no accepted cold TTFA, so the active wake state says it is unmeasured.
       - Readiness indicated before submission via gateway health, so the
         operator knows whether the next request is warm or cold without
         discovering it by waiting.
@@ -291,7 +291,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - number: 9
     feature: voice-workspaces
@@ -322,7 +322,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - number: 10
     feature: voice-workspaces
@@ -339,8 +339,9 @@ slices:
       - ui/test/app.test.tsx
       - ui/test/activity.test.ts
     delivers:
-      - Primary navigation labelled Voices, Speak, and Scripts, with keyboard,
-        pointer, touch, and screen-reader parity.
+      - Primary navigation derived from centralized availability gates, with
+        Voices and Speak active and keyboard, pointer, touch, and screen-reader
+        parity. Scripts remains implemented but absent while gated off.
       - Tool switching that preserves mounted or persisted work rather than
         resetting drafts, selection, or the open script.
       - The existing concurrent activity tracker retained as an app-wide status
@@ -355,7 +356,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - number: 11
     feature: voice-workspaces
@@ -387,7 +388,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - number: 12
     feature: voice-workspaces
@@ -422,7 +423,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - number: 13
     feature: voice-workspaces
@@ -439,9 +440,9 @@ slices:
       - ui/src/api/client.ts
       - ui/test/script*.test.tsx
     delivers:
-      - Scripts as its own top-level workspace with a document list,
-        import/create entry, open/resume behavior, and no pagination for the
-        local dataset.
+      - A completed Scripts workspace with a document list, import/create entry,
+        open/resume behavior, and no pagination for the local dataset; it is
+        dormant in the active release until its centralized gate is enabled.
       - A shared voice selector and script-level defaults for voice, delivery
         instruction, CFG, and seed behavior.
       - Visible per-cue overrides with inherited values distinguished from
@@ -457,7 +458,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - number: 14
     feature: voice-workspaces
@@ -480,8 +481,9 @@ slices:
       - ui/package.json
       - ui/tsconfig.json
     delivers:
-      - Voices, Speak, and Scripts composed through injected client, audio, and
-        storage dependencies in the application shell.
+      - Voices and Speak composed as active tools through injected client,
+        audio, and storage dependencies; Scripts is composed but filtered by
+        the centralized availability gate.
       - Contextual lifecycle actions wired across tools without duplicating
         voice, clip, or script state.
       - The gateway voice-intent contract projected through one typed client
@@ -496,7 +498,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - number: 15
     feature: voice-workspaces
@@ -529,5 +531,5 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.

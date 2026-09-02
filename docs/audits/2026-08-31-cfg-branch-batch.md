@@ -1,9 +1,12 @@
 # Clone and Direction hard-fail at any `cfg_scale` != 1.0
 
 **Date:** 2026-08-31
+**Finding ID:** A-01
+**Scope:** Breeze vendor commit `ca632ce6c4d05f7985da4eab29b1a5d445b43f7b`, deployed through this repository's Modal image
 **Severity:** High — two of the three headline voice modes
 **Status:** **Resolved** 2026-08-31 by `infra/extend_warmup_profile.py`. Kept for the mechanism, which is not documented upstream.
 **Found by:** driving the demo end to end after deploy (`demo-ui/slice/2`)
+**Evidence:** **[V]** measured directly on the deployed H100 service and preserved below
 
 ## What happens
 
@@ -103,6 +106,18 @@ produced 2.64 s of audio at 1.0 against 1.28 s at 4.0.
 | warmup | 148.6 s | **162.6 s** (+14.0 s, +9.4%) |
 | cold start | ~166 s | ~170 s |
 
-Fourteen seconds of warmup to restore two of the three voice modes, on a cold
+Fourteen seconds of warmup to restore the referenced request shape, on a cold
 start the operator pays once per sitting. Taken deliberately, with the
 operator's agreement that the times are acceptable.
+
+## Provenance and maintenance
+
+Authored from the 2026-08-31 deployment investigation. Rechecked against repository HEAD
+`0e659e1` during the 2026-09-01 documentation synchronization.
+
+| Volatile fact | Re-verify |
+|---|---|
+| The image applies the extension after cloning the vendor profile | `sed -n '94,116p' infra/image.py` |
+| The extension adds batch-4 lengths 32 through 512 | `sed -n '43,79p' infra/extend_warmup_profile.py` |
+| Clone and Direction are covered by gateway tests | `npm --prefix gateway test` |
+| Current deployment timing | Repeat the post-fix requests and update this audit with a new dated result |

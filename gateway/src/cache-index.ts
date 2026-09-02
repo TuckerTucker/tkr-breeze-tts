@@ -146,11 +146,12 @@ export function selectForEviction(
 /**
  * A stable cache key for a script cue.
  *
- * Keyed on text, voice, cfg and seed, so re-running a script regenerates only
- * what changed — the difference between a script feature that is usable and
- * one that costs a full re-run for every corrected line.
+ * Keyed on text, voice, instruction, cfg and seed, so re-running a script
+ * regenerates only what changed — the difference between a script feature that
+ * is usable and one that costs a full re-run for every corrected line. The
+ * neutral instruction retains the legacy four-part identity for compatibility.
  *
- * @param parts - The four things a cue's audio depends on.
+ * @param parts - The five inputs a cue's audio depends on.
  * @returns A hex key.
  */
 export function cueCacheKey(parts: {

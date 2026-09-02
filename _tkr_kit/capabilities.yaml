@@ -112,18 +112,19 @@ capabilities:
       - local-gateway
       - measurement
     provides_to: []
-    description: "The browser surface the operator actually plays with. It has one
-      job beyond working: make the model's three control modes legible and make
-      its latency perceptible. That means playing PCM as it arrives rather than
-      after it completes, and telling the truth about cold start instead of
-      hiding a 45-second wake behind an indeterminate spinner. Constrains inputs
-      so invalid states are unreachable rather than reporting errors after
-      submission."
+    description: "The browser surface the operator actually plays with. The active
+      release is task-first: create and manage durable voices, then speak with a
+      saved voice. It plays PCM as it arrives and names cold start instead of
+      hiding the weight-load and graph-capture wait behind an indeterminate
+      spinner. Scripts, described voices, and temporary references are
+      implemented but dormant behind centralized availability gates."
     scope_in:
       - "The synthesis console: text, instruction, vocal-event affordances, and
         submission state."
-      - The three voice modes — design, clone, direction — each showing only the
-        fields it needs.
+      - Voices and Speak as active workspaces, with saved voices as the active
+        Speak source.
+      - Capability gates that keep Scripts, described voices, and temporary
+        references dormant without deleting their state or implementation.
       - Streaming playback via AudioWorklet with a buffered-element fallback,
         matching the gateway's transport setting.
       - "Wake state: cold start surfaced as a first-class, honest state

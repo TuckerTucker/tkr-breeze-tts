@@ -1,9 +1,31 @@
 # Breeze TTS 2 demo — technical brief
 
 **Date:** 2026-08-31
-**Status:** Understanding + decisions recorded (§7). No plan entity yet; nothing built, nothing run.
+**Status:** **Retired after implementation.** Preserved as the dated pre-build investigation; do
+not use its provisional decisions or unknowns as current behavior.
 **Subject:** A demo web app showcasing [BreezeBlue/Breeze-TTS-2](https://huggingface.co/BreezeBlue/Breeze-TTS-2).
 **Shape:** Inference on Modal (NVIDIA GPU), UI local on macOS. Single user.
+
+---
+
+## Current outcome
+
+The shipped system is documented in [`docs/models/architecture.md`](../docs/models/architecture.md).
+Material changes from this original investigation are:
+
+| Original investigation | Current implementation |
+|---|---|
+| No plan or implementation | Product, four capabilities, gateway, UI, infrastructure, and 511 tests are complete |
+| 53 vendor graphs | 69 graphs after a batch-4 text-encoder extension |
+| Five-minute provisional scaledown | Ten-minute synthesis default; two-minute ASR default |
+| Intermediate CFG assumed to leave the fast path | Measured continuous slider; graph selection is binary at 1.0 vs. non-1.0 |
+| Warmup and end-to-end behavior unknown | Warm TTFA 161.52 ms, warm RTF 0.3929; graph capture 162.6 s; cold readiness roughly 170 s in logs |
+| Three mode-first browser controls proposed | Active UI is task-first: Voices and Speak; Scripts and temporary-reference Speak are capability-gated |
+
+The remainder of this file is intentionally unchanged historical reasoning. Statements such as
+"chosen", "still open", and "unmeasured" describe the 2026-08-31 decision point, not repository
+HEAD. The [batch-4 audit](../docs/audits/2026-08-31-cfg-branch-batch.md) records the most important
+post-build correction.
 
 ---
 

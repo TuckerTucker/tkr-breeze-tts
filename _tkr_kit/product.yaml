@@ -16,14 +16,18 @@ product:
   target_state: A local demo the single operator opens on a Mac and plays with.
     GPU inference runs serverless on Modal behind a session-warm container; a
     local gateway holds the credential, absorbs audio-format chores, and caches
-    clips; a browser UI exposes the three voice-control modes and plays 24kHz
-    PCM as it arrives, so the latency claim is demonstrated rather than
-    described. The demo is honest about cold start rather than hiding it behind
-    a spinner.
+    clips; a browser UI organizes the active release around creating durable
+    voices and speaking with saved voices, then plays 24kHz PCM as it arrives so
+    latency is observed rather than asserted. Script production, described
+    voices, and temporary references are implemented and tested but dormant
+    behind centralized product gates. The demo is honest about cold start
+    rather than hiding it behind a spinner.
   success_criteria:
-    - All three voice-control modes (clone, design, direction) are reachable
-      from the browser and produce audio without the operator touching a
-      terminal.
+    - The active browser release exposes Voices and Speak, with Speak accepting
+      saved voices; dormant capabilities do not leak navigation or background
+      work.
+    - The underlying described, referenced, and instruction-directed request
+      behaviors remain implemented and tested without requiring terminal work.
     - Time-to-first-audio is measured and shown, not asserted — the streaming
       transport is real end to end.
     - Cold start is a first-class UI state with the measured warm latency beside
@@ -42,4 +46,4 @@ product:
     the streaming path is made to behave.
   evidence:
     kind: commit
-    ref: d4b5f0c
+    ref: 0e659e1

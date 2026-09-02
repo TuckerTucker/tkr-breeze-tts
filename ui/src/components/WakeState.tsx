@@ -1,10 +1,11 @@
 /**
  * Cold start, told honestly.
  *
- * "Cold start 45s → then 38ms" is both truer and more interesting than a
- * spinner. It reframes the wait as a known property of serverless rather than
- * as the model being slow, and it is the difference between a demo that
- * misrepresents a low-latency model and one that explains it.
+ * Naming the cold start and pairing it with the measured warm latency is more
+ * honest than a spinner. It reframes the wait as a known property of
+ * serverless rather than as the model being slow, and it is the difference
+ * between a demo that misrepresents a low-latency model and one that explains
+ * it.
  *
  * @module
  */

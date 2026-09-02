@@ -115,9 +115,9 @@ slices:
         rebuild — a property the prebuilt multi-arch wheel buys and the vendor's
         SM90 source build would have denied. H100 is the default because it is
         the part the published numbers were measured on.
-      - "scaledown_window defaulting to 5 minutes: session-warm, not always-on.
-        Provisional by intent — it is currently set against an unmeasured
-        warmup, and measurement exists to correct it."
+      - "scaledown_window defaulting to 10 minutes: session-warm, not always-on.
+        The current 162.6-second graph capture and roughly 170-second readiness
+        observation make an in-session wake the interaction to avoid."
       - An always-on escape hatch via min_containers, off by default, because
         keeping an H100 resident costs roughly $3.95/hr against ~$0.003 for the
         generation it serves.

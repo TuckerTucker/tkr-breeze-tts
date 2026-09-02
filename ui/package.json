@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "The browser surface: three voice modes, streaming playback, an honest wake state, a voice library, and a script editor.",
+  "description": "The browser surface: task-first voice creation, saved-voice speech, streaming playback, honest wake state, and capability-gated script tools.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

@@ -662,7 +662,7 @@ stories:
     feature: reference-trimmer
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - name: move-through-the-voice-lifecycle
     status: done
@@ -672,14 +672,15 @@ stories:
       script without translating model terminology or rebuilding context.
     preconditions:
       - The app has loaded its local workspace
-    trigger_action: The operator moves between Voices, Speak, and Scripts
+    trigger_action: The operator moves between Voices and Speak, or Scripts after
+      its product gate is enabled
     steps:
       - actor: Operator
         action: Creates or selects a voice in Voices
         system_response: The voice can be saved to the library and used directly in
           Speak or Scripts
       - actor: Operator
-        action: Switches to Speak or Scripts
+        action: Switches to Speak, or to Scripts when it is available
         system_response: The selected voice and unfinished work remain available in the
           destination workspace
       - actor: Operator
@@ -689,8 +690,8 @@ stories:
     acceptance_criteria:
       - given: the primary navigation
         when: the operator reads it
-        then: it names Voices, Speak, and Scripts; Clone is a creation method and
-          Direction is a delivery control, not a destination
+        then: it names Voices and Speak; Scripts appears only when enabled, while
+          Clone remains a creation method and Direction a delivery control
       - given: unfinished text, a selected voice, or an open script
         when: the operator changes workspace and returns
         then: the state remains where they left it
@@ -705,7 +706,7 @@ stories:
     feature: voice-workspaces
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - name: create-and-manage-a-voice
     status: done
@@ -752,7 +753,7 @@ stories:
     feature: voice-workspaces
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - name: speak-with-one-voice-and-one-direction
     status: done
@@ -766,9 +767,9 @@ stories:
     trigger_action: The operator selects a voice source and enters text
     steps:
       - actor: Operator
-        action: Selects a saved voice, a temporary reference, or a described voice
-        system_response: The required reference controls appear only when the selected
-          source needs them
+        action: Selects a saved voice
+        system_response: The saved reference pair resolves without exposing dormant
+          described or temporary-reference sources
       - actor: Operator
         action: Writes the line and one delivery instruction, then adjusts CFG or seed
           if needed
@@ -778,10 +779,10 @@ stories:
         system_response: Playback, provenance, download, variation, and promotion
           actions remain beside the result
     acceptance_criteria:
-      - given: a voice without reference audio
-        when: Speak builds the request
-        then: it derives the described request shape and sends one instruction
-      - given: a saved or staged reference
+      - given: the active Speak source selector
+        when: the operator opens it
+        then: it offers saved voices only; described and staged sources remain gated
+      - given: a saved reference
         when: Speak builds the request
         then: it derives the referenced request shape and sends the same single
           instruction plus the reference pair
@@ -799,7 +800,7 @@ stories:
     feature: voice-workspaces
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - name: resume-and-direct-a-script
     status: done
@@ -808,6 +809,7 @@ stories:
     intent: Return to any stored script, set its common voice and delivery once, and
       override only the cues that differ.
     preconditions:
+      - The Scripts product gate is enabled
       - At least one script can be imported or already exists
     trigger_action: The operator opens Scripts
     steps:
@@ -847,7 +849,7 @@ stories:
     feature: voice-workspaces
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
   - name: see-processing-where-it-happens
     status: done
@@ -888,5 +890,5 @@ stories:
     feature: voice-workspaces
     evidence:
       kind: manual
-      ref: UI production build and typecheck passed; 182 UI tests and desktop/mobile
+      ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.

@@ -9,8 +9,7 @@
  *
  * The both-or-neither rule is enforced locally, before the request leaves the
  * machine. The vendor enforces it too, but by then an incomplete pair has
- * already woken a GPU, and a cold start costs roughly twenty times the
- * generation it precedes.
+ * already paid the full GPU wake, weight-load, and graph-capture cost.
  *
  * @module
  */

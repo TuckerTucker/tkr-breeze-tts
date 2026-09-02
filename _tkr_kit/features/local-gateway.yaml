@@ -272,7 +272,7 @@ features:
         reference.
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - name: voice-intent-contract
     status: done
     wiring_assignment:
@@ -323,4 +323,4 @@ features:
       - local-gateway/feature/input-ceiling
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.

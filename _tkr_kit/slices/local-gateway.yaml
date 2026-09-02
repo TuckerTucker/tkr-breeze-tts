@@ -290,7 +290,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - number: 9
     feature: voice-intent-contract
     depends_on:
@@ -319,7 +319,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - number: 10
     feature: voice-intent-contract
     depends_on:
@@ -347,7 +347,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - number: 11
     feature: voice-intent-contract
     depends_on:
@@ -378,7 +378,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - number: 12
     feature: voice-intent-contract
     depends_on:
@@ -405,7 +405,7 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.
   - number: 13
     feature: voice-intent-contract
     depends_on:
@@ -432,4 +432,4 @@ slices:
     status: done
     evidence:
       kind: manual
-      ref: Gateway build and typecheck passed; 171 gateway tests passed on 2026-09-01.
+      ref: Gateway build and typecheck passed; 183 gateway tests passed on 2026-09-01.

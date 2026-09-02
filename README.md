@@ -3,10 +3,12 @@
 A local demo of [BreezeBlue/Breeze-TTS-2](https://huggingface.co/BreezeBlue/Breeze-TTS-2),
 a 3B open-weight bilingual (EN/ZH) TTS model. GPU inference runs serverless on
 Modal; a local gateway holds the credential and absorbs the audio-format chores;
-a browser UI plays 24 kHz PCM **as it arrives**, so the model's latency claim is
-demonstrated rather than described.
+a browser UI plays 24 kHz PCM **as it arrives**, so end-to-end first-audio time is
+observed rather than inferred from the model's published benchmark.
 
-The design brief, with every constraint cited to vendor source, is
+The current implementation model is
+[`docs/models/architecture.md`](docs/models/architecture.md). The original,
+pre-implementation design investigation is retained as a clearly retired record in
 [`_tkr_kit/breeze-tts-2-modal-brief.md`](_tkr_kit/breeze-tts-2-modal-brief.md).
 
 ## Shape
@@ -15,7 +17,7 @@ The design brief, with every constraint cited to vendor source, is
 browser ──► gateway (localhost) ──► Modal ──► GPU
    │             │                    proxy auth at the edge
    │             ├─ holds Modal-Key / Modal-Secret; the browser never sees them
-   │             ├─ stages, transcribes and trims reference recordings once
+   │             ├─ stages and transcribes each reference once; trims at send time
    │             ├─ tees generated PCM to disk while streaming
    │             └─ serves the UI, so CORS never arises
    └─ AudioWorklet plays s16le PCM as it arrives
@@ -26,7 +28,7 @@ browser ──► gateway (localhost) ──► Modal ──► GPU
 | `infra/` | The Modal image, weights Volume, serving class, and deployment config |
 | `bench/` | The measurement harness and the cfg fall-off probe; findings land in `bench/findings/` |
 | `gateway/` | The local Node service: credential custody, transports, clip cache, voice library, script runner |
-| `ui/` | The browser surface: Voices, Speak, and Scripts workspaces; staged reference trimming; streaming playback; wake state; history |
+| `ui/` | The browser surface. Voices and Speak are active; the implemented Scripts and temporary-reference paths are capability-gated off |
 
 ## Getting it running
 
@@ -80,15 +82,23 @@ prebuilt multi-arch wheel rather than the vendor's Hopper-pinned source build.
 
 ### 3. Measure, before believing anything
 
-Every latency figure the UI displays is read from `bench/findings/`. Until these
-run, the UI says so — it shows "not yet measured" rather than quoting someone
-else's H100 benchmark, and it offers the conservative CFG presets rather than a
+Deployment baselines come from `bench/findings/`; per-clip first-audio time is
+observed by the browser when the first sample is handed to playback. Until a
+baseline exists, the UI says "not yet measured" rather than quoting someone
+else's H100 benchmark, and it offers conservative CFG presets rather than a
 slider whose behaviour is unverified.
 
+The checked-in CFG and reference-ceiling findings describe the current graph
+shape. `latency.json` predates the batch-4 warmup extension: its warm TTFA and RTF
+remain useful, but its `warmup_ms` is historical and its cold sample was rejected.
+The current deployment captured 69 graphs in 162.6 seconds and reached roughly
+170 seconds to ready according to container logs; client-observed cold TTFA has
+not yet been recorded.
+
 ```bash
-python -m bench.harness --warm-runs 5   # → bench/findings/latency.json
-python -m bench.cfg_probe --repeats 5   # → bench/findings/cfg-falloff.json
-python -m bench.reference_probe         # → bench/findings/reference-ceiling.json
+.venv/bin/python -m bench.harness --warm-runs 5   # → bench/findings/latency.json
+.venv/bin/python -m bench.cfg_probe --repeats 5   # → bench/findings/cfg-falloff.json
+.venv/bin/python -m bench.reference_probe         # → bench/findings/reference-ceiling.json
 ```
 
 ### 4. Run the demo
@@ -106,22 +116,26 @@ The gateway serves the built UI from its own origin. For UI development,
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests   # 134
-npm --prefix gateway test                                          # 171
-npm --prefix ui test                                               # 182
+npm --prefix gateway test                                          # 183
+npm --prefix ui test                                               # 194
 ```
 
-None of them need a GPU, a network, or a deployed service: the Modal SDK is only
-constructed, and every HTTP boundary is injected. The reference-intake tests do
-use the real `ffmpeg`, because a container-detection test against a made-up
-header would pass while the real thing failed.
+None of them need a GPU, an external network, or a deployed service: the Modal
+SDK is only constructed and all upstream services are injected. Three stream
+abort tests deliberately bind an ephemeral `127.0.0.1` port because only a real
+socket exposes a response that fails after its headers are committed. The
+reference-intake tests use the real `ffmpeg`, because a container-detection test
+against a made-up header would pass while the real thing failed.
 
 ## Things worth knowing
 
-**Cold start is the interaction most likely to misrepresent this model.** At
-roughly twenty times the cost of the generation it precedes, and paid again
-after every gap longer than the scaledown window, hiding it behind a spinner
-turns "serverless is waking" into "the model is slow". So it is a named state
-carrying its measured duration and the warm figure that follows it.
+**Cold start is the interaction most likely to misrepresent this model.** The
+current service loads 7.7 GB of weights and captures 69 CUDA graphs before Modal
+routes traffic. That reached roughly 170 seconds in container logs and is paid
+again after every gap longer than the 10-minute scaledown window. Hiding it
+behind a spinner turns "serverless is waking" into "the model is slow", so it is
+a named state. Until client-observed cold TTFA is measured, the state says so and
+shows only the recorded warm figure.
 
 **Readiness is inferred from idle time, never polled.** `GET /health` on a
 scaled-to-zero container *starts* one — polling it to find out whether a cold
@@ -141,6 +155,10 @@ exposes only `text`, `instruction`, `cfg_scale`, `ref_audio`, `ref_text` and
 text + voice + instruction + cfg + seed, so correcting one line in a forty-line
 script costs one GPU request rather than forty. Common voice, delivery, CFG, and
 seed behavior live at the script level; explicit cue overrides stay independent.
+
+The script store, queue, exports, and UI are implemented and tested, but Scripts
+is not part of the active navigation. `WORKSPACE_AVAILABILITY` is the product
+gate; changing that gate is a product decision, not a documentation workaround.
 
 **Drift is reported, never corrected.** Where a cue came from a timed VTT, the
 generated duration is shown against its slot with the difference. There is no

@@ -52,7 +52,7 @@ def _vendor_double() -> types.SimpleNamespace:
 def test_the_lifespan_call_is_a_no_op_after_enter_has_loaded() -> None:
     # Modal marks a container warm when enter() returns, so the load is lifted
     # out of the lifespan. The vendor's lifespan still calls `_load_app`; the
-    # shim must stop that becoming a second 7.7 GB load and 53-graph capture.
+    # shim must stop that becoming a second 7.7 GB load and 69-graph capture.
     vendor = _vendor_double()
     original = vendor._load_app
 
