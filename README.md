@@ -11,6 +11,8 @@ The current implementation model is
 pre-implementation design investigation is retained as a clearly retired record in
 [`_tkr_kit/breeze-tts-2-modal-brief.md`](_tkr_kit/breeze-tts-2-modal-brief.md).
 
+![The Voices workspace: a new voice being described, above a library of three kept voices with their audition clips](docs/images/voices-console.png)
+
 ## Shape
 
 ```
@@ -146,6 +148,8 @@ npm --prefix gateway install && npm --prefix gateway start
 
 The gateway serves the built UI from its own origin. For UI development,
 `npm --prefix ui run dev` proxies `/api` to the gateway instead.
+
+![The Speak workspace: a kept voice selected, a line and delivery instruction to write, and the session's clip history alongside](docs/images/speak-console.png)
 
 ## Tests
 
