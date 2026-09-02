@@ -32,6 +32,24 @@ browser ──► gateway (localhost) ──► Modal ──► GPU
 
 ## Getting it running
 
+### Before you start
+
+You need, and the setup cannot make for you:
+
+- **A [Modal](https://modal.com) account with billing attached.** The synthesis
+  service runs on an H100 and transcription on an L4; a new workspace may need
+  to request GPU access. Both apps are billed per second while a container is
+  warm, and synthesis holds a 10-minute warm window after each request. The
+  weights occupy roughly 11 GB of Volume storage. Every idle gap longer than
+  the window costs a cold start of about three minutes on the next request.
+- **Acceptance of the weights' licence.** Breeze-TTS-2 is research and
+  non-commercial (see *Licence posture* below). The model is ungated, so no
+  Hugging Face account is needed to fetch it.
+- **A machine with Node 20.11+, [uv](https://docs.astral.sh/uv/) and,
+  for microphone capture and non-WAV uploads, ffmpeg.** The setup checks all
+  three and names the missing one. Its install hints assume Homebrew on
+  macOS; on Linux, use your package manager for the same tools.
+
 The guided path does the four steps below in order, asking only for what it
 cannot find out itself:
 
