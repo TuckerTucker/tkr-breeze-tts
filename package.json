@@ -5,6 +5,7 @@
   "description": "A local demo of Breeze-TTS-2: GPU inference on Modal, a credential-holding local gateway, and a browser UI that plays PCM as it arrives.",
   "scripts": {
     "install:all": "npm --prefix gateway install && npm --prefix ui install",
+    "setup": "npm --prefix gateway install && npm --prefix gateway run setup --",
     "build": "npm --prefix ui run build",
     "start": "npm --prefix ui run build && npm --prefix gateway start",
     "dev:gateway": "npm --prefix gateway run dev",
