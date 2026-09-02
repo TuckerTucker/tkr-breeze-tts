@@ -1,6 +1,8 @@
 /** Scripts workspace: persistent documents, common delivery, explicit cue exceptions. */
 
-import { useRef, type ChangeEvent, type JSX } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type JSX } from 'react';
+
+import { ScriptPreviewPlayer } from './ScriptPreviewPlayer.js';
 
 import {
   CUE_STATE_LABEL,
@@ -34,6 +36,8 @@ export interface ScriptsWorkspaceProps {
   readonly onEditCue: (cueId: string, patch: CuePatch) => void;
   readonly onRun: () => void;
   readonly onExport: (format: 'vtt' | 'wav') => void;
+  /** Cached WAV route for one generated cue. */
+  readonly clipUrl: (id: string) => string;
 }
 
 function overridePatch<K extends keyof CueOverrides>(
@@ -51,7 +55,53 @@ function overridePatch<K extends keyof CueOverrides>(
  */
 export function ScriptsWorkspace(props: ScriptsWorkspaceProps): JSX.Element {
   const fileInput = useRef<HTMLInputElement>(null);
+  const previewPlayer = useRef<HTMLAudioElement>(null);
+  const [previewCueId, setPreviewCueId] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewPlaying, setPreviewPlaying] = useState(false);
+  const [previewProblem, setPreviewProblem] = useState<string | null>(null);
   const defaults = props.script?.defaults ?? INITIAL_SCRIPT_DEFAULTS;
+  const readyCues = props.script?.cues.filter((cue) => cue.state === 'done') ?? [];
+  const previewCue =
+    readyCues.find((cue) => cue.id === previewCueId) ?? readyCues[0] ?? null;
+  const previewSource = previewCue ? props.clipUrl(previewCue.clipId) : null;
+
+  useEffect(() => {
+    previewPlayer.current?.pause();
+    setPreviewCueId(null);
+    setPreviewLoading(false);
+    setPreviewPlaying(false);
+    setPreviewProblem(null);
+  }, [props.script?.id]);
+
+  const preview = (cue: Cue): void => {
+    if (cue.state !== 'done') return;
+
+    const player = previewPlayer.current;
+    if (!player) return;
+
+    if (previewCue?.id === cue.id && !player.paused) {
+      player.pause();
+      return;
+    }
+
+    const source = props.clipUrl(cue.clipId);
+    setPreviewCueId(cue.id);
+    setPreviewProblem(null);
+    setPreviewLoading(true);
+
+    if (player.getAttribute('src') !== source) {
+      player.src = source;
+      player.load();
+    }
+
+    void player.play().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Playback could not start.';
+      setPreviewLoading(false);
+      setPreviewPlaying(false);
+      setPreviewProblem(`${message} The generated cue remains available in the player.`);
+    });
+  };
 
   const importFile = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.target.files?.[0];
@@ -125,6 +175,49 @@ export function ScriptsWorkspace(props: ScriptsWorkspaceProps): JSX.Element {
                 </p>
               </div>
 
+              {props.script.chunking && props.script.chunking.splitSourceCueCount > 0 && (
+                <p className="script-import-report" role="status" aria-label="Script import details">
+                  <strong>
+                    {props.script.chunking.splitSourceCueCount}{' '}
+                    {props.script.chunking.splitSourceCueCount === 1 ? 'long line was' : 'long lines were'} split.
+                  </strong>{' '}
+                  Prepared {props.script.chunking.outputCueCount} generation cues from{' '}
+                  {props.script.chunking.sourceCueCount} source{' '}
+                  {props.script.chunking.sourceCueCount === 1 ? 'line' : 'lines'}, using sentence,
+                  clause, word, or character boundaries to stay within the{' '}
+                  {props.script.chunking.tokenCeiling}-token request ceiling.
+                </p>
+              )}
+
+              <ScriptPreviewPlayer
+                cue={previewCue}
+                source={previewSource}
+                playerRef={previewPlayer}
+                loading={previewLoading}
+                playing={previewPlaying}
+                problem={previewProblem}
+                onPlay={() => {
+                  setPreviewLoading(true);
+                  setPreviewProblem(null);
+                }}
+                onPlaying={() => {
+                  setPreviewLoading(false);
+                  setPreviewPlaying(true);
+                }}
+                onPause={() => {
+                  setPreviewLoading(false);
+                  setPreviewPlaying(false);
+                }}
+                onWaiting={() => setPreviewLoading(true)}
+                onError={() => {
+                  setPreviewLoading(false);
+                  setPreviewPlaying(false);
+                  setPreviewProblem(
+                    'This generated cue could not be loaded from the local cache. Run it again to replace the missing audio.',
+                  );
+                }}
+              />
+
               <section className="defaults-bar" aria-label="Script defaults">
                 <div className="defaults-bar__heading">
                   <p className="step-label">Script defaults</p>
@@ -176,6 +269,10 @@ export function ScriptsWorkspace(props: ScriptsWorkspaceProps): JSX.Element {
                     script={props.script!}
                     voices={props.voices}
                     onEdit={(patch) => props.onEditCue(cue.id, patch)}
+                    previewing={previewCue?.id === cue.id}
+                    previewPlaying={previewCue?.id === cue.id && previewPlaying}
+                    previewLoading={previewCue?.id === cue.id && previewLoading}
+                    onPreview={() => preview(cue)}
                   />
                 ))}
               </div>
@@ -200,6 +297,10 @@ function ScriptCue(props: {
   readonly script: Script;
   readonly voices: readonly Voice[];
   readonly onEdit: (patch: CuePatch) => void;
+  readonly previewing: boolean;
+  readonly previewPlaying: boolean;
+  readonly previewLoading: boolean;
+  readonly onPreview: () => void;
 }): JSX.Element {
   const { cue } = props;
   const effective = effectiveCueSettings(props.script, cue);
@@ -248,6 +349,21 @@ function ScriptCue(props: {
           </label>
         </div>
         <div className="cue-row__meta">
+          <button
+            type="button"
+            className="chip cue-row__preview"
+            disabled={cue.state !== 'done'}
+            aria-label={`${props.previewPlaying ? 'Pause' : 'Preview'} cue ${cue.index + 1}`}
+            aria-pressed={props.previewing}
+            title={cue.state === 'done' ? undefined : 'Preview is available after this cue is generated.'}
+            onClick={props.onPreview}
+          >
+            {props.previewLoading
+              ? 'Loading…'
+              : props.previewPlaying
+                ? 'Pause preview'
+                : 'Preview'}
+          </button>
           <span className={`cue-state cue-state--${cue.state}`}>{CUE_STATE_LABEL[cue.state]}</span>
           <span>Target {formatTarget(target)}</span>
           <span>Actual {cue.actualSeconds === null ? '—' : `${cue.actualSeconds.toFixed(1)}s`}</span>

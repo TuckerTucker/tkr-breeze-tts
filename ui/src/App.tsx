@@ -761,6 +761,7 @@ export function App(props: AppProps): JSX.Element {
             onEditCue={editScriptCue}
             onRun={() => void runCurrentScript()}
             onExport={(format) => void exportScript(format)}
+            clipUrl={(id) => client.clipUrl(id)}
           />
         )}
       </main>

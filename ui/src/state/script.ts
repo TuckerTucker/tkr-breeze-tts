@@ -59,6 +59,16 @@ export interface CueProblem {
   readonly raw: string;
 }
 
+/** Accounting for automatic sentence-aware plain-text import chunking. */
+export interface ScriptChunkingReport {
+  readonly version: 2;
+  readonly sourceCueCount: number;
+  readonly splitSourceCueCount: number;
+  readonly outputCueCount: number;
+  readonly addedCueCount: number;
+  readonly tokenCeiling: number;
+}
+
 /** A script and its cues. */
 export interface Script {
   readonly id: string;
@@ -69,6 +79,7 @@ export interface Script {
   readonly defaults?: ScriptDefaults;
   readonly cues: Cue[];
   readonly problems: CueProblem[];
+  readonly chunking?: ScriptChunkingReport;
 }
 
 /** Document metadata loaded before the active cue body. */
