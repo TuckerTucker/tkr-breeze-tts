@@ -117,7 +117,7 @@ participates in the key.
 
 ## Verification posture
 
-The repository currently contains 134 Python tests, 183 gateway tests, and 194 UI tests: 511 in
+The repository currently contains 134 Python tests, 220 gateway tests, and 194 UI tests: 548 in
 total. No test needs a GPU, external network, or deployed service. Three gateway tests bind an
 ephemeral loopback socket to verify post-header stream failure; reference-intake tests invoke the
 real local `ffmpeg`.

@@ -4,6 +4,18 @@
 **Rehearsal:** 2026-09-01 — deployment/browser evidence is recorded in the codemap; local build,
 typecheck, and tests are re-run whenever this procedure changes.
 
+## 0. Guided path
+
+```bash
+npm run setup
+```
+
+**Expected observable:** sections 1, 2, 3 and 5 run in order with each completed step reported
+and skipped; the walkthrough asks before deploying, before deploying transcription, and before
+measuring (section 4); `.env` is written owner-only with the credential and the deployed URLs
+resolved through the Modal SDK. `npm run setup -- --no-start` stops before starting the gateway.
+A stopped run names its remedy and resumes on the next invocation.
+
 ## 1. Prepare credentials
 
 ```bash
@@ -75,5 +87,5 @@ npm run typecheck
 npm run build
 ```
 
-**Expected observable:** 134 Python, 183 gateway, and 194 UI tests pass; both TypeScript projects
+**Expected observable:** 134 Python, 220 gateway, and 194 UI tests pass; both TypeScript projects
 typecheck; Vite emits a production bundle.

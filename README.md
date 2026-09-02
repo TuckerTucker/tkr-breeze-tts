@@ -32,6 +32,23 @@ browser ──► gateway (localhost) ──► Modal ──► GPU
 
 ## Getting it running
 
+The guided path does the four steps below in order, asking only for what it
+cannot find out itself:
+
+```bash
+npm run setup                # add `-- --no-start` to configure without starting
+```
+
+It checks Node, uv and ffmpeg, creates `.venv`, signs the Modal CLI in if it is
+not, creates the proxy token pair (or takes a pasted one and refuses an `ak-`/`as-`
+API token in place), deploys synthesis and, on request, transcription, reads the
+deployed URLs back through the Modal SDK, writes `.env` owner-only, builds the
+UI and starts the gateway. Every phase detects whether it is already done, so a
+rerun after a failure resumes where it stopped. The two phases that spend GPU
+time — deploying and measuring — wait for an explicit yes.
+
+The same steps by hand:
+
 ### 1. Credentials
 
 The service sets `requires_proxy_auth`, which closes the endpoint to everyone
@@ -116,7 +133,7 @@ The gateway serves the built UI from its own origin. For UI development,
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests   # 134
-npm --prefix gateway test                                          # 183
+npm --prefix gateway test                                          # 220
 npm --prefix ui test                                               # 194
 ```
 

@@ -1,7 +1,7 @@
 meta:
   fmt: 14
   name: breeze-tts-demo
-  ts: "2026-09-02T04:19:46Z"
+  ts: "2026-09-02T05:43:54Z"
   what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
     Modal; a local gateway holds the credential and absorbs audio chores; a browser
     UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
@@ -9,6 +9,7 @@ meta:
   runtimes: { node: "20.19", python: "3.12" }
   cmds:
     install: "npm run install:all"
+    setup: "npm run setup"
     build: "npm run build"
     start: "npm start"
     test: "npm test && npm run test:python"
@@ -32,9 +33,9 @@ capabilities:
   - id: local-gateway
     state: done
     dir: gateway/
-    evidence: "commits a01edea, b1c07c0"
-    provides: "credential proxy, dual transport, staged reference + ASR proxy, trim-at-send, clip cache, voice library, script runner, prompt-capacity enforcement"
-    verified: "183 tests + real ffmpeg intake and injected ASR/upstream boundaries"
+    evidence: "commits a01edea, b1c07c0, f47e742"
+    provides: "credential proxy, dual transport, staged reference + ASR proxy, trim-at-send, clip cache, voice library, script runner, prompt-capacity enforcement, guided setup walkthrough"
+    verified: "220 tests + real ffmpeg intake, injected ASR/upstream boundaries, and a scripted setup run"
   - id: demo-ui
     state: done
     dir: ui/
@@ -44,7 +45,7 @@ capabilities:
 
 state:
   built:
-    - "All four capabilities' source and tests: 511 tests, all passing without a
+    - "All four capabilities' source and tests: 548 tests, all passing without a
        GPU, external network, or deployed service."
     - "DEPLOYED. Image built, 7.68GB checkpoint on the Volume, service live at an
        operator-held endpoint, proxy auth enforced."
@@ -65,6 +66,12 @@ state:
     - "The active browser surface exposes Voices and Speak with saved voices. The
        implemented Scripts, described-voice, and temporary-reference paths retain
        their state but are dormant behind centralized availability gates."
+    - "`npm run setup` (gateway/src/setup/) walks an operator from a bare machine
+       to a running demo: every phase detects its own done state, the proxy pair
+       comes from the Modal CLI or a validated paste, deployed URLs are read back
+       through the Modal SDK rather than scraped, and .env is edited in place,
+       owner-only. Verified against real tools on the resume path; the fresh path
+       is covered by scripted-runner tests."
   deferred:
     - "Cold TTFA is unmeasured client-side; the figure is known from container
        logs only, so the UI's wake state says 'not yet measured'."
@@ -130,7 +137,7 @@ deps:
 struct:
   infra:     { n: 12, lines: 1802, tests: 6, role: "Modal deployment surface" }
   bench:     { n: 5,  lines: 2144, tests: 5, role: "measurement clients + findings/" }
-  gateway/src: { n: 17, lines: 6585, tests: 13, role: "local Node service" }
+  gateway/src: { n: 23, lines: 8007, tests: 16, role: "local Node service + guided setup" }
   ui/src:    { n: 32, lines: 7260, tests: 17, role: "React browser surface" }
   ui/public: { n: 1, role: "pcm-processor.js — served untransformed, deliberately not bundled" }
 
@@ -140,6 +147,7 @@ nav:
   entry_points:
     modal: infra/service.py
     gateway: gateway/src/index.ts
+    setup: gateway/src/setup/main.ts
     ui: ui/src/main.tsx
   data_flow: "browser → gateway/src/index.ts → proxy.ts → Modal → vendor FastAPI →
     PCM stream → tee to cache.ts + pipe to ui/src/audio/player.ts → AudioWorklet;
@@ -195,7 +203,7 @@ relations:
      script cues preview only their cached WAV route and never synthesize on playback."
 
 testing:
-  totals: { infra: 68, bench: 66, gateway: 183, ui: 194, all: 511 }
+  totals: { infra: 68, bench: 66, gateway: 220, ui: 194, all: 548 }
   runners: { python: pytest, gateway: vitest, ui: "vitest + jsdom + testing-library" }
   principle: "No test needs a GPU, external network, or deployed service — the
     Modal SDK is only constructed and upstream boundaries are injected."
@@ -212,7 +220,7 @@ arch:
   logging: { python: structlog, node: pino }
 
 ops:
-  scripts: { root: ["install:all", build, start, test, "test:python", typecheck] }
+  scripts: { root: ["install:all", setup, build, start, test, "test:python", typecheck] }
   gitignored: [.env, .cache/, node_modules/, dist/, .venv/]
 
 semantic:
