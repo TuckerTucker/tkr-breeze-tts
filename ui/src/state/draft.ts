@@ -36,6 +36,15 @@ export const SEGMENTS_BY_MODE = { design: 1, clone: 2, direction: 2 } as const;
  */
 export const CEILING_BY_BATCH = { 1: 256, 2: 512, 4: 512 } as const;
 
+/** Mirrors the gateway's separately keyed backbone-prefill graph family. */
+export const BACKBONE_CEILING_BY_BATCH = { 1: 256, 2: 512 } as const;
+
+/** Exact frame rate declared by the bundled Qwen audio tokenizer. */
+export const AUDIO_TOKENS_PER_SECOND = 12.5;
+
+const TEXT_SEGMENT_TOKEN_RESERVE = 8;
+const AUDIO_SEGMENT_TOKEN_RESERVE = 1;
+
 /** The highest ceiling any mode reaches, for display before a mode is known. */
 export const MAX_TOKENS = 512;
 
@@ -50,20 +59,28 @@ export function textEncoderBatch(mode: VoiceMode, cfgScale: number): 1 | 2 | 4 {
   return (SEGMENTS_BY_MODE[mode] * (cfgScale === 1.0 ? 1 : 2)) as 1 | 2 | 4;
 }
 
+/** The branch batch used by the assembled-prompt backbone graph. */
+export function backbonePrefillBatch(cfgScale: number): 1 | 2 {
+  return cfgScale === 1.0 ? 1 : 2;
+}
+
 /**
  * The ceiling this mode and cfg actually get.
  *
- * Past it the request does not run slowly, it **fails**: the frozen graph cache
- * raises and no audio arrives. Clone at cfg 1.0 already carries two segments,
- * so it reaches batch 2 and gets 512 — keying on cfg alone said 256 and was
- * wrong for both reference modes.
+ * Past it the request does not run slowly, it **fails**: a frozen graph cache
+ * raises and no audio arrives. Clone at cfg 1.0 reaches text-encoder batch 2,
+ * but its assembled prompt reaches backbone batch 1; the narrower 256-token
+ * backbone graph is therefore authoritative.
  *
  * @param mode - The voice mode in force.
  * @param cfgScale - The current guidance scale.
- * @returns Maximum tokens in any single text segment.
+ * @returns The narrower ceiling among text and assembled-prompt graphs.
  */
 export function tokenCeilingFor(mode: VoiceMode, cfgScale: number): number {
-  return CEILING_BY_BATCH[textEncoderBatch(mode, cfgScale)];
+  return Math.min(
+    CEILING_BY_BATCH[textEncoderBatch(mode, cfgScale)],
+    BACKBONE_CEILING_BY_BATCH[backbonePrefillBatch(cfgScale)],
+  );
 }
 
 /** What the instruction field starts as, and falls back to when cleared. */
@@ -117,6 +134,7 @@ const STORAGE_KEY = 'breeze.draft.v1';
  * under-estimating spends a cold start to earn a RuntimeError.
  */
 const LATIN_CHARS_PER_TOKEN = 4;
+const LATIN_TOKENS_PER_WORD = 1.1;
 const CJK_TOKENS_PER_CHAR = 2;
 
 /**
@@ -156,7 +174,16 @@ export function estimateTokens(text: string): number {
     if (isCjk(char.codePointAt(0) ?? 0)) cjk += 1;
     else other += 1;
   }
-  return Math.ceil(cjk * CJK_TOKENS_PER_CHAR + other / LATIN_CHARS_PER_TOKEN);
+  const words = trimmed.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
+  const punctuation =
+    trimmed.match(
+      /[^\p{L}\p{N}\s\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u{20000}-\u{2ebef}]/gu,
+    )?.length ?? 0;
+  const latin = Math.max(
+    other / LATIN_CHARS_PER_TOKEN,
+    words * LATIN_TOKENS_PER_WORD + punctuation,
+  );
+  return Math.ceil(cjk * CJK_TOKENS_PER_CHAR + latin);
 }
 
 /**
@@ -197,10 +224,14 @@ export interface GateInput {
   readonly modeBlocker: string | null;
   /** The current guidance scale. With the mode, it decides the ceiling. */
   readonly cfgScale: number;
+  /** Whether an over-limit remedy may offer changing CFG in this surface. */
+  readonly cfgAdjustable?: boolean;
   /** The voice mode, which decides how many text segments are sent. */
   readonly mode: VoiceMode;
   /** The reference transcript in Clone and Direction — itself a text segment. */
   readonly refText?: string;
+  /** The matching reference window's duration. */
+  readonly refDurationSeconds?: number;
 }
 
 /**
@@ -218,21 +249,38 @@ export function generateBlockedReason(input: GateInput): string | null {
   if (input.generating) return 'Generating…';
   if (input.busy) return 'Disabled while a request is running.';
   if (!input.draft.text.trim()) return 'Enter some text to enable.';
-  const ceiling = tokenCeilingFor(input.mode, input.cfgScale);
-  // Every string that becomes a text segment, because the graph bucket is the
-  // padded maximum across the batch — one long segment sets it for every row.
-  // The instruction shares the spoken segment; the transcript is its own.
-  const spoken = estimateTokens(`${input.draft.instruction} ${input.draft.text}`);
-  const transcript = estimateTokens(input.refText ?? '');
-  if (spoken > ceiling || transcript > ceiling) {
+  const textCeiling = CEILING_BY_BATCH[textEncoderBatch(input.mode, input.cfgScale)];
+  const spoken =
+    estimateTokens(`${input.draft.instruction} ${input.draft.text}`) +
+    TEXT_SEGMENT_TOKEN_RESERVE;
+  const transcript = input.refText
+    ? estimateTokens(input.refText) + TEXT_SEGMENT_TOKEN_RESERVE
+    : 0;
+  if (spoken > textCeiling || transcript > textCeiling) {
     // Not a latency warning: past the ceiling the request produces no audio at
     // all, so the remedy names the way out rather than just the limit.
     const overTranscript = transcript > spoken;
     const field = overTranscript ? 'The reference transcript' : 'The line';
     const tokens = overTranscript ? transcript : spoken;
-    return input.mode === 'design' && ceiling === CEILING_BY_BATCH[1]
-      ? `${field} is about ${tokens} tokens — past the ${ceiling}-token limit at CFG 1.0. Shorten it, or raise CFG for a ${CEILING_BY_BATCH[2]}-token limit.`
-      : `${field} is about ${tokens} tokens — past the ${ceiling}-token limit. Shorten it to generate.`;
+    return input.cfgAdjustable !== false &&
+      input.mode === 'design' &&
+      textCeiling === CEILING_BY_BATCH[1]
+      ? `${field} is about ${tokens} tokens — past the ${textCeiling}-token text-encoder limit at CFG 1.0. Shorten it, or raise CFG for a ${CEILING_BY_BATCH[2]}-token limit.`
+      : `${field} is about ${tokens} tokens — past the ${textCeiling}-token text-encoder limit. Shorten it to generate.`;
+  }
+  const backboneBatch = backbonePrefillBatch(input.cfgScale);
+  const backboneCeiling = BACKBONE_CEILING_BY_BATCH[backboneBatch];
+  const audioTokens = input.refText
+    ? Math.ceil(Math.max(0, input.refDurationSeconds ?? 0) * AUDIO_TOKENS_PER_SECOND) +
+      AUDIO_SEGMENT_TOKEN_RESERVE
+    : 0;
+  const assembled = spoken + transcript + audioTokens;
+  if (assembled > backboneCeiling) {
+    const referenceTokens = transcript + audioTokens;
+    const subject = referenceTokens > spoken ? 'The reference' : 'The line';
+    return input.cfgAdjustable !== false && backboneBatch === 1
+      ? `${subject} makes the assembled prompt about ${assembled} tokens — past the ${backboneCeiling}-token limit at CFG 1.0. Shorten it, or raise CFG for a ${BACKBONE_CEILING_BY_BATCH[2]}-token limit.`
+      : `${subject} makes the assembled prompt about ${assembled} tokens — past the ${backboneCeiling}-token limit. Shorten it to generate.`;
   }
   if (input.modeBlocker) return input.modeBlocker;
   return null;

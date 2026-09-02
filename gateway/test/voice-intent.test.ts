@@ -59,7 +59,7 @@ describe('voice-intent resolution', () => {
         derivedMode: 'clone',
         segments: 2,
         batch: 2,
-        tokenCeiling: 512,
+        tokenCeiling: 256,
         reference: { provenance },
       });
     },

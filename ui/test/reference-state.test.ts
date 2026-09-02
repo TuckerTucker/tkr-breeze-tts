@@ -191,7 +191,7 @@ describe('reference preflight ceilings', () => {
     const overDuration = selection({ start: 0, end: 2.1 });
     expect(referenceSelectionMetrics(overDuration, 2, 512)).toEqual({
       durationSeconds: 2.1,
-      transcriptTokens: 5,
+      transcriptTokens: 6,
       durationExceeded: true,
       tokenCeilingExceeded: false,
     });

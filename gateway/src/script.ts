@@ -29,8 +29,14 @@ import {
   type VoiceMode,
 } from './cache-index.js';
 import { GatewayError } from './proxy.js';
+import { chunkText } from './text-chunker.js';
 import { frameWav, type AudioFormat } from './transport.js';
-import { emitVtt, parseScriptFile, type CueProblem } from './vtt.js';
+import {
+  emitVtt,
+  parseScriptFile,
+  type CueProblem,
+  type ParsedCue,
+} from './vtt.js';
 
 /** Where a cue stands. Shown in place, per row. */
 export type CueState =
@@ -61,6 +67,30 @@ export const SEGMENTS_BY_MODE = { design: 1, clone: 2, direction: 2 } as const;
  */
 export const CEILING_BY_BATCH = { 1: 256, 2: 512, 4: 512 } as const;
 
+/**
+ * The declared backbone-prefill ceiling at each branch batch size.
+ *
+ * This is a separate graph family from the text encoder. A referenced request
+ * at CFG 1.0 uses text-encoder batch 2 but backbone batch 1, so its assembled
+ * prompt is capped at 256 even though either text segment may reach 512.
+ */
+export const BACKBONE_CEILING_BY_BATCH = { 1: 256, 2: 512 } as const;
+
+/** Exact frame rate declared by the bundled Qwen audio-tokenizer config. */
+export const AUDIO_TOKENS_PER_SECOND = 12.5;
+
+/**
+ * Conservative allowance for BOS, speaker, and instruction-control tokens.
+ *
+ * The pinned template adds `[S0]`, `<ins_bos>`, `<ins_eos>`, and a BOS token
+ * around operator-authored text. Eight covers those fixed tokens without
+ * pretending they are visible characters.
+ */
+const TEXT_SEGMENT_TOKEN_RESERVE = 8;
+
+/** The reference template appends one `<|audio_eos|>` after its audio codes. */
+const AUDIO_SEGMENT_TOKEN_RESERVE = 1;
+
 /** The highest ceiling any mode reaches, for display before a mode is known. */
 export const MAX_CUE_TOKENS = 512;
 
@@ -87,23 +117,40 @@ export function textEncoderBatch(mode: VoiceMode, cfgScale: number): 1 | 2 | 4 {
 }
 
 /**
+ * The backbone-prefill graph batch produced by CFG branching.
+ *
+ * Text segments are rows in the text encoder; branches are rows in the
+ * backbone. Keeping these two dimensions distinct prevents a two-segment
+ * Clone request at CFG 1.0 from being assigned the backbone's batch-2 ceiling.
+ *
+ * @param cfgScale - The requested guidance scale.
+ * @returns One branch at CFG 1.0, otherwise the dual-branch batch.
+ */
+export function backbonePrefillBatch(cfgScale: number): 1 | 2 {
+  return cfgScale === 1.0 ? 1 : 2;
+}
+
+/**
  * The captured input-length ceiling this request actually gets.
  *
  * Beyond it the request does **not** degrade to a slower path.
  * `freeze_after_warmup` makes the graph cache raise
- * `RuntimeError: text encoder CUDA graph (b, n) was not declared in the warmup
- * profile`, the connection aborts, and no audio is produced.
+ * either frozen graph cache raises, the connection aborts, and no audio is
+ * produced.
  *
  * @param mode - Which template the request will use.
  * @param cfgScale - The requested guidance scale.
- * @returns Maximum tokens in any single text segment.
+ * @returns The narrower ceiling among its text and assembled-prompt graphs.
  */
 export function tokenCeilingFor(mode: VoiceMode, cfgScale: number): number {
-  return CEILING_BY_BATCH[textEncoderBatch(mode, cfgScale)];
+  return Math.min(
+    CEILING_BY_BATCH[textEncoderBatch(mode, cfgScale)],
+    BACKBONE_CEILING_BY_BATCH[backbonePrefillBatch(cfgScale)],
+  );
 }
 
 /**
- * Characters per token for Latin-script text.
+ * Characters per token for an unbroken Latin-script run.
  *
  * Four is the usual English approximation, and it survived the one input that
  * has been checked against the real tokenizer: 2707 characters produced a
@@ -112,6 +159,16 @@ export function tokenCeilingFor(mode: VoiceMode, cfgScale: number): number {
  * direction.
  */
 const LATIN_CHARS_PER_TOKEN = 4;
+
+/**
+ * Tokens allowed per lexical word before punctuation is counted separately.
+ *
+ * The imported podcast exposed the failure mode a character average misses:
+ * a quote-dense 2,016-character cue was 597 real tokens while `chars / 4`
+ * estimated 512. Counting words plus punctuation estimated 664. The factor
+ * also allows ordinary words that the Gemma tokenizer divides internally.
+ */
+const LATIN_TOKENS_PER_WORD = 1.1;
 
 /**
  * Tokens per CJK character. **Unmeasured, and deliberately pessimistic.**
@@ -167,13 +224,24 @@ export function estimateTokens(text: string): number {
     if (isCjk(char.codePointAt(0) ?? 0)) cjk += 1;
     else other += 1;
   }
-  return Math.ceil(cjk * CJK_TOKENS_PER_CHAR + other / LATIN_CHARS_PER_TOKEN);
+  const words = trimmed.match(/[\p{L}\p{N}]+/gu)?.length ?? 0;
+  const punctuation =
+    trimmed.match(
+      /[^\p{L}\p{N}\s\u3000-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef\u{20000}-\u{2ebef}]/gu,
+    )?.length ?? 0;
+  const latin = Math.max(
+    other / LATIN_CHARS_PER_TOKEN,
+    words * LATIN_TOKENS_PER_WORD + punctuation,
+  );
+  return Math.ceil(cjk * CJK_TOKENS_PER_CHAR + latin);
 }
 
 /** A field whose estimated length exceeds the ceiling its batch carries. */
 export interface CeilingBreach {
   /** Which input was too long, named as the operator knows it. */
-  readonly field: 'text' | 'instruction' | 'transcript';
+  readonly field: 'text' | 'instruction' | 'transcript' | 'reference';
+  /** Which frozen graph family would reject the request. */
+  readonly stage: 'text-encoder' | 'backbone-prefill';
   readonly tokens: number;
   readonly ceiling: number;
   readonly batch: number;
@@ -187,33 +255,32 @@ export interface CeilingInput {
   readonly instruction?: string;
   /** The reference transcript, in Clone and Direction. */
   readonly refText?: string;
+  /** Duration of the matching reference audio, when present. */
+  readonly refDurationSeconds?: number;
 }
 
 /**
  * Find the input that will not fit, or null when every one of them will.
  *
- * The graph's `token_length` is the **padded maximum** across the batch, so one
- * long segment sets the bucket for every row and the largest segment decides.
- * Measuring `text` alone — which this once did — is what let a 2707-character
- * reference transcript reach the GPU and raise `(2, 640)` after a 170s cold
- * start.
- *
- * Segment composition is inferred, not read: the vendor runtime is not in this
- * repo, so what is known is the segment *count* per template. `tts_instruction`
- * is one segment, which must therefore carry the instruction and the text
- * together, so Design sums them. `ref_edit_tata` is two, read here as the
- * reference transcript in one and the instruction with the text in the other.
- * Both readings are the conservative one consistent with the counts.
+ * Text encoding uses the padded maximum segment length. Backbone prefill uses
+ * a different key: branch batch × the length after text segments, 12.5 Hz
+ * reference-audio codes, and control tokens are concatenated. The failed
+ * podcast demonstrated both walls in one run: `(2, 608)` at the text encoder
+ * and `(1, 544)` at backbone prefill.
  *
  * @param input - The mode, the cfg, and every string that will be sent.
- * @returns The largest offending field, or null.
+ * @returns The first graph breach, or null.
  */
 export function findCeilingBreach(input: CeilingInput): CeilingBreach | null {
-  const ceiling = tokenCeilingFor(input.mode, input.cfgScale);
-  const batch = textEncoderBatch(input.mode, input.cfgScale);
+  const textBatch = textEncoderBatch(input.mode, input.cfgScale);
+  const textCeiling = CEILING_BY_BATCH[textBatch];
   const instruction = input.instruction ?? '';
 
-  const spoken = estimateTokens(`${instruction} ${input.text}`);
+  const spoken =
+    estimateTokens(`${instruction} ${input.text}`) + TEXT_SEGMENT_TOKEN_RESERVE;
+  const transcript = input.refText
+    ? estimateTokens(input.refText) + TEXT_SEGMENT_TOKEN_RESERVE
+    : 0;
   const candidates: Array<{ field: CeilingBreach['field']; tokens: number }> = [
     // The instruction shares its segment with the text, so an over-long pair is
     // reported against whichever half is doing the damage.
@@ -223,12 +290,43 @@ export function findCeilingBreach(input: CeilingInput): CeilingBreach | null {
     },
   ];
   if (input.refText) {
-    candidates.push({ field: 'transcript', tokens: estimateTokens(input.refText) });
+    candidates.push({ field: 'transcript', tokens: transcript });
   }
 
   const worst = candidates.reduce((a, b) => (b.tokens > a.tokens ? b : a));
-  if (worst.tokens <= ceiling) return null;
-  return { field: worst.field, tokens: worst.tokens, ceiling, batch };
+  if (worst.tokens > textCeiling) {
+    return {
+      field: worst.field,
+      stage: 'text-encoder',
+      tokens: worst.tokens,
+      ceiling: textCeiling,
+      batch: textBatch,
+    };
+  }
+
+  const backboneBatch = backbonePrefillBatch(input.cfgScale);
+  const backboneCeiling = BACKBONE_CEILING_BY_BATCH[backboneBatch];
+  const audioTokens = input.refText
+    ? Math.ceil(Math.max(0, input.refDurationSeconds ?? 0) * AUDIO_TOKENS_PER_SECOND) +
+      AUDIO_SEGMENT_TOKEN_RESERVE
+    : 0;
+  const referenceTokens = transcript + audioTokens;
+  const assembled = spoken + referenceTokens;
+  if (assembled <= backboneCeiling) return null;
+
+  const field =
+    referenceTokens > spoken
+      ? 'reference'
+      : estimateTokens(instruction) > estimateTokens(input.text)
+        ? 'instruction'
+        : 'text';
+  return {
+    field,
+    stage: 'backbone-prefill',
+    tokens: assembled,
+    ceiling: backboneCeiling,
+    batch: backboneBatch,
+  };
 }
 
 /** How each field is named in a refusal. */
@@ -236,6 +334,7 @@ const FIELD_LABEL: Record<CeilingBreach['field'], string> = {
   text: 'the line',
   instruction: 'the instruction',
   transcript: 'the reference transcript',
+  reference: 'the reference audio and transcript',
 };
 
 /**
@@ -253,17 +352,21 @@ export function ceilingRefusal(
   mode: VoiceMode,
 ): { message: string; remedy: string } {
   const message =
-    `${FIELD_LABEL[breach.field]} is about ${breach.tokens} tokens, past the ` +
-    `${breach.ceiling}-token ceiling this request carries`;
-  // Raising CFG moves Design from batch 1 to batch 2 and so from 256 to 512.
-  // For Clone and Direction it changes the batch but not the ceiling, so
-  // offering it there would be advice that does not work.
+    breach.stage === 'backbone-prefill'
+      ? `the assembled prompt is about ${breach.tokens} tokens, past its ` +
+        `${breach.ceiling}-token backbone ceiling; ${FIELD_LABEL[breach.field]} is ` +
+        'the largest adjustable part'
+      : `${FIELD_LABEL[breach.field]} is about ${breach.tokens} tokens, past the ` +
+        `${breach.ceiling}-token ceiling for this request's text encoder`;
+  // Raising CFG expands the backbone from batch 1 / 256 to batch 2 / 512 for
+  // every mode. It does not expand a text-encoder segment already at 512.
   const remedy =
-    mode === 'design' && breach.ceiling === CEILING_BY_BATCH[1]
+    breach.ceiling === BACKBONE_CEILING_BY_BATCH[1] &&
+    (breach.stage === 'backbone-prefill' || mode === 'design')
       ? `Shorten ${FIELD_LABEL[breach.field]}, or raise CFG above 1.0 — dual-branch ` +
-        `Design carries a ${CEILING_BY_BATCH[2]}-token ceiling.`
+        `generation carries a ${BACKBONE_CEILING_BY_BATCH[2]}-token assembled-prompt ceiling.`
       : `Shorten ${FIELD_LABEL[breach.field]}. Every CFG value carries the same ` +
-        `${breach.ceiling}-token ceiling in this mode.`;
+        `${breach.ceiling}-token ceiling in ${mode} mode.`;
   return { message, remedy };
 }
 
@@ -281,6 +384,12 @@ export function cueMode(cue: Pick<Cue, 'voiceId'>): VoiceMode {
   return cue.voiceId ? 'clone' : 'design';
 }
 
+/** Reference text and audio duration that contribute to a prompt's shape. */
+export interface VoiceReferenceProfile {
+  readonly transcript: string;
+  readonly durationSeconds: number;
+}
+
 /**
  * Everything about a cue the ceiling check needs.
  *
@@ -294,15 +403,20 @@ export function cueMode(cue: Pick<Cue, 'voiceId'>): VoiceMode {
  */
 export function cueCeilingInput(
   cue: Pick<Cue, 'voiceId' | 'text' | 'instruction' | 'cfgScale'>,
-  transcripts: ReadonlyMap<string, string>,
+  references: ReadonlyMap<string, VoiceReferenceProfile>,
 ): CeilingInput {
-  const refText = cue.voiceId ? transcripts.get(cue.voiceId) : undefined;
+  const reference = cue.voiceId ? references.get(cue.voiceId) : undefined;
   return {
     mode: cueMode(cue),
     cfgScale: cue.cfgScale,
     text: cue.text,
     instruction: cue.instruction ?? DEFAULT_DELIVERY_INSTRUCTION,
-    ...(refText ? { refText } : {}),
+    ...(reference
+      ? {
+          refText: reference.transcript,
+          refDurationSeconds: reference.durationSeconds,
+        }
+      : {}),
   };
 }
 
@@ -399,6 +513,24 @@ export interface ScriptRecord {
   cues: Cue[];
   /** Blocks that could not be read, kept so nothing is silently dropped. */
   problems: CueProblem[];
+  /** What automatic chunking changed during a plain-text import. */
+  chunking?: ScriptChunkingReport;
+}
+
+/** Transparent accounting for sentence-aware plain-text import chunking. */
+export interface ScriptChunkingReport {
+  /** Capacity model used for this cue layout. */
+  readonly version: 2;
+  /** Non-empty physical lines parsed from the source file. */
+  readonly sourceCueCount: number;
+  /** Source lines that needed more than one generation cue. */
+  readonly splitSourceCueCount: number;
+  /** Final generation-ready cue count. */
+  readonly outputCueCount: number;
+  /** Additional cues created beyond the source line count. */
+  readonly addedCueCount: number;
+  /** Effective request ceiling used while importing. */
+  readonly tokenCeiling: number;
 }
 
 /** Lightweight script row returned before any document body is loaded. */
@@ -529,6 +661,68 @@ function migrateScript(record: ScriptRecord): ScriptRecord {
   return record;
 }
 
+/** Prepared plain-text cues and the visible accounting for their transformation. */
+interface PreparedImport {
+  readonly cues: ParsedCue[];
+  readonly chunking?: ScriptChunkingReport;
+}
+
+/**
+ * Split oversized plain-text lines against the imported script defaults.
+ *
+ * WebVTT cues retain their authored boundaries and timings. Splitting a timed
+ * cue without a grouped timing model would either duplicate its target or
+ * invent sub-timings; both would make the existing drift figures dishonest.
+ *
+ * @param cues - Parsed source cues.
+ * @param format - Parser selected for the source.
+ * @param defaults - Effective settings every new cue initially inherits.
+ * @returns Prepared cues and, for plain text, a chunking report.
+ */
+function prepareImportedCues(
+  cues: readonly ParsedCue[],
+  format: ScriptRecord['source'],
+  defaults: ScriptDefaults,
+  reference?: VoiceReferenceProfile,
+): PreparedImport {
+  if (format === 'vtt') return { cues: [...cues] };
+
+  const mode: VoiceMode = defaults.voiceId ? 'clone' : 'design';
+  const tokenCeiling = tokenCeilingFor(mode, defaults.cfgScale);
+  const fits = (text: string): boolean =>
+    findCeilingBreach({
+      mode,
+      cfgScale: defaults.cfgScale,
+      text,
+      instruction: defaults.instruction,
+      ...(reference
+        ? {
+            refText: reference.transcript,
+            refDurationSeconds: reference.durationSeconds,
+          }
+        : {}),
+    }) === null;
+
+  let splitSourceCueCount = 0;
+  const prepared = cues.flatMap((cue) => {
+    const chunks = chunkText(cue.text, fits);
+    if (chunks.length > 1) splitSourceCueCount += 1;
+    return chunks.map((text) => ({ ...cue, text }));
+  });
+
+  return {
+    cues: prepared,
+    chunking: {
+      version: 2,
+      sourceCueCount: cues.length,
+      splitSourceCueCount,
+      outputCueCount: prepared.length,
+      addedCueCount: prepared.length - cues.length,
+      tokenCeiling,
+    },
+  };
+}
+
 /**
  * Compute a cue's deterministic clip id.
  *
@@ -560,17 +754,20 @@ export function clipIdFor(
  */
 export function refreshScript(
   script: ScriptRecord,
-  context: { cache: ClipCache; voiceTranscripts: ReadonlyMap<string, string> },
+  context: {
+    cache: ClipCache;
+    voiceReferences: ReadonlyMap<string, VoiceReferenceProfile>;
+  },
 ): ScriptRecord {
   for (const cue of script.cues) {
     materializeCue(script, cue);
 
-    if (cue.voiceId && !context.voiceTranscripts.has(cue.voiceId)) {
+    if (cue.voiceId && !context.voiceReferences.has(cue.voiceId)) {
       cue.state = 'unrunnable';
       cue.problem = `the voice “${cue.voiceName ?? cue.voiceId}” is no longer in the library`;
       continue;
     }
-    const breach = findCeilingBreach(cueCeilingInput(cue, context.voiceTranscripts));
+    const breach = findCeilingBreach(cueCeilingInput(cue, context.voiceReferences));
     if (breach) {
       cue.state = 'unrunnable';
       const { message, remedy } = ceilingRefusal(breach, cueMode(cue));
@@ -646,6 +843,8 @@ export class ScriptStore {
     cfgScale?: number;
     seed?: number;
     defaults?: ScriptDefaultsPatch;
+    /** Selected library voice, resolved by the HTTP boundary when present. */
+    reference?: VoiceReferenceProfile;
   }): Promise<ScriptRecord> {
     const parsed = parseScriptFile(input.source, input.filename);
     const now = Date.now();
@@ -655,6 +854,12 @@ export class ScriptStore {
       ...(input.seed === undefined ? {} : { seed: input.seed }),
       ...input.defaults,
     });
+    const prepared = prepareImportedCues(
+      parsed.cues,
+      parsed.format,
+      defaults,
+      input.reference,
+    );
 
     const record: ScriptRecord = {
       id: randomUUID(),
@@ -664,7 +869,8 @@ export class ScriptStore {
       source: parsed.format,
       defaults,
       problems: parsed.problems,
-      cues: parsed.cues.map((cue, index) => {
+      ...(prepared.chunking ? { chunking: prepared.chunking } : {}),
+      cues: prepared.cues.map((cue, index) => {
         const base = {
           text: cue.text,
           voiceId: defaults.voiceId,
@@ -696,10 +902,115 @@ export class ScriptStore {
 
     await this.#persist(record);
     this.#log.info(
-      { id: record.id, cues: record.cues.length, problems: record.problems.length },
+      {
+        id: record.id,
+        cues: record.cues.length,
+        problems: record.problems.length,
+        sourceCues: prepared.chunking?.sourceCueCount ?? parsed.cues.length,
+        splitSourceCues: prepared.chunking?.splitSourceCueCount ?? 0,
+        addedCues: prepared.chunking?.addedCueCount ?? 0,
+      },
       'script imported',
     );
     return record;
+  }
+
+  /**
+   * Reflow an untimed text script when the capacity model becomes stricter.
+   *
+   * Existing cue audio remains addressable by its deterministic clip id. Only
+   * cues that are actually split receive new text and return to `queued`; a
+   * short completed tail therefore stays completed through the migration.
+   *
+   * @param scriptId - Script to inspect and, when needed, reflow.
+   * @param references - Current library reference profiles by voice id.
+   * @returns The canonical record after any reflow.
+   */
+  async rechunkPlainText(
+    scriptId: string,
+    references: ReadonlyMap<string, VoiceReferenceProfile>,
+  ): Promise<ScriptRecord> {
+    const record = this.require(scriptId);
+    if (record.source !== 'text') return record;
+
+    const sourceCueCount = record.chunking?.sourceCueCount ?? record.cues.length;
+    let splitCueCount = 0;
+    const nextCues = record.cues.flatMap((cue) => {
+      materializeCue(record, cue);
+      const reference = cue.voiceId ? references.get(cue.voiceId) : undefined;
+      const fits = (text: string): boolean =>
+        findCeilingBreach({
+          mode: cueMode(cue),
+          cfgScale: cue.cfgScale,
+          text,
+          instruction: cue.instruction ?? DEFAULT_DELIVERY_INSTRUCTION,
+          ...(reference
+            ? {
+                refText: reference.transcript,
+                refDurationSeconds: reference.durationSeconds,
+              }
+            : {}),
+        }) === null;
+      const chunks = chunkText(cue.text, fits);
+      if (chunks.length === 1) return [cue];
+
+      splitCueCount += 1;
+      return chunks.map((text, partIndex) => ({
+        ...cue,
+        id: partIndex === 0 ? cue.id : randomUUID(),
+        text,
+        ...(cue.overrides ? { overrides: { ...cue.overrides } } : {}),
+        state: 'queued' as CueState,
+        clipId: clipIdFor({ ...cue, text }),
+        actualSeconds: null,
+        driftSeconds: null,
+        problem: null,
+      }));
+    });
+
+    const alreadyCurrent = record.chunking?.version === 2;
+    if (splitCueCount === 0 && alreadyCurrent) return record;
+
+    record.cues = nextCues.map((cue, index) => ({ ...cue, index }));
+    for (const cue of record.cues) materializeCue(record, cue);
+    const defaults = canonicalDefaults(record.defaults);
+    record.chunking = {
+      version: 2,
+      sourceCueCount,
+      splitSourceCueCount:
+        record.chunking?.splitSourceCueCount ?? splitCueCount,
+      outputCueCount: record.cues.length,
+      addedCueCount: record.cues.length - sourceCueCount,
+      tokenCeiling: tokenCeilingFor(
+        defaults.voiceId ? 'clone' : 'design',
+        defaults.cfgScale,
+      ),
+    };
+    record.updatedAt = Date.now();
+    await this.#persist(record);
+    this.#log.info(
+      {
+        id: record.id,
+        splitCues: splitCueCount,
+        outputCues: record.cues.length,
+        capacityVersion: 2,
+      },
+      'script capacity layout updated',
+    );
+    return record;
+  }
+
+  /**
+   * Upgrade every persisted plain-text script to the current capacity model.
+   *
+   * @param references - Current library reference profiles by voice id.
+   */
+  async rechunkAll(
+    references: ReadonlyMap<string, VoiceReferenceProfile>,
+  ): Promise<void> {
+    for (const record of this.#records.values()) {
+      await this.rechunkPlainText(record.id, references);
+    }
   }
 
   /** List every stored script, newest first. */

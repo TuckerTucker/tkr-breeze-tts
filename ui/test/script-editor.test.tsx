@@ -229,7 +229,7 @@ describe('a row whose voice was deleted is unrunnable with the reason', () => {
 
   it('flags a row past the token ceiling while typing, not after dispatch', () => {
     const long = cue({ text: 'x'.repeat((MAX_TOKENS + 20) * 4) });
-    expect(cueBlocker(long, new Set(['v1']))).toMatch(/past the 512-token ceiling/);
+    expect(cueBlocker(long, new Set(['v1']))).toMatch(/past the 256-token ceiling/);
   });
 
   it('shows the reason on the row', () => {

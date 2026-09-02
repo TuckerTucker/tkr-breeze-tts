@@ -107,10 +107,10 @@ describe('Generate is never enabled into a failure', () => {
     // running slowly — so the reason names the way out.
     expect(tokenCeilingFor('design', 1.0)).toBe(256);
     expect(tokenCeilingFor('design', 2.5)).toBe(512);
-    // Clone carries two text segments, so it reaches batch 2 even at cfg 1.0
-    // and gets 512 there. Keying on cfg alone said 256 and was wrong for it.
-    expect(tokenCeilingFor('clone', 1.0)).toBe(512);
-    expect(tokenCeilingFor('direction', 1.0)).toBe(512);
+    // Clone reaches text-encoder batch 2, but its assembled prompt still uses
+    // backbone batch 1. That separately keyed graph is capped at 256.
+    expect(tokenCeilingFor('clone', 1.0)).toBe(256);
+    expect(tokenCeilingFor('direction', 1.0)).toBe(256);
     expect(CEILING_BY_BATCH).toEqual({ 1: 256, 2: 512, 4: 512 });
 
     const midLength = 'x'.repeat(300 * 4); // ~300 tokens
@@ -123,6 +123,11 @@ describe('Generate is never enabled into a failure', () => {
       mode: 'design' as const,
     };
     expect(generateBlockedReason({ ...gate, cfgScale: 1.0 })).toMatch(/raise CFG/);
+    expect(generateBlockedReason({
+      ...gate,
+      cfgScale: 1.0,
+      cfgAdjustable: false,
+    })).toMatch(/Shorten it to generate/);
     expect(generateBlockedReason({ ...gate, cfgScale: 4.0 })).toBeNull();
   });
 
@@ -170,7 +175,7 @@ describe('length feedback tracks input live', () => {
 
   it('estimates tokens from characters, matching the gateway', () => {
     expect(estimateTokens('')).toBe(0);
-    expect(estimateTokens('abcd')).toBe(1);
+    expect(estimateTokens('abcd')).toBe(2);
     expect(estimateTokens('abcde')).toBe(2);
   });
 });

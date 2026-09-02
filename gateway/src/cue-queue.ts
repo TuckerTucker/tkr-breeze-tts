@@ -25,6 +25,7 @@ import {
   findCeilingBreach,
   type Cue,
   type ScriptRecord,
+  type VoiceReferenceProfile,
 } from './script.js';
 
 /** What a cue run produced. */
@@ -85,13 +86,13 @@ export interface RunSummary {
 export async function runScript(options: {
   script: ScriptRecord;
   cache: ClipCache;
-  voiceTranscripts: ReadonlyMap<string, string>;
+  voiceReferences: ReadonlyMap<string, VoiceReferenceProfile>;
   synthesize: SynthesizeCue;
   logger: Logger;
   onProgress?: (progress: RunProgress) => void;
   signal?: AbortSignal;
 }): Promise<RunSummary> {
-  const { script, cache, voiceTranscripts, synthesize, logger, onProgress } = options;
+  const { script, cache, voiceReferences, synthesize, logger, onProgress } = options;
   const log = logger.child({ component: 'cue-queue', scriptId: script.id });
 
   const results: CueResult[] = [];
@@ -117,7 +118,7 @@ export async function runScript(options: {
 
     cue.clipId = clipIdFor(cue);
 
-    if (cue.voiceId && !voiceTranscripts.has(cue.voiceId)) {
+    if (cue.voiceId && !voiceReferences.has(cue.voiceId)) {
       cue.state = 'unrunnable';
       cue.problem = `the voice “${cue.voiceName ?? cue.voiceId}” is no longer in the library`;
       unrunnable += 1;
@@ -132,7 +133,7 @@ export async function runScript(options: {
       continue;
     }
 
-    const breach = findCeilingBreach(cueCeilingInput(cue, voiceTranscripts));
+    const breach = findCeilingBreach(cueCeilingInput(cue, voiceReferences));
     if (breach) {
       // Refused before dispatch. Past the ceiling the vendor's frozen graph
       // cache raises and the connection aborts with no audio, so dispatching

@@ -58,6 +58,7 @@ import {
   referenceSecondsFor,
 } from './reference-slice.js';
 import {
+  BACKBONE_CEILING_BY_BATCH,
   MAX_CUE_TOKENS,
   ScriptStore,
   CEILING_BY_BATCH,
@@ -292,16 +293,24 @@ export function createServer(deps: ServerDeps): GatewayServer {
   });
 
   /**
-   * Library transcripts by voice id.
+   * Library prompt-shape inputs by voice id.
    *
-   * One lookup serves both questions a cue asks — whether its voice still
-   * exists, and what that voice's reference transcript is — so the two can
-   * never be answered from different reads of the store.
+   * One lookup serves all three questions a cue asks: whether its voice still
+   * exists, how long its transcript is, and how many 12.5 Hz audio codes its
+   * reference contributes to backbone prefill.
    *
-   * @returns Transcript by voice id, for every visible voice.
+   * @returns Reference profile by voice id, for every visible voice.
    */
-  const voiceTranscripts = (): ReadonlyMap<string, string> =>
-    new Map(voices.list().map((voice) => [voice.id, voice.transcript]));
+  const voiceReferences = () =>
+    new Map(
+      voices.list().map((voice) => [
+        voice.id,
+        {
+          transcript: voice.transcript,
+          durationSeconds: voice.durationSeconds,
+        },
+      ]),
+    );
 
   // ── Health and readiness ─────────────────────────────────────────────────
   //
@@ -331,6 +340,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
       limits: {
         maxTokens: MAX_CUE_TOKENS,
         tokenCeilingByBatch: CEILING_BY_BATCH,
+        backboneCeilingByBatch: BACKBONE_CEILING_BY_BATCH,
         referenceSeconds: referenceCeiling,
       },
       // Null rather than a placeholder: the UI says "not yet measured".
@@ -793,10 +803,19 @@ export function createServer(deps: ServerDeps): GatewayServer {
     if (!source.trim()) {
       throw new GatewayError('validation', 'the dropped file was empty');
     }
+    const reference = defaults?.voiceId ? voices.get(defaults.voiceId) : undefined;
     return scripts.importFile({
       source,
       ...(filename ? { filename } : {}),
       ...(defaults ? { defaults } : {}),
+      ...(reference
+        ? {
+            reference: {
+              transcript: reference.transcript,
+              durationSeconds: reference.durationSeconds,
+            },
+          }
+        : {}),
     });
   });
 
@@ -805,7 +824,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
   app.get<{ Params: { id: string } }>('/api/scripts/:id', async (request) =>
     refreshScript(scripts.require(request.params.id), {
       cache,
-      voiceTranscripts: voiceTranscripts(),
+      voiceReferences: voiceReferences(),
     }),
   );
 
@@ -814,10 +833,14 @@ export function createServer(deps: ServerDeps): GatewayServer {
     if (!body.defaults || typeof body.defaults !== 'object') {
       throw new GatewayError('validation', 'script defaults are required');
     }
-    const updated = await scripts.patchDefaults(request.params.id, body.defaults);
+    await scripts.patchDefaults(request.params.id, body.defaults);
+    const updated = await scripts.rechunkPlainText(
+      request.params.id,
+      voiceReferences(),
+    );
     return refreshScript(updated, {
       cache,
-      voiceTranscripts: voiceTranscripts(),
+      voiceReferences: voiceReferences(),
     });
   });
 
@@ -831,7 +854,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
       );
       return refreshScript(updated, {
         cache,
-        voiceTranscripts: voiceTranscripts(),
+        voiceReferences: voiceReferences(),
       });
     },
   );
@@ -841,7 +864,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
     const updated = await scripts.replaceCues(request.params.id, body.cues ?? []);
     return refreshScript(updated, {
       cache,
-      voiceTranscripts: voiceTranscripts(),
+      voiceReferences: voiceReferences(),
     });
   });
 
@@ -851,7 +874,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
 
   app.post<{ Params: { id: string } }>('/api/scripts/:id/run', async (request, reply) => {
     const script = scripts.require(request.params.id);
-    const transcripts = voiceTranscripts();
+    const referencesByVoice = voiceReferences();
 
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -862,7 +885,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
     const summary = await runScript({
       script,
       cache,
-      voiceTranscripts: transcripts,
+      voiceReferences: referencesByVoice,
       logger,
       onProgress: (progress) => {
         reply.raw.write(`event: progress\ndata: ${JSON.stringify(progress)}\n\n`);
@@ -887,7 +910,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
   app.get<{ Params: { id: string } }>('/api/scripts/:id/export.vtt', async (request, reply) => {
     const script = refreshScript(scripts.require(request.params.id), {
       cache,
-      voiceTranscripts: voiceTranscripts(),
+      voiceReferences: voiceReferences(),
     });
     reply.type('text/vtt');
     reply.header(
@@ -900,7 +923,7 @@ export function createServer(deps: ServerDeps): GatewayServer {
   app.get<{ Params: { id: string } }>('/api/scripts/:id/export.wav', async (request, reply) => {
     const script = refreshScript(scripts.require(request.params.id), {
       cache,
-      voiceTranscripts: voiceTranscripts(),
+      voiceReferences: voiceReferences(),
     });
     reply.type('audio/wav');
     reply.header(
@@ -1203,6 +1226,17 @@ export async function main(): Promise<void> {
     scripts.load(),
     references.load(),
   ]);
+  await scripts.rechunkAll(
+    new Map(
+      voices.list().map((voice) => [
+        voice.id,
+        {
+          transcript: voice.transcript,
+          durationSeconds: voice.durationSeconds,
+        },
+      ]),
+    ),
+  );
   await preflight(config, logger);
 
   const proxy = new ModalProxy({ config, logger });

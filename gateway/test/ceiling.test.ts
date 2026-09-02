@@ -12,8 +12,10 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 
 import {
+  BACKBONE_CEILING_BY_BATCH,
   CEILING_BY_BATCH,
   SEGMENTS_BY_MODE,
+  backbonePrefillBatch,
   ceilingRefusal,
   estimateTokens,
   findCeilingBreach,
@@ -37,13 +39,15 @@ describe('the batch a request lands on', () => {
     expect(textEncoderBatch('direction', 2.5)).toBe(4);
   });
 
-  it('gives Clone 512 at cfg 1.0, which keying on cfg alone got wrong', () => {
-    // The defect: cfg 1.0 was read as "single branch, so 256". True for
-    // Design. Clone already carries two segments, so it reaches batch 2 and
-    // 512 is captured for it — the old table refused input that would serve.
+  it('keeps text-encoder and backbone batches separate at cfg 1.0', () => {
+    // Clone reaches text-encoder batch 2, but its two text segments are then
+    // assembled into one backbone branch. The deployed failure was a missing
+    // `(1, 544)` backbone graph, proving the effective request ceiling is 256.
+    expect(textEncoderBatch('clone', 1.0)).toBe(2);
+    expect(backbonePrefillBatch(1.0)).toBe(1);
     expect(tokenCeilingFor('design', 1.0)).toBe(256);
-    expect(tokenCeilingFor('clone', 1.0)).toBe(512);
-    expect(tokenCeilingFor('direction', 1.0)).toBe(512);
+    expect(tokenCeilingFor('clone', 1.0)).toBe(256);
+    expect(tokenCeilingFor('direction', 1.0)).toBe(256);
   });
 
   it('caps every dual-branch mode at 512, batch 4 included', () => {
@@ -52,6 +56,7 @@ describe('the batch a request lands on', () => {
     expect(tokenCeilingFor('design', 4.0)).toBe(512);
     expect(tokenCeilingFor('clone', 4.0)).toBe(512);
     expect(CEILING_BY_BATCH[4]).toBe(512);
+    expect(BACKBONE_CEILING_BY_BATCH[2]).toBe(512);
     expect(SEGMENTS_BY_MODE.clone).toBe(2);
   });
 });
@@ -74,6 +79,7 @@ describe('every string that becomes a segment is measured', () => {
     expect(breach!.field).toBe('transcript');
     expect(breach!.ceiling).toBe(512);
     expect(breach!.batch).toBe(2);
+    expect(breach!.stage).toBe('text-encoder');
     expect(breach!.tokens).toBeGreaterThan(600);
   });
 
@@ -114,21 +120,24 @@ describe('every string that becomes a segment is measured', () => {
     ).not.toBeNull();
   });
 
-  it('takes the largest segment, never their sum', () => {
-    // The graph bucket is the padded maximum across the batch, so two segments
-    // of 400 tokens fit a 512 ceiling. Summing them would refuse a request the
-    // GPU serves happily.
+  it('checks the largest text segment and their assembled backbone sequence', () => {
+    // Two sub-512 text segments fit the text encoder independently, then are
+    // joined into one backbone sequence. At CFG 1.0 that assembled prompt has
+    // only a 256-token graph and must be refused before dispatch.
     const four_hundred = 'word '.repeat(320);
     expect(estimateTokens(four_hundred)).toBeGreaterThan(300);
     expect(estimateTokens(four_hundred)).toBeLessThan(512);
-    expect(
-      findCeilingBreach({
-        mode: 'clone',
-        cfgScale: 1.0,
-        text: four_hundred,
-        refText: four_hundred,
-      }),
-    ).toBeNull();
+    const breach = findCeilingBreach({
+      mode: 'clone',
+      cfgScale: 1.0,
+      text: four_hundred,
+      refText: four_hundred,
+    });
+    expect(breach).toMatchObject({
+      stage: 'backbone-prefill',
+      batch: 1,
+      ceiling: 256,
+    });
   });
 
   it('passes a request that fits', () => {
@@ -206,7 +215,7 @@ describe('the gateway and the UI agree', () => {
     return match![1]!.replace(/\s+/g, ' ').trim();
   };
 
-  it.each(['CEILING_BY_BATCH', 'SEGMENTS_BY_MODE'])(
+  it.each(['CEILING_BY_BATCH', 'BACKBONE_CEILING_BY_BATCH', 'SEGMENTS_BY_MODE'])(
     'declares the same %s in both packages',
     (name) => {
       // Two copies that disagree are worse than one that is wrong: the UI
@@ -215,7 +224,13 @@ describe('the gateway and the UI agree', () => {
     },
   );
 
-  it.each(['LATIN_CHARS_PER_TOKEN', 'CJK_TOKENS_PER_CHAR', 'isCjk', 'estimateTokens'])(
+  it.each([
+    'LATIN_CHARS_PER_TOKEN',
+    'LATIN_TOKENS_PER_WORD',
+    'CJK_TOKENS_PER_CHAR',
+    'isCjk',
+    'estimateTokens',
+  ])(
     'estimates with the same %s in both packages',
     (name) => {
       // A meter that counted differently from the check would sit comfortably
@@ -225,9 +240,8 @@ describe('the gateway and the UI agree', () => {
   );
 
   it('agrees on the ceiling for every mode and cfg the UI can produce', () => {
-    // The table is shared above; this pins the arithmetic over it, which is
-    // where Clone at cfg 1.0 was previously read as 256.
-    expect(tokenCeilingFor('clone', 1.0)).toBe(512);
+    // The text and backbone graph dimensions must both be reflected here.
+    expect(tokenCeilingFor('clone', 1.0)).toBe(256);
     expect(tokenCeilingFor('design', 1.0)).toBe(256);
     expect(estimateTokens(PODCAST_TRANSCRIPT)).toBe(677);
   });

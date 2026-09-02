@@ -15,6 +15,7 @@ import {
   textEncoderBatch,
   tokenCeilingFor,
 } from './script.js';
+import { durationSeconds, readWavHeader } from './transport.js';
 
 /** Where a complete reference came from. */
 export type ReferenceProvenance =
@@ -97,12 +98,28 @@ export function resolveVoiceIntent(intent: VoiceIntent): ResolvedVoiceIntent {
   }
 
   const derivedMode = intent.reference ? 'clone' : 'design';
+  const referenceDurationSeconds = intent.reference
+    ? (() => {
+        try {
+          const header = readWavHeader(intent.reference.audio);
+          return durationSeconds(header.dataBytes, header);
+        } catch {
+          // Structural reference validation is intentionally independent of
+          // WAV parsing. Production references are normalized WAVs; injected
+          // test doubles may only exercise intent resolution.
+          return undefined;
+        }
+      })()
+    : undefined;
   const breach = findCeilingBreach({
     mode: derivedMode,
     cfgScale: intent.cfgScale,
     text,
     instruction,
     ...(intent.reference ? { refText: intent.reference.transcript } : {}),
+    ...(referenceDurationSeconds === undefined
+      ? {}
+      : { refDurationSeconds: referenceDurationSeconds }),
   });
   if (breach) {
     const refusal = ceilingRefusal(breach, derivedMode);

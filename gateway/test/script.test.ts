@@ -17,6 +17,7 @@ import {
   effectiveCueSettings,
   estimateTokens,
   exportVtt,
+  findCeilingBreach,
   refreshScript,
   tokenCeilingFor,
   type Cue,
@@ -138,6 +139,145 @@ describe('the cue list is the document', () => {
     expect(script.cues.every((cue) => cue.state === 'queued')).toBe(true);
   });
 
+  it('splits an oversized plain-text line at sentence boundaries during import', async () => {
+    const sentence = (index: number): string =>
+      `Sentence ${index} carries ${'word '.repeat(78).trim()}.`;
+    const source = [sentence(1), sentence(2), sentence(3)].join(' ');
+
+    const script = await scripts.importFile({ source, filename: 'long-form.txt' });
+
+    expect(script.cues).toHaveLength(2);
+    expect(script.cues.map((cue) => cue.text).join(' ')).toBe(source);
+    expect(script.chunking).toEqual({
+      version: 2,
+      sourceCueCount: 1,
+      splitSourceCueCount: 1,
+      outputCueCount: 2,
+      addedCueCount: 1,
+      tokenCeiling: 256,
+    });
+    expect(
+      script.cues.every(
+        (cue) =>
+          findCeilingBreach({
+            mode: 'design',
+            cfgScale: script.defaults!.cfgScale,
+            text: cue.text,
+            instruction: script.defaults!.instruction,
+          }) === null,
+      ),
+    ).toBe(true);
+  });
+
+  it('uses imported CFG and reference mode when deciding whether a line fits', async () => {
+    const source = 'word '.repeat(300).trim();
+    const design = await scripts.importFile({ source, filename: 'design.txt' });
+    const clone = await scripts.importFile({
+      source,
+      filename: 'clone.txt',
+      defaults: {
+        voiceId: 'voice-1',
+        voiceName: 'Narrator',
+        cfgScale: 4,
+      },
+    });
+
+    expect(design.cues.length).toBeGreaterThan(1);
+    expect(design.chunking?.tokenCeiling).toBe(256);
+    expect(clone.cues).toHaveLength(1);
+    expect(clone.chunking).toMatchObject({
+      splitSourceCueCount: 0,
+      outputCueCount: 1,
+      tokenCeiling: 512,
+    });
+  });
+
+  it('budgets reference audio and punctuation-heavy dialogue during import', async () => {
+    const reference = {
+      transcript: 'This is how this voice will sound when you use it.',
+      durationSeconds: 3.36,
+    };
+    const source = 'And they said, "Yeah, we are going to miss out on a lot of things." '.repeat(55);
+    const script = await scripts.importFile({
+      source,
+      filename: 'quoted-dialogue.txt',
+      defaults: { voiceId: 'voice-1', voiceName: 'Narrator' },
+      reference,
+    });
+
+    expect(script.cues.length).toBeGreaterThan(1);
+    expect(script.chunking?.tokenCeiling).toBe(256);
+    expect(
+      script.cues.every(
+        (cue) =>
+          findCeilingBreach({
+            mode: 'clone',
+            cfgScale: cue.cfgScale,
+            text: cue.text,
+            instruction: cue.instruction,
+            refText: reference.transcript,
+            refDurationSeconds: reference.durationSeconds,
+          }) === null,
+      ),
+    ).toBe(true);
+  });
+
+  it('reflows a version-one text layout while preserving a completed short tail', async () => {
+    const reference = {
+      transcript: 'This is how this voice will sound when you use it.',
+      durationSeconds: 3.36,
+    };
+    const script = await scripts.importFile({
+      source: 'Original line.\n\nShort tail.',
+      defaults: { voiceId: 'voice-1', voiceName: 'Narrator' },
+      reference,
+    });
+    const longCue = script.cues[0]!;
+    longCue.text = 'And they answered, "Yes, this is repeated dialogue." '.repeat(60);
+    longCue.clipId = clipIdFor(longCue);
+    longCue.state = 'failed';
+    longCue.problem = 'terminated';
+    const tail = script.cues[1]!;
+    tail.state = 'done';
+    tail.actualSeconds = 1;
+    delete (script.chunking as { version?: number }).version;
+    await scripts.save(script);
+
+    const migrated = await scripts.rechunkPlainText(
+      script.id,
+      new Map([['voice-1', reference]]),
+    );
+
+    expect(migrated.chunking?.version).toBe(2);
+    expect(migrated.cues.length).toBeGreaterThan(2);
+    expect(migrated.cues.find((cue) => cue.text === 'Short tail.')).toMatchObject({
+      state: 'done',
+      actualSeconds: 1,
+    });
+    expect(
+      migrated.cues.every(
+        (cue) =>
+          findCeilingBreach({
+            mode: 'clone',
+            cfgScale: cue.cfgScale,
+            text: cue.text,
+            instruction: cue.instruction,
+            refText: reference.transcript,
+            refDurationSeconds: reference.durationSeconds,
+          }) === null,
+      ),
+    ).toBe(true);
+  });
+
+  it('does not split an oversized timed cue or invent sub-timings', async () => {
+    const source = `WEBVTT\n\n1\n00:00:00.000 --> 00:00:08.000\n${'word '.repeat(300)}`;
+    const script = await scripts.importFile({ source, filename: 'timed.vtt' });
+
+    expect(script.cues).toHaveLength(1);
+    expect(script.cues[0]).toMatchObject({ targetStart: 0, targetEnd: 8 });
+    expect(script.chunking).toBeUndefined();
+  });
+
   it('editing one cue changes only that cue’s clip id', async () => {
     const script = await scripts.importFile({ source: SAMPLE_VTT });
     const before = script.cues.map((cue) => cue.clipId);
@@ -236,7 +376,7 @@ describe('the cue list is the document', () => {
 
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
     });
     expect(refreshed.cues[0]!.state).toBe('unrunnable');
     expect(refreshed.cues[0]!.problem).toMatch(/Narrator — calm/);
@@ -249,7 +389,7 @@ describe('the cue list is the document', () => {
 
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
     });
     expect(refreshed.cues[0]!.state).toBe('unrunnable');
     // Default cfg is 1.0, so the single-branch ceiling of 256 applies.
@@ -273,14 +413,14 @@ describe('the cue list is the document', () => {
     await scripts.patchCue(script.id, cueId, { text: midLength, cfgScale: 1.0 });
     let refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
     });
     expect(refreshed.cues[0]!.state).toBe('unrunnable');
 
     await scripts.patchCue(script.id, cueId, { cfgScale: 4.0 });
     refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
     });
     expect(refreshed.cues[0]!.state).not.toBe('unrunnable');
   });
@@ -323,7 +463,12 @@ describe('running a script', () => {
     const summary = await runScript({
       script: scripts.require(script.id),
       cache,
-      voiceTranscripts: new Map(voiceIds.map((id) => [id, 'a short transcript'])),
+      voiceReferences: new Map(
+        voiceIds.map((id) => [
+          id,
+          { transcript: 'a short transcript', durationSeconds: 1 },
+        ]),
+      ),
       synthesize: synthesizerFor(calls),
       logger: silentLogger(),
     });
@@ -343,7 +488,7 @@ describe('running a script', () => {
     await runScript({
       script: scripts.require(script.id),
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
       synthesize: synthesizerFor(first),
       logger: silentLogger(),
     });
@@ -355,7 +500,7 @@ describe('running a script', () => {
     const summary = await runScript({
       script: scripts.require(script.id),
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
       synthesize: synthesizerFor(second),
       logger: silentLogger(),
     });
@@ -376,7 +521,7 @@ describe('running a script', () => {
     await runScript({
       script: scripts.require(script.id),
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
       logger: silentLogger(),
       synthesize: async (cue) => {
         concurrent += 1;
@@ -418,7 +563,7 @@ describe('running a script', () => {
     const summary = await runScript({
       script: scripts.require(script.id),
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
       synthesize: synthesizerFor(calls),
       logger: silentLogger(),
     });
@@ -435,7 +580,7 @@ describe('running a script', () => {
     await runScript({
       script: scripts.require(script.id),
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
       synthesize: synthesizerFor([]),
       logger: silentLogger(),
       onProgress: (progress) => states.push(progress.state),
@@ -460,7 +605,7 @@ describe('drift is measured and reported, never corrected', () => {
 
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
     });
     expect(refreshed.cues[0]!.actualSeconds).toBeCloseTo(4.1, 3);
     expect(refreshed.cues[0]!.driftSeconds).toBeCloseTo(0.7, 3);
@@ -479,7 +624,7 @@ describe('drift is measured and reported, never corrected', () => {
 
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
     });
     expect(refreshed.cues[0]!.actualSeconds).toBeCloseTo(1, 6);
     expect(refreshed.cues[0]!.driftSeconds).toBeNull();
@@ -509,7 +654,7 @@ describe('export', () => {
     await generateAll(script, [4.1, 1.6, 2.3]);
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
     });
 
     const vtt = exportVtt(refreshed);
@@ -521,7 +666,7 @@ describe('export', () => {
 
   it('refuses to export timings for cues that were never generated', async () => {
     const script = await scripts.importFile({ source: SAMPLE_VTT });
-    const refreshed = refreshScript(script, { cache, voiceTranscripts: new Map() });
+    const refreshed = refreshScript(script, { cache, voiceReferences: new Map() });
     expect(() => exportVtt(refreshed)).toThrowError(/have not been generated/);
   });
 
@@ -531,7 +676,7 @@ describe('export', () => {
     await generateAll(script, seconds);
     const refreshed = refreshScript(scripts.require(script.id), {
       cache,
-      voiceTranscripts: new Map(),
+      voiceReferences: new Map(),
     });
 
     const wav = await concatenateScript(refreshed, cache);

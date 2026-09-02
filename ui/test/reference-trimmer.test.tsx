@@ -191,7 +191,7 @@ describe('preflight limits and recognition failures', () => {
     expect(screen.getByLabelText('Reference duration limit')).not.toHaveClass('meter--over');
     expect(screen.getByLabelText('Reference transcript token limit')).toHaveClass('meter--over');
     expect(screen.getByLabelText('Reference duration limit')).toHaveTextContent('2.00s / 2.00s');
-    expect(screen.getByLabelText('Reference transcript token limit')).toHaveTextContent('2 / 1');
+    expect(screen.getByLabelText('Reference transcript token limit')).toHaveTextContent('3 / 1');
   });
 
   it('names both measured CFG branches and the active one', () => {
