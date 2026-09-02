@@ -2,19 +2,26 @@
 
 import type { JSX, KeyboardEvent } from 'react';
 
-import type { Workspace } from '../state/workspace.js';
+import {
+  WORKSPACE_AVAILABILITY,
+  type Workspace,
+} from '../state/workspace.js';
 
-/** Props for the three-workspace navigation. */
+/** Props for the available-workspace navigation. */
 export interface WorkspaceNavProps {
   readonly active: Workspace;
   readonly onSelect: (workspace: Workspace) => void;
 }
 
-const WORKSPACES: readonly { id: Workspace; label: string; summary: string }[] = [
+const ALL_WORKSPACES: readonly { id: Workspace; label: string; summary: string }[] = [
   { id: 'voices', label: 'Voices', summary: 'Create and keep' },
   { id: 'speak', label: 'Speak', summary: 'Generate one line' },
   { id: 'scripts', label: 'Scripts', summary: 'Direct a document' },
 ];
+
+const WORKSPACES = ALL_WORKSPACES.filter(
+  (workspace) => WORKSPACE_AVAILABILITY[workspace.id],
+);
 
 /**
  * Render keyboard-, pointer-, touch-, and screen-reader-equivalent navigation.

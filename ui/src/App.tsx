@@ -33,7 +33,7 @@ import {
   removeActivity,
   type Activity,
 } from './state/activity.js';
-import { generateBlockedReason, rollSeed, tokenCeilingFor } from './state/draft.js';
+import { generateBlockedReason, tokenCeilingFor } from './state/draft.js';
 import { restoreFromClip, type Clip } from './state/history.js';
 import { cfgControlFrom, type CfgControl } from './state/mode.js';
 import { suggestName } from './state/name.js';
@@ -63,9 +63,13 @@ import {
   legacyModeFor,
   loadWorkspaceState,
   projectSpeechRequest,
+  resolveAvailableSpeakVoiceSource,
   resolveVoiceSpec,
   saveWorkspaceState,
+  SPEAK_VOICE_SOURCE_AVAILABILITY,
+  WORKSPACE_AVAILABILITY,
   type SpeakDraft,
+  type SpeakVoiceSourceAvailability,
   type Workspace,
   type WorkspaceState,
 } from './state/workspace.js';
@@ -75,6 +79,8 @@ export interface AppProps {
   readonly client: GatewayClient;
   readonly audio: AudioBackend;
   readonly storage: Storage;
+  /** Override dormant Speak sources for focused capability tests or future configuration. */
+  readonly speakVoiceSourceAvailability?: Partial<SpeakVoiceSourceAvailability>;
 }
 
 interface ContextFailure {
@@ -96,13 +102,17 @@ function failureLine(failure: ContextFailure | null): string | null {
 }
 
 /**
- * Render and compose Voices, Speak, and Scripts over one normalized state graph.
+ * Render and compose the available voice tools over one normalized state graph.
  *
  * @param props - Injected gateway, audio backend, and durable storage.
  * @returns The complete application.
  */
 export function App(props: AppProps): JSX.Element {
   const { client } = props;
+  const speakVoiceSourceAvailability: SpeakVoiceSourceAvailability = {
+    ...SPEAK_VOICE_SOURCE_AVAILABILITY,
+    ...props.speakVoiceSourceAvailability,
+  };
   const [workspace, setWorkspace] = useState<WorkspaceState>(() =>
     loadWorkspaceState(props.storage),
   );
@@ -218,13 +228,15 @@ export function App(props: AppProps): JSX.Element {
         // Conservative controls are already active and identify themselves.
       }
     });
-    void trackActivity('Loading scripts…', async () => {
-      const next = await refreshSummaries();
-      const wanted = initialLastScriptId.current;
-      if (wanted && next.some((summary) => summary.id === wanted)) {
-        await openScript(wanted);
-      }
-    });
+    if (WORKSPACE_AVAILABILITY.scripts) {
+      void trackActivity('Loading scripts…', async () => {
+        const next = await refreshSummaries();
+        const wanted = initialLastScriptId.current;
+        if (wanted && next.some((summary) => summary.id === wanted)) {
+          await openScript(wanted);
+        }
+      });
+    }
   }, [client, openScript, refreshClips, refreshHealth, refreshSummaries, refreshVoices, trackActivity]);
 
   useEffect(() => {
@@ -235,7 +247,10 @@ export function App(props: AppProps): JSX.Element {
   }, [waking]);
 
   const setActive = (active: Workspace): void =>
-    setWorkspace((current) => ({ ...current, active }));
+    setWorkspace((current) => ({
+      ...current,
+      active: WORKSPACE_AVAILABILITY[active] ? active : 'speak',
+    }));
 
   const measuredReferenceShape = health?.limits.referenceSeconds
     ? { referenceCeiling: { measured: true, ...health.limits.referenceSeconds } }
@@ -255,20 +270,30 @@ export function App(props: AppProps): JSX.Element {
     ? findingCreationCeiling
     : referenceCeilingFor(measuredReferenceShape, creation.cfgScale);
 
+  const availableSpeakVoice = resolveAvailableSpeakVoiceSource(
+    workspace.speakDraft.voice,
+    voices,
+    workspace.selectedVoiceId,
+    speakVoiceSourceAvailability,
+  );
+  const availableSpeakDraft: SpeakDraft =
+    availableSpeakVoice === workspace.speakDraft.voice
+      ? workspace.speakDraft
+      : { ...workspace.speakDraft, voice: availableSpeakVoice };
   const effectiveSpeakDraft: SpeakDraft =
-    workspace.speakDraft.voice.kind === 'staged' && workspace.speakDraft.voice.reference
+    availableSpeakDraft.voice.kind === 'staged' && availableSpeakDraft.voice.reference
       ? {
-          ...workspace.speakDraft,
+          ...availableSpeakDraft,
           voice: {
             kind: 'staged',
             reference: moveReferenceWindow(
-              workspace.speakDraft.voice.reference,
-              workspace.speakDraft.voice.reference.start,
+              availableSpeakDraft.voice.reference,
+              availableSpeakDraft.voice.reference.start,
               speakCeiling.maxSeconds,
             ),
           },
         }
-      : workspace.speakDraft;
+      : availableSpeakDraft;
   const effectiveCreation: VoiceCreationDraft = creation.reference
     ? {
         ...creation,
@@ -292,6 +317,14 @@ export function App(props: AppProps): JSX.Element {
       : effectiveSpeakDraft.voice.kind === 'staged'
         ? effectiveSpeakDraft.voice.reference?.transcript
         : undefined;
+  const selectedReferenceDuration =
+    resolution.spec?.kind === 'referenced'
+      ? resolution.spec.reference.source === 'voice'
+        ? resolution.spec.reference.durationSeconds
+        : resolution.spec.reference.end - resolution.spec.reference.start
+      : effectiveSpeakDraft.voice.kind === 'staged' && effectiveSpeakDraft.voice.reference
+        ? effectiveSpeakDraft.voice.reference.end - effectiveSpeakDraft.voice.reference.start
+        : undefined;
   const selectionBlocker =
     effectiveSpeakDraft.voice.kind === 'staged' && effectiveSpeakDraft.voice.reference
       ? referenceSelectionBlocker(
@@ -307,8 +340,12 @@ export function App(props: AppProps): JSX.Element {
     generating,
     modeBlocker: resolution.blocker ?? selectionBlocker,
     cfgScale: effectiveSpeakDraft.cfgScale,
+    cfgAdjustable: false,
     mode: requestMode,
     ...(selectedTranscript ? { refText: selectedTranscript } : {}),
+    ...(selectedReferenceDuration === undefined
+      ? {}
+      : { refDurationSeconds: selectedReferenceDuration }),
   });
   const speakStatus =
     failureLine(speakFailure) ??
@@ -349,18 +386,12 @@ export function App(props: AppProps): JSX.Element {
       const cold = shouldShowWake(health?.readiness ?? 'unknown');
       setWaking(cold);
       setWakeElapsedMs(0);
-      const seed = effectiveSpeakDraft.seedLocked ? effectiveSpeakDraft.seed : rollSeed();
-      if (!effectiveSpeakDraft.seedLocked) {
-        setWorkspace((current) => ({
-          ...current,
-          speakDraft: { ...current.speakDraft, seed },
-        }));
-      }
+      const seed = effectiveSpeakDraft.seed;
       const request = projectSpeechRequest({ ...effectiveSpeakDraft, seed }, spec);
       const startedAt = performance.now();
       try {
         const result = await playResponse(await client.speech(request), startedAt);
-        if (result.incomplete) setSpeakFailure(incompleteStreamFailure(result));
+        if (result.incomplete) setSpeakFailure(incompleteStreamFailure(result, false));
       } catch (error) {
         setSpeakFailure(failureFrom(error, 'Speech could not be generated.'));
       } finally {
@@ -440,7 +471,7 @@ export function App(props: AppProps): JSX.Element {
         });
         await refreshVoices();
       });
-      setCreation({ ...INITIAL_VOICE_CREATION_DRAFT, open: false });
+      setCreation(INITIAL_VOICE_CREATION_DRAFT);
     } catch (error) {
       setVoiceFailure(failureFrom(error, 'The voice could not be saved.'));
     }
@@ -599,7 +630,12 @@ export function App(props: AppProps): JSX.Element {
         seed: restored.seed,
         voice: voice
           ? { kind: 'saved', voiceId: voice.id, voiceName: voice.name }
-          : { kind: 'described' },
+          : resolveAvailableSpeakVoiceSource(
+              { kind: 'described' },
+              voices,
+              current.selectedVoiceId,
+              speakVoiceSourceAvailability,
+            ),
       },
     }));
   };
@@ -679,6 +715,7 @@ export function App(props: AppProps): JSX.Element {
             onUndo={(undo) => void undoDelete(undo)}
             onUseInSpeak={useVoiceInSpeak}
             onUseInScript={useVoiceInScript}
+            scriptsAvailable={WORKSPACE_AVAILABILITY.scripts}
             voiceAudioUrl={(id) => `/api/voices/${encodeURIComponent(id)}/audio`}
             onStage={(file, source) => stageReference(file, source, creationCeiling.maxSeconds)}
             canRecord={health?.ffmpeg.available ?? false}
@@ -697,12 +734,9 @@ export function App(props: AppProps): JSX.Element {
             draft={effectiveSpeakDraft}
             onDraftChange={(speakDraft) => setWorkspace((current) => ({ ...current, speakDraft }))}
             voices={voices}
-            cfgControl={cfgControl}
-            cfgUnmeasured={cfgUnmeasured}
             blockedReason={blockedReason}
             statusLine={speakStatus}
             onGenerate={() => void generate()}
-            onRerollSeed={() => setWorkspace((current) => ({ ...current, speakDraft: { ...current.speakDraft, seed: rollSeed() } }))}
             generating={generating}
             clips={clips}
             selectedClipId={selectedClipId}
@@ -714,7 +748,6 @@ export function App(props: AppProps): JSX.Element {
             onCreateVoiceFromClip={(clip) => {
               setCreation({
                 ...INITIAL_VOICE_CREATION_DRAFT,
-                open: true,
                 method: 'from-clip',
                 sourceClipId: clip.id,
                 name: suggestName(clip.request.instruction),
@@ -734,6 +767,7 @@ export function App(props: AppProps): JSX.Element {
             clipUrl={(id) => client.clipUrl(id)}
             historyReadOnlyReason={health === null ? 'The gateway is unreachable — history is read-only.' : null}
             playbackReadout={playbackReadout}
+            sourceAvailability={speakVoiceSourceAvailability}
             onStage={(file, source) => stageReference(file, source, speakCeiling.maxSeconds)}
             canRecord={health?.ffmpeg.available ?? false}
             recordDisabledReason={recordReason}
@@ -746,7 +780,7 @@ export function App(props: AppProps): JSX.Element {
           />
         )}
 
-        {workspace.active === 'scripts' && (
+        {WORKSPACE_AVAILABILITY.scripts && workspace.active === 'scripts' && (
           <ScriptsWorkspace
             summaries={summaries}
             script={script}

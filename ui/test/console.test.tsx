@@ -29,6 +29,7 @@ function Harness(props: {
   onGenerate?: () => void;
   cfgScale?: number;
   mode?: VoiceMode;
+  seedControlsVisible?: boolean;
 }): JSX.Element {
   const [draft, setDraft] = useState<Draft>({ ...INITIAL_DRAFT, ...props.initial });
   return (
@@ -48,6 +49,7 @@ function Harness(props: {
       cfgScale={props.cfgScale ?? 1.0}
       mode={props.mode ?? 'design'}
       onGenerate={props.onGenerate ?? (() => {})}
+      seedControlsVisible={props.seedControlsVisible ?? true}
       onRerollSeed={() => setDraft({ ...draft, seed: 999 })}
     />
   );
@@ -181,6 +183,16 @@ describe('length feedback tracks input live', () => {
 });
 
 describe('vocal events', () => {
+  it('appears before the text entry field', () => {
+    render(<Harness />);
+    const heading = screen.getByText('Vocal events');
+    const textInput = screen.getByLabelText('Text to speak');
+
+    expect(
+      heading.compareDocumentPosition(textInput) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
   it('inserts the marker at the caret', () => {
     expect(insertAtCaret('Hello world', 5, '(sigh)')).toEqual({
       text: 'Hello (sigh) world',
@@ -235,6 +247,13 @@ describe('no language field is ever sent', () => {
 });
 
 describe('the seed makes a comparison meaningful', () => {
+  it('can keep the stored seed while hiding its controls', () => {
+    render(<Harness initial={{ seed: 42, seedLocked: false }} seedControlsVisible={false} />);
+    expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reroll' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Locked|Unlocked/ })).not.toBeInTheDocument();
+  });
+
   it('shows the value and its locked state', () => {
     render(<Harness initial={{ seed: 42, seedLocked: true }} />);
     expect((screen.getByLabelText('Seed') as HTMLInputElement).value).toBe('42');

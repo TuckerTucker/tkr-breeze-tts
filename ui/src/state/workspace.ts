@@ -18,14 +18,36 @@ import {
 import type { StagedReferenceSelection } from './reference.js';
 import type { Voice } from './voices.js';
 
-/** The three functional destinations in the application. */
+/** All functional destinations implemented by the application. */
 export type Workspace = 'voices' | 'speak' | 'scripts';
+
+/**
+ * Workspace availability is centralized so dormant tools have no stray UI or
+ * background work while their implementation and persisted data remain intact.
+ */
+export const WORKSPACE_AVAILABILITY: Readonly<Record<Workspace, boolean>> = {
+  voices: true,
+  speak: true,
+  scripts: false,
+};
 
 /** Voice choice retained in the Speak draft. */
 export type SpeakVoiceSource =
   | { readonly kind: 'described' }
   | { readonly kind: 'saved'; readonly voiceId: string; readonly voiceName: string }
   | { readonly kind: 'staged'; readonly reference: StagedReferenceSelection | null };
+
+/** Availability for the implemented Speak voice-source capabilities. */
+export type SpeakVoiceSourceAvailability = Readonly<
+  Record<SpeakVoiceSource['kind'], boolean>
+>;
+
+/** Speak currently focuses exclusively on voices kept in the local library. */
+export const SPEAK_VOICE_SOURCE_AVAILABILITY: SpeakVoiceSourceAvailability = {
+  described: false,
+  saved: true,
+  staged: false,
+};
 
 /** A complete voice reference after library or staged-source resolution. */
 export type VoiceReference =
@@ -34,6 +56,7 @@ export type VoiceReference =
       readonly voiceId: string;
       readonly name: string;
       readonly transcript: string;
+      readonly durationSeconds: number;
     }
   | {
       readonly source: 'staged';
@@ -88,7 +111,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function activeWorkspace(value: unknown): Workspace {
-  return value === 'voices' || value === 'scripts' ? value : 'speak';
+  if (value !== 'voices' && value !== 'scripts') return 'speak';
+  return WORKSPACE_AVAILABILITY[value] ? value : 'speak';
 }
 
 function safeSource(value: unknown): SpeakVoiceSource {
@@ -119,6 +143,34 @@ function safeSource(value: unknown): SpeakVoiceSource {
     }
   }
   return { kind: 'described' };
+}
+
+/**
+ * Resolve a persisted source into one offered by the current Speak surface.
+ *
+ * @param source - Persisted source, which may belong to a dormant capability.
+ * @param voices - Current saved-voice library.
+ * @param selectedVoiceId - Last library selection shared by the app shell.
+ * @param availability - Voice-source capabilities offered by this app surface.
+ * @returns The retained source or a sensible saved-voice fallback.
+ */
+export function resolveAvailableSpeakVoiceSource(
+  source: SpeakVoiceSource,
+  voices: readonly Voice[],
+  selectedVoiceId: string | null,
+  availability: SpeakVoiceSourceAvailability,
+): SpeakVoiceSource {
+  if (availability[source.kind]) {
+    if (source.kind !== 'saved' || source.voiceId) return source;
+    if (!voices.some((voice) => voice.available)) return source;
+  }
+
+  const preferred =
+    voices.find((voice) => voice.available && voice.id === selectedVoiceId) ??
+    voices.find((voice) => voice.available);
+  return preferred
+    ? { kind: 'saved', voiceId: preferred.id, voiceName: preferred.name }
+    : { kind: 'saved', voiceId: '', voiceName: 'No saved voice selected' };
 }
 
 function safeSpeakDraft(value: unknown, legacy: Draft): SpeakDraft {
@@ -229,6 +281,9 @@ export function resolveVoiceSpec(
   }
   if (draft.voice.kind === 'saved') {
     const source = draft.voice;
+    if (!source.voiceId) {
+      return { spec: null, blocker: 'Choose a saved voice.' };
+    }
     const voice = voices.find((candidate) => candidate.id === source.voiceId);
     if (!voice || !voice.available) {
       return {
@@ -251,6 +306,7 @@ export function resolveVoiceSpec(
           voiceId: voice.id,
           name: voice.name,
           transcript: voice.transcript,
+          durationSeconds: voice.durationSeconds,
         },
       },
       blocker: null,

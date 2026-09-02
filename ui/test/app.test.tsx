@@ -26,10 +26,14 @@ const HEALTH = {
   limits: {
     maxTokens: 512,
     tokenCeilingByBatch: { 1: 256, 2: 512, 4: 512 },
+    backboneCeilingByBatch: { 1: 256, 2: 512 },
     referenceSeconds: null,
   },
   measured: { warmupMs: 41_234, coldTtfaMs: 45_000, warmTtfaMs: 38, rtf: 0.32 },
 };
+
+const DESCRIBED_SPEAK_SOURCE = { described: true } as const;
+const STAGED_SPEAK_SOURCE = { staged: true } as const;
 
 function stubStorage(): Storage {
   const map = new Map<string, string>();
@@ -157,6 +161,7 @@ describe('the app shell', () => {
         client={new GatewayClient(delayedFetch)}
         audio={stubAudio()}
         storage={stubStorage()}
+        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -255,6 +260,7 @@ describe('the app shell', () => {
         client={new GatewayClient(delayedFetch)}
         audio={stubAudio()}
         storage={stubStorage()}
+        speakVoiceSourceAvailability={STAGED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -307,6 +313,59 @@ describe('the app shell', () => {
     );
   });
 
+  it('keeps dormant Scripts UI and background requests out of the active app', async () => {
+    const requestedUrls: string[] = [];
+    const base = stubFetch({
+      '/api/voices': {
+        voices: [{
+          id: 'voice-visible',
+          name: 'Visible narrator',
+          createdAt: 1,
+          transcript: 'This voice remains ready for Speak.',
+          defaultDirection: 'Warm and clear.',
+          origin: { kind: 'designed', instruction: 'Warm and clear.' },
+          durationSeconds: 4,
+          sampleRate: 24_000,
+          available: true,
+        }],
+      },
+    });
+    const recordingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      requestedUrls.push(String(input));
+      return base(input, init);
+    }) as typeof fetch;
+
+    render(
+      <App
+        client={new GatewayClient(recordingFetch)}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('status', { name: 'Application activity' }))
+        .not.toBeInTheDocument(),
+    );
+
+    expect(screen.getAllByRole('tab')).toHaveLength(2);
+    expect(screen.queryByRole('tab', { name: /scripts/i })).not.toBeInTheDocument();
+    expect(requestedUrls.some((url) => url.startsWith('/api/scripts'))).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Describe' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Temporary reference' }))
+      .not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Speak voice source' }))
+      .not.toBeInTheDocument();
+    expect(screen.getByLabelText('Saved voice')).toHaveValue('voice-visible');
+    expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reroll' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'CFG scale' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('slider', { name: 'CFG scale' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('tab', { name: /voices/i }));
+    expect(screen.getByRole('button', { name: 'Use in Speak' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Use in Script' })).not.toBeInTheDocument();
+  });
+
   it('defaults the CFG control to presets when nothing has been measured', async () => {
     render(
       <App
@@ -316,10 +375,25 @@ describe('the app shell', () => {
       />,
     );
     fireEvent.click(screen.getByRole('tab', { name: /voices/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Create voice' }));
     await waitFor(() =>
       expect(screen.getByText(/has not run against this deployment/i)).toBeInTheDocument(),
     );
+  });
+
+  it('keeps the voice creator visible without show or hide controls', async () => {
+    render(
+      <App
+        client={new GatewayClient(stubFetch())}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('tab', { name: /voices/i }));
+
+    expect(screen.getByRole('region', { name: 'Create voice' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create voice' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Close creator' })).not.toBeInTheDocument();
   });
 
   it('stages, trims, and sends a reference window without re-uploading audio', async () => {
@@ -362,6 +436,7 @@ describe('the app shell', () => {
         client={new GatewayClient(recordingFetch)}
         audio={stubAudio()}
         storage={stubStorage()}
+        speakVoiceSourceAvailability={STAGED_SPEAK_SOURCE}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Temporary reference' }));
@@ -404,6 +479,7 @@ describe('the app shell', () => {
         client={new GatewayClient(stubFetch())}
         audio={stubAudio()}
         storage={stubStorage()}
+        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -435,6 +511,7 @@ describe('the app shell', () => {
         client={new GatewayClient(recordingFetch)}
         audio={stubAudio()}
         storage={stubStorage()}
+        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -464,6 +541,7 @@ describe('the app shell', () => {
         client={new GatewayClient(truncatedSpeech(1))}
         audio={streamingAudio()}
         storage={stubStorage()}
+        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -493,6 +571,7 @@ describe('the app shell', () => {
         client={new GatewayClient(truncatedSpeech(0))}
         audio={streamingAudio()}
         storage={stubStorage()}
+        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -539,7 +618,14 @@ describe('the app shell', () => {
         },
       }),
     );
-    render(<App client={client} audio={stubAudio()} storage={stubStorage()} />);
+    render(
+      <App
+        client={client}
+        audio={stubAudio()}
+        storage={stubStorage()}
+        speakVoiceSourceAvailability={STAGED_SPEAK_SOURCE}
+      />,
+    );
 
     fireEvent.click(screen.getByRole('button', { name: 'Temporary reference' }));
     await waitFor(() =>

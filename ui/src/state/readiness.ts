@@ -57,6 +57,7 @@ export interface Health {
   readonly limits: {
     readonly maxTokens: number;
     readonly tokenCeilingByBatch: Readonly<Record<string, number>>;
+    readonly backboneCeilingByBatch: Readonly<Record<string, number>>;
     readonly referenceSeconds: ReferenceCeiling | null;
   };
   readonly measured: MeasuredLatency | null;
@@ -152,17 +153,20 @@ export function formatSeconds(ms: number): string {
  * request path reads as a failure at all.
  *
  * @param playback - What the player managed to receive.
+ * @param cfgAdjustable - Whether the current surface can offer CFG as a remedy.
  * @returns The message and remedy to show beside the control.
  */
 export function incompleteStreamFailure(playback: {
   readonly bytes: number;
-}): { message: string; remedy: string } {
+}, cfgAdjustable = true): { message: string; remedy: string } {
   if (playback.bytes === 0) {
     return {
       message: 'the service accepted the request and then closed the stream without sending audio',
       remedy:
         'Nothing came back with the fault, so try again to tell a transient close from a ' +
-        'repeatable one. If it repeats, shorten the line or change CFG — an input the ' +
+        (cfgAdjustable
+          ? 'repeatable one. If it repeats, shorten the line or change CFG — an input the '
+          : 'repeatable one. If it repeats, shorten the line — an input the ') +
         'warmup profile has no captured graph for fails in exactly this shape.',
     };
   }

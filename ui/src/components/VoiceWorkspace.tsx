@@ -15,7 +15,6 @@ export type VoiceCreationMethod = 'describe' | 'clone-audio' | 'from-clip';
 
 /** Draft retained while the operator navigates to another tool. */
 export interface VoiceCreationDraft {
-  readonly open: boolean;
   readonly method: VoiceCreationMethod;
   readonly name: string;
   readonly description: string;
@@ -29,7 +28,6 @@ export interface VoiceCreationDraft {
 
 /** Starting voice-creation values. */
 export const INITIAL_VOICE_CREATION_DRAFT: VoiceCreationDraft = {
-  open: false,
   method: 'describe',
   name: 'Untitled voice',
   description: 'A warm, clear narrator with an unhurried pace.',
@@ -59,6 +57,7 @@ export interface VoiceWorkspaceProps {
   readonly onUndo: (undo: PendingUndo) => void;
   readonly onUseInSpeak: (voice: Voice) => void;
   readonly onUseInScript: (voice: Voice) => void;
+  readonly scriptsAvailable: boolean;
   readonly voiceAudioUrl: (id: string) => string;
   readonly onStage: (
     file: File,
@@ -100,201 +99,192 @@ export function VoiceWorkspace(props: VoiceWorkspaceProps): JSX.Element {
         <div>
           <p className="eyebrow">Create · Keep · Reuse</p>
           <h2>Voices</h2>
-          <p>Build a reusable voice once, then carry it into speech or a script.</p>
+          <p>Build a reusable voice once, then carry it into speech whenever you need it.</p>
         </div>
-        <button
-          type="button"
-          className="primary-action"
-          onClick={() => setDraft({ open: !props.draft.open })}
-        >
-          {props.draft.open ? 'Close creator' : 'Create voice'}
-        </button>
       </div>
 
-      {props.draft.open && (
-        <section className="tool-card tool-card--accent" aria-label="Create voice">
-          <div className="tool-card__heading">
-            <div>
-              <p className="step-label">New voice</p>
-              <h3>Choose how to begin</h3>
-            </div>
-            {props.draft.auditionClipId && <span className="status-mark">Audition ready</span>}
+      <section className="tool-card tool-card--accent" aria-label="Create voice">
+        <div className="tool-card__heading">
+          <div>
+            <p className="step-label">New voice</p>
+            <h3>Choose how to begin</h3>
           </div>
+          {props.draft.auditionClipId && <span className="status-mark">Audition ready</span>}
+        </div>
 
-          <div className="segmented" role="group" aria-label="Voice creation method">
-            {([
-              ['describe', 'Describe'],
-              ['clone-audio', 'Clone audio'],
-              ['from-clip', 'Create from clip'],
-            ] as const).map(([method, label]) => (
-              <button
-                key={method}
-                type="button"
-                aria-pressed={props.draft.method === method}
-                onClick={() => setDraft({ method, auditionClipId: null })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="segmented" role="group" aria-label="Voice creation method">
+          {([
+            ['describe', 'Describe'],
+            ['clone-audio', 'Clone audio'],
+            ['from-clip', 'Create from clip'],
+          ] as const).map(([method, label]) => (
+            <button
+              key={method}
+              type="button"
+              aria-pressed={props.draft.method === method}
+              onClick={() => setDraft({ method, auditionClipId: null })}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
-          {props.draft.method === 'describe' && (
-            <div className="form-grid">
-              <label className="field field--wide">
-                <span>Voice description</span>
-                <textarea
-                  aria-label="Voice description"
-                  value={props.draft.description}
-                  onChange={(event) => setDraft({ description: event.target.value, auditionClipId: null })}
-                />
-              </label>
-              <label className="field field--wide">
-                <span>Audition line</span>
-                <input
-                  type="text"
-                  aria-label="Voice audition line"
-                  value={props.draft.sampleText}
-                  onChange={(event) => setDraft({ sampleText: event.target.value, auditionClipId: null })}
-                />
-              </label>
-            </div>
-          )}
-
-          {props.draft.method === 'clone-audio' && (
-            <div className="creation-section">
-              <p className="section-copy">
-                Upload once, then move one measured selection. Its transcript follows the audio.
-              </p>
-              <ReferenceCapture
-                selection={props.draft.reference}
-                onSelectionChange={(reference) => setDraft({ reference, auditionClipId: null })}
-                onStage={props.onStage}
-                disabled={props.busy}
-                canRecord={props.canRecord}
-                recordDisabledReason={props.recordDisabledReason}
-                maxSeconds={props.referenceMaxSeconds}
-                maxMeasured={props.referenceMaxMeasured}
-                cfgScale={props.draft.cfgScale}
-                branchLimits={props.referenceBranchLimits}
-                tokenCeiling={props.referenceTokenCeiling}
-                audioUrl={props.referenceAudioUrl}
-                asrRemedy={props.asrRemedy}
+        {props.draft.method === 'describe' && (
+          <div className="form-grid">
+            <label className="field field--wide">
+              <span>Voice description</span>
+              <textarea
+                aria-label="Voice description"
+                value={props.draft.description}
+                onChange={(event) => setDraft({ description: event.target.value, auditionClipId: null })}
               />
-              <label className="field">
-                <span>Default delivery</span>
-                <input
-                  type="text"
-                  aria-label="Cloned voice default delivery"
-                  value={props.draft.description}
-                  onChange={(event) => setDraft({ description: event.target.value, auditionClipId: null })}
-                />
-              </label>
-              <label className="field">
-                <span>Audition line</span>
-                <input
-                  type="text"
-                  aria-label="Voice audition line"
-                  value={props.draft.sampleText}
-                  onChange={(event) => setDraft({ sampleText: event.target.value, auditionClipId: null })}
-                />
-              </label>
-            </div>
-          )}
-
-          {props.draft.method === 'from-clip' && (
-            <label className="field">
-              <span>Generated clip</span>
-              <select
-                aria-label="Generated clip"
-                value={props.draft.sourceClipId ?? ''}
-                onChange={(event) => {
-                  const sourceClipId = event.target.value || null;
-                  const sourceClip = props.clips.find((clip) => clip.id === sourceClipId);
-                  setDraft({
-                    sourceClipId,
-                    ...(
-                      sourceClip && props.draft.name === INITIAL_VOICE_CREATION_DRAFT.name
-                        ? { name: suggestName(sourceClip.request.instruction) }
-                        : {}
-                    ),
-                  });
-                }}
-              >
-                <option value="">Choose a recent clip</option>
-                {props.clips.map((clip) => (
-                  <option key={clip.id} value={clip.id}>
-                    {clip.request.text.slice(0, 72)}
-                  </option>
-                ))}
-              </select>
-              {props.clips.length === 0 && <small>Generate a clip in Speak first.</small>}
-              {props.draft.sourceClipId && !selectedSourceClip && (
-                <small className="blocked" role="status">
-                  That source clip was evicted. Choose another recent clip.
-                </small>
-              )}
             </label>
-          )}
-
-          {props.draft.method !== 'from-clip' && (
-            <div className="advanced-row">
-              <CfgControl
-                control={props.cfgControl}
-                value={props.draft.cfgScale}
-                label={props.draft.method === 'describe' ? 'Description strength' : 'Voice balance'}
-                unmeasured={props.cfgUnmeasured}
-                onChange={(cfgScale) => setDraft({ cfgScale, auditionClipId: null })}
-              />
-              <label className="field field--compact">
-                <span>Seed</span>
-                <input
-                  type="number"
-                  aria-label="Voice creation seed"
-                  value={props.draft.seed}
-                  onChange={(event) => setDraft({ seed: Number(event.target.value) || 0, auditionClipId: null })}
-                />
-              </label>
-            </div>
-          )}
-
-          <div className="creation-actions">
-            {props.draft.method !== 'from-clip' && (
-              <button
-                type="button"
-                className="secondary-action"
-                disabled={props.busy || !props.draft.sampleText.trim()}
-                onClick={props.onAudition}
-              >
-                {props.draft.auditionClipId ? 'Audition again' : 'Audition voice'}
-              </button>
-            )}
-            <label className="field creation-actions__name">
-              <span>Voice name</span>
+            <label className="field field--wide">
+              <span>Audition line</span>
               <input
                 type="text"
-                aria-label="New voice name"
-                value={props.draft.name}
-                onChange={(event) => setDraft({ name: event.target.value })}
+                aria-label="Voice audition line"
+                value={props.draft.sampleText}
+                onChange={(event) => setDraft({ sampleText: event.target.value, auditionClipId: null })}
               />
             </label>
+          </div>
+        )}
+
+        {props.draft.method === 'clone-audio' && (
+          <div className="creation-section">
+            <p className="section-copy">
+              Upload once, then move one measured selection. Its transcript follows the audio.
+            </p>
+            <ReferenceCapture
+              selection={props.draft.reference}
+              onSelectionChange={(reference) => setDraft({ reference, auditionClipId: null })}
+              onStage={props.onStage}
+              disabled={props.busy}
+              canRecord={props.canRecord}
+              recordDisabledReason={props.recordDisabledReason}
+              maxSeconds={props.referenceMaxSeconds}
+              maxMeasured={props.referenceMaxMeasured}
+              cfgScale={props.draft.cfgScale}
+              branchLimits={props.referenceBranchLimits}
+              tokenCeiling={props.referenceTokenCeiling}
+              audioUrl={props.referenceAudioUrl}
+              asrRemedy={props.asrRemedy}
+            />
+            <label className="field">
+              <span>Default delivery</span>
+              <input
+                type="text"
+                aria-label="Cloned voice default delivery"
+                value={props.draft.description}
+                onChange={(event) => setDraft({ description: event.target.value, auditionClipId: null })}
+              />
+            </label>
+            <label className="field">
+              <span>Audition line</span>
+              <input
+                type="text"
+                aria-label="Voice audition line"
+                value={props.draft.sampleText}
+                onChange={(event) => setDraft({ sampleText: event.target.value, auditionClipId: null })}
+              />
+            </label>
+          </div>
+        )}
+
+        {props.draft.method === 'from-clip' && (
+          <label className="field">
+            <span>Generated clip</span>
+            <select
+              aria-label="Generated clip"
+              value={props.draft.sourceClipId ?? ''}
+              onChange={(event) => {
+                const sourceClipId = event.target.value || null;
+                const sourceClip = props.clips.find((clip) => clip.id === sourceClipId);
+                setDraft({
+                  sourceClipId,
+                  ...(
+                    sourceClip && props.draft.name === INITIAL_VOICE_CREATION_DRAFT.name
+                      ? { name: suggestName(sourceClip.request.instruction) }
+                      : {}
+                  ),
+                });
+              }}
+            >
+              <option value="">Choose a recent clip</option>
+              {props.clips.map((clip) => (
+                <option key={clip.id} value={clip.id}>
+                  {clip.request.text.slice(0, 72)}
+                </option>
+              ))}
+            </select>
+            {props.clips.length === 0 && <small>Generate a clip in Speak first.</small>}
+            {props.draft.sourceClipId && !selectedSourceClip && (
+              <small className="blocked" role="status">
+                That source clip was evicted. Choose another recent clip.
+              </small>
+            )}
+          </label>
+        )}
+
+        {props.draft.method !== 'from-clip' && (
+          <div className="advanced-row">
+            <CfgControl
+              control={props.cfgControl}
+              value={props.draft.cfgScale}
+              label={props.draft.method === 'describe' ? 'Description strength' : 'Voice balance'}
+              unmeasured={props.cfgUnmeasured}
+              onChange={(cfgScale) => setDraft({ cfgScale, auditionClipId: null })}
+            />
+            <label className="field field--compact">
+              <span>Seed</span>
+              <input
+                type="number"
+                aria-label="Voice creation seed"
+                value={props.draft.seed}
+                onChange={(event) => setDraft({ seed: Number(event.target.value) || 0, auditionClipId: null })}
+              />
+            </label>
+          </div>
+        )}
+
+        <div className="creation-actions">
+          {props.draft.method !== 'from-clip' && (
             <button
               type="button"
-              className="primary-action"
-              disabled={
-                props.busy ||
-                !props.draft.name.trim() ||
-                (props.draft.method === 'from-clip'
-                  ? !selectedSourceClip
-                  : !props.draft.auditionClipId)
-              }
-              onClick={props.onSave}
+              className="secondary-action"
+              disabled={props.busy || !props.draft.sampleText.trim()}
+              onClick={props.onAudition}
             >
-              Keep voice
+              {props.draft.auditionClipId ? 'Audition again' : 'Audition voice'}
             </button>
-          </div>
-          {props.problem && <p className="inline-problem" role="status">{props.problem}</p>}
-        </section>
-      )}
+          )}
+          <label className="field creation-actions__name">
+            <span>Voice name</span>
+            <input
+              type="text"
+              aria-label="New voice name"
+              value={props.draft.name}
+              onChange={(event) => setDraft({ name: event.target.value })}
+            />
+          </label>
+          <button
+            type="button"
+            className="primary-action"
+            disabled={
+              props.busy ||
+              !props.draft.name.trim() ||
+              (props.draft.method === 'from-clip'
+                ? !selectedSourceClip
+                : !props.draft.auditionClipId)
+            }
+            onClick={props.onSave}
+          >
+            Keep voice
+          </button>
+        </div>
+        {props.problem && <p className="inline-problem" role="status">{props.problem}</p>}
+      </section>
 
       <section className="library-section" aria-label="Voice library">
         <div className="section-heading">
@@ -313,10 +303,10 @@ export function VoiceWorkspace(props: VoiceWorkspaceProps): JSX.Element {
         )}
 
         {props.voices.length === 0 ? (
-          <button type="button" className="empty-state" onClick={() => setDraft({ open: true })}>
+          <div className="empty-state empty-state--static">
             <strong>Create your first voice</strong>
             <span>Describe it, clone a recording, or promote a generated clip.</span>
-          </button>
+          </div>
         ) : (
           <div className="voice-grid">
             {props.voices.map((voice) => (
@@ -352,7 +342,9 @@ export function VoiceWorkspace(props: VoiceWorkspaceProps): JSX.Element {
                 <audio controls preload="none" src={props.voiceAudioUrl(voice.id)} aria-label={`Preview ${voice.name}`} />
                 <div className="voice-card__actions">
                   <button type="button" disabled={!voice.available} onClick={() => props.onUseInSpeak(voice)}>Use in Speak</button>
-                  <button type="button" disabled={!voice.available} onClick={() => props.onUseInScript(voice)}>Use in Script</button>
+                  {props.scriptsAvailable && (
+                    <button type="button" disabled={!voice.available} onClick={() => props.onUseInScript(voice)}>Use in Script</button>
+                  )}
                   <button type="button" onClick={() => { setEditingId(voice.id); setName(voice.name); }}>Rename</button>
                   <button type="button" onClick={() => props.onDelete(voice)}>Delete</button>
                 </div>

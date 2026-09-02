@@ -18,15 +18,15 @@ function Harness(): JSX.Element {
 }
 
 describe('workspace navigation', () => {
-  it('names only the three lifecycle tools and switches by pointer', () => {
+  it('names only the available lifecycle tools and switches by pointer', () => {
     render(<Harness />);
     const tabs = screen.getAllByRole('tab');
-    expect(tabs).toHaveLength(3);
+    expect(tabs).toHaveLength(2);
     expect(tabs.map((tab) => tab.textContent)).toEqual([
       'VoicesCreate and keep',
       'SpeakGenerate one line',
-      'ScriptsDirect a document',
     ]);
+    expect(screen.queryByRole('tab', { name: /scripts/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Clone' })).not.toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Direction' })).not.toBeInTheDocument();
 
@@ -43,14 +43,11 @@ describe('workspace navigation', () => {
     const speak = screen.getByRole('tab', { name: /speak/i });
     speak.focus();
     fireEvent.keyDown(speak, { key: 'ArrowRight' });
-    expect(screen.getByRole('status')).toHaveTextContent('scripts');
-    expect(screen.getByRole('tab', { name: /scripts/i })).toHaveFocus();
-
-    fireEvent.keyDown(screen.getByRole('tab', { name: /scripts/i }), { key: 'ArrowRight' });
     expect(screen.getByRole('status')).toHaveTextContent('voices');
     expect(screen.getByRole('tab', { name: /voices/i })).toHaveFocus();
 
     fireEvent.keyDown(screen.getByRole('tab', { name: /voices/i }), { key: 'End' });
-    expect(screen.getByRole('status')).toHaveTextContent('scripts');
+    expect(screen.getByRole('status')).toHaveTextContent('speak');
+    expect(screen.getByRole('tab', { name: /speak/i })).toHaveFocus();
   });
 });

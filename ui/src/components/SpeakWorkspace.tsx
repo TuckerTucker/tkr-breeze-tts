@@ -2,27 +2,26 @@
 
 import type { JSX, ReactNode } from 'react';
 
-import { CfgControl } from './CfgControl.js';
 import { Console } from './Console.js';
 import { History } from './History.js';
 import { ReferenceCapture } from './ReferenceCapture.js';
-import type { CfgControl as CfgControlShape } from '../state/mode.js';
 import type { Clip } from '../state/history.js';
 import type { StagedReferenceSelection } from '../state/reference.js';
 import type { Voice } from '../state/voices.js';
-import type { SpeakDraft, SpeakVoiceSource } from '../state/workspace.js';
+import type {
+  SpeakDraft,
+  SpeakVoiceSource,
+  SpeakVoiceSourceAvailability,
+} from '../state/workspace.js';
 
 /** Props for the one-off speech tool. */
 export interface SpeakWorkspaceProps {
   readonly draft: SpeakDraft;
   readonly onDraftChange: (draft: SpeakDraft) => void;
   readonly voices: readonly Voice[];
-  readonly cfgControl: CfgControlShape;
-  readonly cfgUnmeasured: boolean;
   readonly blockedReason: string | null;
   readonly statusLine: string;
   readonly onGenerate: () => void;
-  readonly onRerollSeed: () => void;
   readonly generating: boolean;
   readonly clips: readonly Clip[];
   readonly selectedClipId: string | null;
@@ -34,6 +33,7 @@ export interface SpeakWorkspaceProps {
   readonly clipUrl: (id: string) => string;
   readonly historyReadOnlyReason: string | null;
   readonly playbackReadout: ReactNode;
+  readonly sourceAvailability: SpeakVoiceSourceAvailability;
   readonly onStage: (
     file: File,
     source: 'upload' | 'record',
@@ -52,6 +52,12 @@ function sourceKind(source: SpeakVoiceSource): 'described' | 'saved' | 'staged' 
   return source.kind;
 }
 
+const VOICE_SOURCES = [
+  { kind: 'described', label: 'Describe' },
+  { kind: 'saved', label: 'Saved voice' },
+  { kind: 'staged', label: 'Temporary reference' },
+] as const;
+
 /**
  * Render a single authoritative voice-plus-delivery request and its recent output.
  *
@@ -61,6 +67,11 @@ function sourceKind(source: SpeakVoiceSource): 'described' | 'saved' | 'staged' 
 export function SpeakWorkspace(props: SpeakWorkspaceProps): JSX.Element {
   const legacyMode = props.draft.voice.kind === 'described' ? 'design' : 'clone';
   const source = sourceKind(props.draft.voice);
+  const availableSources = VOICE_SOURCES.filter(
+    ({ kind }) => props.sourceAvailability[kind],
+  );
+  const savedVoiceOnly =
+    availableSources.length === 1 && availableSources[0]?.kind === 'saved';
   const updateVoice = (voice: SpeakVoiceSource): void =>
     props.onDraftChange({ ...props.draft, voice });
 
@@ -84,35 +95,40 @@ export function SpeakWorkspace(props: SpeakWorkspaceProps): JSX.Element {
           <section className="tool-card" aria-label="Voice source">
             <div className="decision-heading">
               <span className="decision-number">01</span>
-              <div><h3>Choose a voice</h3><p>Describe one, use a kept voice, or bring a temporary reference.</p></div>
+              <div>
+                <h3>Choose a voice</h3>
+                <p>
+                  {savedVoiceOnly
+                    ? 'Choose one of your kept voices.'
+                    : 'Choose an available voice source.'}
+                </p>
+              </div>
             </div>
-            <div className="segmented" role="group" aria-label="Speak voice source">
-              {([
-                ['described', 'Describe'],
-                ['saved', 'Saved voice'],
-                ['staged', 'Temporary reference'],
-              ] as const).map(([kind, label]) => (
-                <button
-                  key={kind}
-                  type="button"
-                  aria-pressed={source === kind}
-                  onClick={() => {
-                    if (kind === 'described') updateVoice({ kind: 'described' });
-                    else if (kind === 'staged') updateVoice({ kind: 'staged', reference: null });
-                    else {
-                      const first = props.voices.find((voice) => voice.available);
-                      updateVoice(
-                        first
-                          ? { kind: 'saved', voiceId: first.id, voiceName: first.name }
-                          : { kind: 'saved', voiceId: '', voiceName: 'No saved voice selected' },
-                      );
-                    }
-                  }}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            {availableSources.length > 1 && (
+              <div className="segmented" role="group" aria-label="Speak voice source">
+                {availableSources.map(({ kind, label }) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    aria-pressed={source === kind}
+                    onClick={() => {
+                      if (kind === 'described') updateVoice({ kind: 'described' });
+                      else if (kind === 'staged') updateVoice({ kind: 'staged', reference: null });
+                      else {
+                        const first = props.voices.find((voice) => voice.available);
+                        updateVoice(
+                          first
+                            ? { kind: 'saved', voiceId: first.id, voiceName: first.name }
+                            : { kind: 'saved', voiceId: '', voiceName: 'No saved voice selected' },
+                        );
+                      }
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {props.draft.voice.kind === 'saved' && (
               <label className="field">
@@ -136,7 +152,7 @@ export function SpeakWorkspace(props: SpeakWorkspaceProps): JSX.Element {
               </label>
             )}
 
-            {props.draft.voice.kind === 'staged' && (
+            {props.sourceAvailability.staged && props.draft.voice.kind === 'staged' && (
               <ReferenceCapture
                 selection={props.draft.voice.reference}
                 onSelectionChange={(reference) => updateVoice({ kind: 'staged', reference })}
@@ -165,20 +181,10 @@ export function SpeakWorkspace(props: SpeakWorkspaceProps): JSX.Element {
             blockedReason={props.blockedReason}
             onGenerate={props.onGenerate}
             statusLine={props.statusLine}
-            onRerollSeed={props.onRerollSeed}
+            seedControlsVisible={false}
             cfgScale={props.draft.cfgScale}
             mode={legacyMode}
           />
-          <div className="tool-card advanced-controls">
-            <p className="step-label">Voice balance</p>
-            <CfgControl
-              control={props.cfgControl}
-              value={props.draft.cfgScale}
-              label={legacyMode === 'design' ? 'Description strength' : 'Reference / delivery balance'}
-              unmeasured={props.cfgUnmeasured}
-              onChange={(cfgScale) => props.onDraftChange({ ...props.draft, cfgScale })}
-            />
-          </div>
           {props.playbackReadout}
         </div>
 

@@ -7,8 +7,10 @@ import {
   legacyModeFor,
   loadWorkspaceState,
   projectSpeechRequest,
+  resolveAvailableSpeakVoiceSource,
   resolveVoiceSpec,
   saveWorkspaceState,
+  SPEAK_VOICE_SOURCE_AVAILABILITY,
   type SpeakDraft,
   type VoiceSpec,
   type WorkspaceState,
@@ -49,6 +51,38 @@ function draft(overrides: Partial<SpeakDraft> = {}): SpeakDraft {
 }
 
 describe('voice-spec resolution and projection', () => {
+  it('moves dormant Speak sources to the preferred saved voice', () => {
+    expect(resolveAvailableSpeakVoiceSource(
+      { kind: 'described' },
+      [VOICE],
+      VOICE.id,
+      SPEAK_VOICE_SOURCE_AVAILABILITY,
+    )).toEqual({
+      kind: 'saved',
+      voiceId: VOICE.id,
+      voiceName: VOICE.name,
+    });
+  });
+
+  it('requires a saved voice without inventing one for an empty library', () => {
+    const source = resolveAvailableSpeakVoiceSource(
+      { kind: 'staged', reference: null },
+      [],
+      null,
+      SPEAK_VOICE_SOURCE_AVAILABILITY,
+    );
+
+    expect(source).toEqual({
+      kind: 'saved',
+      voiceId: '',
+      voiceName: 'No saved voice selected',
+    });
+    expect(resolveVoiceSpec(draft({ voice: source }), [])).toEqual({
+      spec: null,
+      blocker: 'Choose a saved voice.',
+    });
+  });
+
   it('projects described intent with exactly one instruction and no mode', () => {
     const current = draft({ voice: { kind: 'described' } });
     const resolution = resolveVoiceSpec(current, []);
@@ -128,7 +162,7 @@ describe('workspace persistence and migration', () => {
     const store = storage();
     const state: WorkspaceState = {
       version: 2,
-      active: 'scripts',
+      active: 'voices',
       selectedVoiceId: 'voice-1',
       speakDraft: draft({
         cfgScale: 4,
@@ -140,6 +174,21 @@ describe('workspace persistence and migration', () => {
 
     saveWorkspaceState(store, state);
     expect(loadWorkspaceState(store)).toEqual(state);
+  });
+
+  it('restores the dormant Scripts workspace into Speak without losing script state', () => {
+    const store = storage({
+      'breeze.workspace.v2': JSON.stringify({
+        ...INITIAL_WORKSPACE_STATE,
+        active: 'scripts',
+        lastScriptId: 'script-1',
+      }),
+    });
+
+    expect(loadWorkspaceState(store)).toMatchObject({
+      active: 'speak',
+      lastScriptId: 'script-1',
+    });
   });
 
   it('migrates the legacy draft without changing typed text', () => {

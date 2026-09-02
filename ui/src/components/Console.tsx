@@ -1,5 +1,5 @@
 /**
- * The synthesis console: text, instruction, vocal events, seed, and Generate.
+ * The synthesis console: text, instruction, vocal events, and Generate.
  *
  * Everything essential is visible at once, because the two fields every mode
  * needs are the two fields every mode needs. Length is shown while typing
@@ -30,7 +30,9 @@ export interface ConsoleProps {
   readonly onGenerate: () => void;
   /** The status line beside the control — readiness, or what is happening. */
   readonly statusLine: string;
-  readonly onRerollSeed: () => void;
+  /** Seed controls remain available to diagnostic or comparison surfaces. */
+  readonly seedControlsVisible?: boolean;
+  readonly onRerollSeed?: () => void;
   /** With the mode, decides the token ceiling. */
   readonly cfgScale: number;
   /** With the cfg, decides the token ceiling: Design at 1.0 is the only 256. */
@@ -66,37 +68,6 @@ export function Console(props: ConsoleProps): JSX.Element {
 
   return (
     <section className="panel" aria-label="Synthesis console">
-      <label className="field">
-        <p className="caption caption--ink">Text to speak</p>
-        <textarea
-          ref={textRef}
-          aria-label="Text to speak"
-          value={draft.text}
-          onChange={(event) => onDraftChange({ ...draft, text: event.target.value })}
-        />
-      </label>
-
-      <div className="row row--between">
-        <p
-          className={`caption meter${over ? ' meter--over' : ''}`}
-          role="status"
-          aria-label="Input length"
-        >
-          {tokens} / {ceiling} tokens — line and instruction together
-          {over ? `, ${tokens - ceiling} past the limit` : ''}
-        </p>
-      </div>
-
-      <label className="field">
-        <p className="caption caption--ink">Delivery instruction</p>
-        <input
-          type="text"
-          aria-label="Instruction"
-          value={draft.instruction}
-          onChange={(event) => onDraftChange({ ...draft, instruction: event.target.value })}
-        />
-      </label>
-
       <div className="panel--inset" style={{ marginBottom: 16 }}>
         <p className="caption">Vocal events</p>
         <div className="row">
@@ -129,35 +100,74 @@ export function Console(props: ConsoleProps): JSX.Element {
         </p>
       </div>
 
+      <label className="field">
+        <p className="caption caption--ink">Text to speak</p>
+        <textarea
+          ref={textRef}
+          aria-label="Text to speak"
+          value={draft.text}
+          onChange={(event) => onDraftChange({ ...draft, text: event.target.value })}
+        />
+      </label>
+
       <div className="row row--between">
-        <div className="row">
-          <p className="caption" style={{ margin: 0 }}>Seed</p>
-          <input
-            type="number"
-            aria-label="Seed"
-            value={draft.seed}
-            style={{ width: 96 }}
-            onChange={(event) =>
-              onDraftChange({ ...draft, seed: Number(event.target.value) || 0 })
-            }
-          />
-          <button
-            type="button"
-            className="chip"
-            aria-pressed={draft.seedLocked}
-            onClick={() => onDraftChange({ ...draft, seedLocked: !draft.seedLocked })}
-          >
-            {draft.seedLocked ? 'Locked' : 'Unlocked'}
-          </button>
-          <button type="button" className="chip" onClick={props.onRerollSeed}>
-            Reroll
-          </button>
-        </div>
+        <p
+          className={`caption meter${over ? ' meter--over' : ''}`}
+          role="status"
+          aria-label="Input length"
+        >
+          {tokens} / {ceiling} tokens — line and instruction together
+          {over ? `, ${tokens - ceiling} past the limit` : ''}
+        </p>
       </div>
-      <p className="caption" style={{ marginTop: 8 }}>
-        Hold the seed and an audible difference is the setting you changed, not a
-        different sample.
-      </p>
+
+      <label className="field">
+        <p className="caption caption--ink">Delivery instruction</p>
+        <input
+          type="text"
+          aria-label="Instruction"
+          value={draft.instruction}
+          onChange={(event) => onDraftChange({ ...draft, instruction: event.target.value })}
+        />
+      </label>
+
+      {props.seedControlsVisible && (
+        <>
+          <div className="row row--between">
+            <div className="row">
+              <p className="caption" style={{ margin: 0 }}>Seed</p>
+              <input
+                type="number"
+                aria-label="Seed"
+                value={draft.seed}
+                style={{ width: 96 }}
+                onChange={(event) =>
+                  onDraftChange({ ...draft, seed: Number(event.target.value) || 0 })
+                }
+              />
+              <button
+                type="button"
+                className="chip"
+                aria-pressed={draft.seedLocked}
+                onClick={() => onDraftChange({ ...draft, seedLocked: !draft.seedLocked })}
+              >
+                {draft.seedLocked ? 'Locked' : 'Unlocked'}
+              </button>
+              <button
+                type="button"
+                className="chip"
+                onClick={() => props.onRerollSeed?.()}
+              >
+                Reroll
+              </button>
+            </div>
+          </div>
+          <p className="caption" style={{ marginTop: 8 }}>
+            Hold the seed and an audible difference is the setting you changed, not a
+            different sample.
+          </p>
+        </>
+      )}
 
       <button
         type="button"
