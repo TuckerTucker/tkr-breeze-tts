@@ -1,0 +1,355 @@
+capability: hosted-deployment
+slice_specs:
+  - slice: 1
+    status: draft
+    title: Hosting image
+    purpose: Produce an image in which the existing Node gateway runs unmodified,
+      with every external thing it expects to find on the operator's Mac present
+      in the container instead.
+    interface: A module exporting a modal.Image, consumed by the hosting app exactly
+      as infra/image.py is consumed by infra/service.py. No decorator arguments
+      live here.
+    behavior: "Start from a Debian base with Node 20 (the gateway declares engines
+      >=20.11). apt-install ffmpeg. Copy gateway/package.json and
+      gateway/package-lock.json and run a locked production install, so the
+      hosted runtime is the pinned dependency set rather than whatever resolves
+      on build day. Copy gateway/src, ui/dist, and bench/findings. Order the
+      layers for cache reuse the way infra/image.py does: the npm install sits
+      below the source copy, so editing a route rebuilds only the cheap layer.
+      Run a build-time check in the spirit of infra/smoke_check.py asserting
+      that node and ffmpeg both execute, that ui/dist/index.html exists where
+      UI_DIST_DIR will point, and that ui/public/pcm-processor.js survived the
+      Vite build into dist untransformed — it is deliberately not bundled, and
+      an image that lost it fails only at first playback. Assert
+      bench/findings/latency.json is present and parses."
+    errors: "ffmpeg absent or non-executable → fail the build. It is not optional
+      here: at runtime the gateway degrades to WAV-only and writes one warning
+      into a container log nobody reads, so recorded reference capture would
+      simply stop working with no visible cause. ui/dist missing → fail the
+      build naming `npm run build`, rather than shipping an image whose UI is a
+      404. Findings missing → fail the build; the UI would otherwise render 'not
+      yet measured' for figures that are measured, which is the one thing the
+      wake state exists to avoid."
+    tests: The image is constructed but never built in tests, matching the standing
+      rule that no test needs a network or a GPU. Assert the declared Node major
+      version matches gateway/package.json engines. Assert ffmpeg is in the apt
+      layer. Assert the copied paths cover ui/dist, bench/findings, gateway/src
+      and both gateway manifests. Assert the npm install layer precedes the
+      source copy, since layer order is the property being relied on.
+  - slice: 2
+    status: draft
+    title: Bind host and state locations as configuration
+    purpose: Let one gateway serve a Mac on loopback and a container on 0.0.0.0
+      without a fork, and prove the local path is unchanged rather than assuming
+      it.
+    interface: "GatewayConfig gains a readonly `host: string`. GATEWAY_HOST joins
+      the existing environment surface in gateway/src/config.ts and
+      .env.example. index.ts listens on config.host instead of the literal
+      127.0.0.1."
+    behavior: "Default GATEWAY_HOST to 127.0.0.1, so an operator who changes nothing
+      gets exactly today's behaviour and stays unreachable from off the machine.
+      Accept 0.0.0.0 and any literal address; reject anything else at startup
+      with a named remedy, the way ConfigError already handles a malformed
+      credential — a gateway that binds an address nobody expected is worse than
+      one that refuses to start. Extend the startup log line, which already
+      reports port, transport, ffmpeg and asr, with the resolved host and the
+      resolved state root. The four store directories and the findings directory
+      already resolve from the environment through resolveFromRoot, which
+      returns an absolute path unchanged, so a Volume mount path passes through
+      without new code; this slice adds a test asserting that rather than new
+      behaviour. Leave readEnv alone: it already merges a missing .env into an
+      empty map and lets the process environment win, which is exactly what a
+      modal.Secret needs."
+    errors: A GATEWAY_HOST that is not a valid literal address → ConfigError at
+      startup naming the accepted forms. Absent GATEWAY_HOST → not an error; it
+      is the local default. A store directory that resolves outside the mount in
+      a hosted container → not detectable from configuration alone, so the
+      startup log states the resolved paths and the deploy smoke check in slice
+      8 is what actually catches it.
+    tests: With no GATEWAY_HOST, config.host is 127.0.0.1. With 0.0.0.0, it is
+      0.0.0.0. A malformed value raises ConfigError carrying a remedy. Absolute
+      store paths pass through resolveFromRoot unchanged. Credentials supplied
+      only via processEnv validate with no .env file present, and the same
+      values in a .env file with no processEnv also validate. The startup log
+      line includes host and state root.
+  - slice: 3
+    status: draft
+    title: The hosting app
+    purpose: Run the Node gateway on Modal with durable state and a posture that
+      matches what the stores actually require.
+    interface: A HostingConfig frozen dataclass in infra/config.py beside
+      ServiceConfig and AsrConfig, read from the environment by a
+      hosting_config_from_env function following the existing pattern.
+      infra/hosting.py declares the app, the Volume, and one function decorated
+      @modal.web_server(port).
+    behavior: "Declare a modal.Volume for gateway state, separate from the weights
+      Volume — weights are a 7.7 GB read-mostly fill and gateway state is small
+      and written constantly, and one Volume for both would make every clip
+      write contend with a checkpoint. Mount it and set CLIP_CACHE_DIR,
+      VOICE_STORE_DIR, SCRIPT_STORE_DIR and REFERENCE_STORE_DIR beneath the
+      mount, with BENCH_FINDINGS_DIR and UI_DIST_DIR pointing into the image.
+      Set GATEWAY_HOST to 0.0.0.0. Attach the Modal proxy pair and the password
+      hash from Secrets. In the web_server function, spawn the gateway with
+      subprocess.Popen and return; Modal waits for the port. Set startup_timeout
+      generously: the four stores each load their directory into memory and
+      rechunkAll runs before listen(), so the port answers later than the
+      process starts. Set max_containers=1 and record why in a comment — each
+      store is an authoritative in-memory Map over its directory, so two
+      replicas over one Volume would each hold a stale index and last-write-wins
+      would destroy work silently. Set min_containers=1 so a visitor does not
+      pay a container start before the page renders. Set
+      requires_proxy_auth=False deliberately, with the reason stated: proxy auth
+      here would require a wk-/ws- pair in the browser, which is the exact thing
+      the gateway exists to prevent. Do not call volume.commit() anywhere —
+      Modal sets allow_background_commits on every volume mount, and a commit
+      from a Python process that does not own the writes would be theatre."
+    errors: The gateway process exiting → the container fails and Modal restarts it;
+      a ConfigError already exits non-zero with a named remedy, so a bad Secret
+      surfaces as a startup failure rather than a running service that 500s.
+      Port never answering within startup_timeout → deploy fails loudly rather
+      than serving a half-loaded store. A second container → cannot arise; it is
+      prevented by configuration rather than defended against in code, because
+      there is no in-process defence against a divergent index.
+    tests: Modal objects are constructed and never called, as infra/tests already
+      do. Assert max_containers is 1 and min_containers is 1. Assert
+      requires_proxy_auth is False on this app and unchanged (True) on the
+      synthesis and recognition apps — the asymmetry is the security decision
+      and a test is where it should be pinned. Assert the state Volume is not
+      the weights Volume. Assert every store environment variable resolves
+      beneath the mount path, and that UI and findings paths resolve into the
+      image rather than the Volume. Assert no volume.commit call exists in the
+      module.
+  - slice: 4
+    status: draft
+    title: Password verification, sessions, and rate limiting
+    purpose: Hold the three rules a one-password gate depends on, in pure modules
+      that can be tested without a server.
+    interface: verifyPassword(plain, hash) => Promise<boolean> in hash.ts. A
+      SessionStore class with create() => id, verify(id, now) => boolean,
+      destroy(id), and a sweep, taking an injected clock. A RateLimiter with
+      check(key, now) => allowed and record(key, now). No Fastify import in any
+      of the three, matching the separation cache-index.ts and voices-index.ts
+      already keep from their filesystem halves.
+    behavior: "Verify with Argon2id against a hash supplied as configuration; the
+      plaintext is never present in the process. Compare in constant time.
+      Session ids come from crypto.randomBytes at 32 bytes and are opaque — they
+      encode nothing, so nothing can be read out of a stolen cookie beyond the
+      fact of a session. Expiry is 60 minutes from creation, not from last
+      activity: a fixed lifetime is the honest reading of 'the session lasts an
+      hour', and sliding expiry would mean an open tab never expires. Take the
+      clock as a constructor argument, as the rest of the gateway does, so
+      expiry is tested rather than slept through. Sweep expired entries on
+      access; the map is small and a timer would be a second thing to shut down.
+      Rate limit login attempts on a fixed window keyed by a coarse source,
+      holding a count and a window start; evict a key when its window closes.
+      Choose the window and threshold so a person who mistypes twice is
+      unaffected and a script is stopped."
+    errors: A malformed or absent hash → surfaced by configuration at startup as a
+      ConfigError with a remedy, never at first login. Verification throwing →
+      treated as a failed attempt and recorded as one; an Argon2 error must not
+      become an open door. An unknown or expired session id → false, with no
+      distinction between the two, since the difference is only useful to
+      someone probing. Over the rate limit → refused without revealing whether
+      the password was right, which would otherwise turn the limiter into an
+      oracle.
+    tests: A correct password verifies and a wrong one does not. Verification time
+      does not vary with how much of the password is correct. A session is valid
+      at 59 minutes and invalid at 61, driven by the injected clock. An unknown
+      id and an expired id are indistinguishable in the return value. A
+      destroyed session is immediately invalid. Attempts within the threshold
+      are allowed and the next is refused. A key is evicted once its window
+      closes, so the counter map does not grow with distinct sources over time.
+      No module in this slice imports Fastify.
+  - slice: 5
+    status: draft
+    title: The gate in front of every route
+    purpose: Put the session in front of the whole surface — API and UI shell alike
+      — and add the one exchange that creates it.
+    interface: A Fastify plugin registered in createServer before the API routes and
+      the static handler. POST /api/session {password} => 204 with Set-Cookie;
+      DELETE /api/session => 204. An onRequest hook refusing everything else
+      without a valid session.
+    behavior: "Read the session id from an HttpOnly, Secure, SameSite=Lax cookie.
+      Not a bearer token, and the reason is structural rather than preferential:
+      VoiceWorkspace.tsx puts /api/voices/:id/audio into an <audio src>,
+      History.tsx puts a clip URL into an <a download>, and ReferenceTrimmer.tsx
+      does the same — browser-issued requests that cannot carry an Authorization
+      header. SameSite=Lax rather than Strict so a link into the demo does not
+      present as unauthenticated on first navigation. Exempt exactly one route,
+      POST /api/session, and nothing else — a gate that protects the API but
+      serves the console shell has only moved the problem to what the shell
+      renders. On refusal return 401 carrying the existing typed envelope with
+      type 'auth', so the browser's error path stays one shape. Rate-limit the
+      login route before verifying, so the limiter is not itself a way to spend
+      Argon2 time. Register the plugin before both fastifyStatic and the API
+      routes, since a hook registered after the route it guards guards nothing.
+      When no password hash is configured, register nothing at all: that is what
+      leaves the local demo untouched, and it is an explicit branch rather than
+      an accident of empty configuration."
+    errors: Missing or malformed cookie → 401 'auth'. Expired session → 401 'auth',
+      identical in shape, so nothing distinguishes a stale session from a forged
+      one. Wrong password → 401 with a message that says only that, and no
+      indication of the password's length or shape. Over the rate limit → 429,
+      with the same body shape and no hint about correctness. A request for a
+      static asset without a session → 401 rather than the SPA index, so the
+      shell never renders to someone who cannot use it.
+    tests: "Over a real server instance: /api/health, /api/voices, / and /index.html
+      are each refused without a session and served with one. POST /api/session
+      with the right password sets a cookie with HttpOnly, Secure and SameSite;
+      with the wrong one it returns 401 and sets nothing. DELETE ends the
+      session and the next request is refused. An expired session is refused,
+      driven by the injected clock. Repeated wrong passwords produce 429. With
+      no hash configured, every route behaves exactly as it does today and no
+      cookie is ever set. The gate is registered before the static handler —
+      asserted by requesting a static path, not by reading the registration
+      order."
+  - slice: 6
+    status: draft
+    title: The access gate in the browser
+    purpose: Ask for the password once, recover from an expiry without losing what
+      the visitor was writing, and add no new way for the browser to learn about
+      upstream.
+    interface: An AccessGate component rendered by App.tsx ahead of the console.
+      GatewayClient gains createSession(password) and endSession(). The existing
+      typed 'auth' failure gains a central handler.
+    behavior: "Render a single password field and nothing else until a session
+      exists; make no API call before submission, so an unauthenticated
+      visitor's first request is the one they chose to make. Show failure in
+      place beside the field — no toast, per the standing rules, which do not
+      get an exception for being a login. Disable submit while a request is in
+      flight rather than erroring on a double press. On any typed 'auth' failure
+      from any call, return to the gate centrally in the client rather than at
+      each call site. Before showing the gate, keep the console's draft state in
+      memory and restore it after re-entry: an hour passing is not a reason to
+      lose someone's work, and this is the one place an expiry could quietly do
+      it. Restore the workspace the viewer was in, not the default. Keep every
+      request relative — the gate is another same-origin /api call, and nothing
+      here learns an upstream URL."
+    errors: Wrong password → the field says so, in place, and keeps focus. Rate
+      limited → the field says the attempts are limited and that waiting is the
+      remedy, rather than repeating 'wrong password' at someone who may be
+      typing it correctly. Network failure at the gate → distinguished from a
+      rejection, since 'the demo is down' and 'you typed it wrong' have
+      different remedies. An 'auth' failure mid-stream during playback →
+      playback stops and the gate appears; the partial clip is not presented as
+      complete.
+    tests: The console does not render and no API call is made before a session
+      exists. A wrong password shows the failure beside the field and renders no
+      toast. A 401 from any client method returns the view to the gate. A draft
+      typed before an expiry is present after re-entry, and the workspace is the
+      one the viewer was in. Rate limiting and rejection produce different
+      messages. No absolute URL appears in any request the component makes.
+  - slice: 7
+    status: draft
+    title: Shared-workspace truth in Speak and Voices
+    purpose: Make two facts of a shared workspace legible — that a 409 may be
+      someone else, and that an undo may not be yours — without adding a
+      live-update mechanism the demo does not have.
+    interface: No API change. SpeakWorkspace distinguishes a busy state it caused
+      from one it did not. VoiceWorkspace states the library is shared and
+      withholds the undo strip for a disappearance it did not initiate.
+    behavior: "The vendor holds a process-wide lock and returns 409 for every
+      contended request, so the error carries no information about who holds it;
+      the distinction must come from whether this client has a request in
+      flight. When it does, keep today's wording exactly — the local demo must
+      read as it always did. When it does not, present a waiting state naming
+      that someone else is generating: the control disabled with the reason
+      beside it, which is what the standing rules already say a busy state is.
+      For voices, show the undo strip only for a deletion this client performed,
+      since the PendingUndo record lives in this client's state and the
+      30-second window in voices-index.ts belongs to the deleter. A voice that
+      vanishes from a refresh is simply absent — offering a button that cannot
+      work would be worse than offering nothing. State once, in the voice
+      library, that voices here are shared; place it where a first-time visitor
+      reads it before creating something, not after losing something. Add no
+      polling and no push. Refresh behaviour is unchanged, and the copy must not
+      imply a liveness the demo does not have."
+    errors: A 409 while this client has a request in flight → today's own-busy
+      state, unchanged. A 409 with nothing in flight → the waiting state. A
+      voice absent on refresh → removed from the list with no undo offered. A
+      voice absent because this client deleted it → the existing undo strip for
+      its 30 seconds. A delete that fails because another viewer already deleted
+      it → the typed not-found is presented as already gone rather than as a
+      failure, since the viewer's intent was satisfied.
+    tests: A 409 with a request in flight renders the existing wording; a 409 with
+      none renders the waiting state and disables the control. Neither renders a
+      toast or a dialog. A voice removed by a refresh renders no undo
+      affordance; a voice removed by this client's delete does, and it expires
+      after the window. The shared-library statement is present in the voice
+      library. A not-found on delete is presented as already gone. No polling
+      interval and no EventSource is introduced by this slice.
+  - slice: 8
+    status: draft
+    title: Wire the hosted deployment
+    purpose: Make the hosted demo one documented sequence, and keep the local one
+      true rather than quietly stale.
+    interface: docs/runbooks/hosted-demo.md; a root npm script for the hosted deploy
+      beside build/start/test; infra/hosting_smoke_check.py run after deploy.
+    behavior: "Document the sequence end to end: build the UI, create the Argon2id
+      hash and put it in a modal.Secret, deploy the hosting app, hand out the
+      URL. State plainly that the operator generates the hash and never commits
+      the plaintext. Cover the two operations the hosted demo actually needs:
+      rotating the password, which means a new hash and a redeploy that also
+      ends every session, and inspecting or clearing the state Volume. Answer
+      explicitly what a restart does, because the two halves are opposite and it
+      is the pair people get wrong — every session ends, and every saved voice
+      survives. Re-verify docs/runbooks/local-demo.md and npm run setup against
+      the changed configuration surface; local remains supported, so a runbook
+      that has drifted is a defect this slice owns. The smoke check asserts,
+      against the deployed URL: an unauthenticated request to an API route and
+      to the UI shell are both refused; the login exchange succeeds and sets a
+      cookie; and no response body, header, or bundled asset contains the proxy
+      pair or the .modal.run URL — the standing invariant, checked where it can
+      actually be violated. The README gains a short hosted section saying
+      plainly that it is one shared password over one shared workspace."
+    errors: The smoke check finding the credential or the upstream URL in any served
+      byte → fail loudly and treat the deployment as compromised, since that is
+      the invariant the whole architecture is built on. An unauthenticated
+      request being served → fail; a gate that does not gate is worse than no
+      gate, because it will be trusted. Login failing with a hash the operator
+      just created → most likely a Secret that did not reach the container, so
+      the check names that first rather than suggesting the password is wrong.
+    tests: The smoke check is exercised against a locally started gateway with the
+      gate enabled, so it is tested without a deployment. Assert it fails when
+      given a response containing a wk- token, an ws- token, or a .modal.run
+      URL, using fabricated responses — a check that has never failed is not
+      known to work. Assert the documented deploy sequence names the same
+      environment variables the hosting app reads, compared against
+      infra/config.py rather than transcribed.
+  - slice: 9
+    status: draft
+    title: Test the hosted deployment
+    purpose: Cover the seams hosting creates, and close the one empirical unknown
+      this capability carries rather than shipping it as an assumption.
+    interface: gateway/test/hosted-e2e.test.ts over a real server instance with the
+      gate enabled; infra/tests/test_hosting_deploy.py over constructed Modal
+      objects.
+    behavior: "Exercise the gate end to end against a started server: an API route
+      and the UI shell both refused without a session, both served with one,
+      expiry refusing, rate limiting engaging. Include a test that authenticates
+      the way an <audio src> does — a plain GET carrying only the cookie, no
+      custom headers — because that is the constraint that chose cookies over
+      tokens and a regression there is silent until someone presses play. Cover
+      both configuration paths, loopback default and hosted override, since a
+      default only one path exercises is a default that drifts. Then resolve the
+      upload question: MAX_AUDIO_UPLOAD_BYTES is 512 MiB, chosen so a long
+      reference is uploaded once, and whether Modal's web proxy passes a body
+      that large is not known. Measure it against the deployed endpoint, record
+      the result the way bench records a finding, and if the proxy imposes a
+      lower ceiling, lower the gateway's limit to match so an oversized upload
+      is refused with a real number at the boundary instead of stalling. Keep
+      the standing rule intact: no test in the suite needs a GPU, an external
+      network, or a deployed service — the upload probe is a recorded
+      measurement, like the bench probes, not a unit test."
+    errors: The proxy silently truncating a large body → the worst outcome, because
+      it presents as a corrupt reference rather than a refusal; the probe must
+      distinguish truncation from rejection and the finding must say which. A
+      cookie not sent on a media request → treated as a blocking defect, not a
+      nuisance, since it makes half the UI unusable while every fetch-based call
+      still works. A test needing a deployed service → not accepted into the
+      suite; it belongs in the probe.
+    tests: "This slice is the tests. Its own bar: every assertion above runs without
+      a GPU, a network, or a deployment, except the upload probe, which is a
+      recorded measurement invoked deliberately and never part of npm test. The
+      recorded finding names the observed ceiling and whether the failure mode
+      was refusal or truncation."

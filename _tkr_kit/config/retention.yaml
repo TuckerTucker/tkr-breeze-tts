@@ -1,0 +1,97 @@
+# Project-owned accumulation points. The kit's own tree is not declared here —
+# `_tkr_kit/` and `.tkr-kit/` are kit-owned and belong to KIT_ACCUMULATION_DIRS.
+#
+# These are the stores this project's own code writes. Their answers are the same
+# ones `_tkr_kit/slices/hosted-deployment.yaml` slice 3 declares for the hosted
+# copies of them: hosting moves these bytes from `.cache/` to a mounted Volume,
+# it does not change what bounds them.
+stores:
+  - path: .cache/clips
+    description: >-
+      Generated audio, one raw PCM s16le file plus a JSON sidecar per clip,
+      written by the streaming tee in gateway/src/cache.ts. WAV framing happens
+      at read, so a clip's on-disk form never depends on the active transport.
+    retention:
+      kind: bounded
+      detail: >-
+        Self-limiting write path. ClipCache evicts oldest-first against
+        CLIP_CACHE_MAX_BYTES, 2 GiB by default, on every write that would exceed
+        it. The ceiling is configuration; the enforcement is unconditional.
+
+  - path: .cache/references
+    description: >-
+      Staged reference audio: one normalized WAV plus a timed-transcript sidecar
+      per upload, written once by gateway/src/references.ts and read back for
+      each trimmed selection.
+    retention:
+      kind: bounded
+      detail: >-
+        Expiring working material by design. The WAV and its sidecar expire
+        together at REFERENCE_MAX_AGE_MS, 24 hours by default, swept by
+        ReferenceStore. The pair is deliberately one lifetime — a transcript
+        outliving its audio would be unusable, and audio outliving its
+        transcript is unusable to the model.
+
+  - path: .cache/voices
+    description: >-
+      The durable voice library. Each voice owns its own WAV copy plus a JSON
+      sidecar, deliberately independent of the clip it was promoted from, so a
+      voice survives its source clip's eviction.
+    retention:
+      kind: finding
+      issue: >-
+        An honest leak. Voices are durable by design and nothing bounds how many
+        exist: soft-deleted records purge after their 30-second undo window
+        (UNDO_WINDOW_MS, gateway/src/voices-index.ts), but live voices only
+        accumulate. On the operator's own Mac this is their disk and their
+        restraint. The hosted-deployment capability makes it sharper rather than
+        new — one shared workspace behind a password that gets handed around has
+        no restraint to rely on. Declared so it stays visible; no mechanism is
+        proposed here, and choosing one is a product decision about what a demo
+        should forget.
+
+  - path: .cache/scripts
+    description: >-
+      Durable script documents with their cue lists, written by
+      gateway/src/script.ts. The cue audio itself lives in the bounded clip
+      cache and is referenced by a derived clipId, so what accumulates here is
+      text.
+    retention:
+      kind: finding
+      issue: >-
+        The same leak as .cache/voices and a smaller one, since scripts hold no
+        audio. Nothing evicts a script. The surface is currently dormant behind
+        a UI capability gate, which lowers the rate at which this grows but
+        bounds nothing — a gate is not a lifecycle.
+
+  - path: .cache/setup.log
+    description: >-
+      Structured pino output from `npm run setup`, written so a failed guided
+      run can be read back after the terminal has scrolled
+      (gateway/src/setup/main.ts). Credential-shaped fields are redacted at the
+      logger.
+    retention:
+      kind: finding
+      issue: >-
+        Append-only with no rotation. pino.destination appends, so every setup
+        run adds to one file that nothing truncates or rolls. Growth is slow
+        because setup is run rarely, but rarity is not a bound — the file only
+        ever gets longer.
+
+  - path: bench/findings
+    description: >-
+      Recorded measurements from the bench probes — latency, CFG fall-off, and
+      the reference-duration ceiling. Read by the gateway and rendered by the
+      UI, which is why they are committed rather than machine-local.
+    retention:
+      kind: bounded
+      detail: >-
+        Replace-on-write over a fixed filename set: one JSON per probe, written
+        with Path.write_text (bench/harness.py). There is no per-run, dated, or
+        otherwise unique path, so re-running a probe overwrites in place and the
+        directory cannot grow with repetition.
+
+# Walked by the audit so a new store appearing under the cache root is reported
+# rather than silently joining the four above.
+observe:
+  - .cache

@@ -8,6 +8,7 @@ capabilities:
     provides_to:
       - measurement
       - local-gateway
+      - hosted-deployment
     description: "Everything that runs on Modal: the container image carrying the
       vendor runtime and a version-matched FlashAttention wheel, the Volume
       holding 7.7GB of weights, the serving class that loads the model at
@@ -23,11 +24,11 @@ capabilities:
         @modal.enter(), the vendor FastAPI app mounted via @modal.asgi_app()."
       - "Deployment configuration: GPU selection, scaledown_window,
         min_containers, requires_proxy_auth."
-      - "The speech-recognition sibling app: its own image, its own GPU and
-        warm window, its own subdirectory of the shared weights Volume. A
-        separate app because a once-per-sitting transcription and an
-        interactive synthesis want opposite warm profiles, and ServiceConfig is
-        frozen per service; one Volume because setup should stay one fill."
+      - "The speech-recognition sibling app: its own image, its own GPU and warm
+        window, its own subdirectory of the shared weights Volume. A separate
+        app because a once-per-sitting transcription and an interactive
+        synthesis want opposite warm profiles, and ServiceConfig is frozen per
+        service; one Volume because setup should stay one fill."
     scope_out:
       - Measuring what the deployed service does (measurement).
       - Credential custody on the client side, audio transcoding, caching
@@ -76,6 +77,7 @@ capabilities:
       - modal-inference
     provides_to:
       - demo-ui
+      - hosted-deployment
     description: "The small local service between the browser and Modal. It exists
       to hold the proxy credential off the client, to make the browser
       same-origin so CORS never arises, and to absorb the two chores the browser
@@ -111,7 +113,8 @@ capabilities:
     depends_on:
       - local-gateway
       - measurement
-    provides_to: []
+    provides_to:
+      - hosted-deployment
     description: "The browser surface the operator actually plays with. The active
       release is task-first: create and manage durable voices, then speak with a
       saved voice. It plays PCM as it arrives and names cold start instead of
@@ -134,8 +137,71 @@ capabilities:
       - Credential handling and audio transcoding (local-gateway).
       - Any direct call to the Modal endpoint — the browser talks only to the
         gateway.
-      - "Multi-user concerns: accounts, sharing, concurrency beyond one
-        operator."
+      - "Accounts, identity, sharing models, and per-user scoping of any store.
+        Still out of scope, and now deliberately so rather than by absence: the
+        hosted demo is one shared password over one shared workspace."
+      - Hosting, the password gate, and the interface changes a shared workspace
+        requires — concurrency and shared ownership are real once the demo is
+        hosted, and they belong to hosted-deployment rather than here.
     evidence:
       kind: commit
       ref: d4b5f0c
+  - name: hosted-deployment
+    layer: service
+    status: planned
+    paths:
+      - infra/hosting.py
+      - infra/hosting_image.py
+      - gateway/src/auth
+      - docs/runbooks/hosted-demo.md
+    depends_on:
+      - modal-inference
+      - local-gateway
+      - demo-ui
+    provides_to: []
+    description: "Hosting the demo so someone who is not the operator can open a
+      link and hear the model, without any of the three properties that made the
+      local build safe being quietly given up. The gateway is the unit that gets
+      hosted, because the gateway is what serves the UI: every browser call in
+      ui/src/api/client.ts is a relative /api/* URL with no base URL anywhere,
+      and that same-origin arrangement is exactly what keeps the Modal
+      credential off the client and makes CORS a non-problem rather than a
+      configured one. So this capability hosts the Node gateway on Modal as a
+      third app, gives it a Volume for the four stores it already writes to
+      disk, and puts a shared hashed password in front of it. Local stays a
+      first-class way to run the demo — the differences are configuration, not a
+      fork."
+    scope_in:
+      - A Modal app running the Node gateway via modal.web_server, on an image
+        carrying Node 20 and ffmpeg, with the bench findings baked in so the
+        UI's measured figures survive the move off the operator's machine.
+      - "Single-container posture (max_containers=1), which is not a limitation
+        to engineer around: every store loads its directory into an in-memory
+        Map at startup and writes through, so a second replica over one Volume
+        would hold a stale index and lose writes."
+      - A modal.Volume for clips, voices, scripts and staged references, mounted
+        where the existing store env vars already point. Background commits are
+        enabled on every Modal volume mount, so durability needs no Modal
+        awareness inside the Node process.
+      - "A shared-password gate: an Argon2id hash held in a modal.Secret, a
+        60-minute session, rate-limited login attempts, and a session store that
+        is deliberately in-memory so a container restart ends every session."
+      - Cookie-borne sessions rather than bearer tokens, because the UI puts
+        gateway URLs directly into <audio src> and <a download> and those
+        requests cannot carry an Authorization header.
+      - "Telling the truth about a shared workspace: the vendor's 409 now
+        sometimes means someone else is generating, and a soft-deleted voice is
+        undoable only by the person who deleted it."
+      - Keeping the local path working — bind host, credential source and store
+        locations become configuration, with both paths tested.
+    scope_out:
+      - Accounts, identity, or per-user state scoping. One password, one shared
+        workspace, one flat namespace — decided deliberately, not deferred.
+      - Waking the dormant surfaces. Scripts, described voices and temporary
+        references stay gated exactly as they are (demo-ui).
+      - Any change to GPU, warm window, or the synthesis and recognition apps'
+        own posture (modal-inference).
+      - Any change to how synthesis requests are formed, trimmed, or typed
+        (local-gateway).
+      - Re-measuring latency from the hosted vantage point (measurement). The
+        findings shipped in the image are the same recorded numbers.

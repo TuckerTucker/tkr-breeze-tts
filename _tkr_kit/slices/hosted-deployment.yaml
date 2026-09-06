@@ -1,0 +1,350 @@
+capability: hosted-deployment
+slices:
+  - number: 1
+    feature: modal-hosted-gateway
+    depends_on: []
+    story_ids:
+      - deploy-the-hosted-demo
+    paths:
+      - infra/hosting_image.py
+      - infra/tests/test_hosting_image.py
+    delivers:
+      - A Modal image carrying Node 20 and the gateway's production
+        dependencies, built from gateway/package-lock.json so the hosted runtime
+        is the pinned one rather than whatever npm resolves on build day.
+      - ffmpeg installed and asserted at build time. The gateway degrades to
+        WAV-only uploads when ffmpeg is absent and says so in a log line nobody
+        reads in a container, so absence is caught here instead.
+      - The built UI copied in, because the gateway serves it from config.uiDir
+        and same-origin is the property the whole credential posture rests on.
+      - bench/findings/*.json copied in, so GET /api/health reports the measured
+        warm TTFA and RTF rather than the null that makes the UI say 'not yet
+        measured'.
+      - "A build-time check in the spirit of infra/smoke_check.py: node runs,
+        ffmpeg runs, the UI's index.html and the findings files are where
+        configuration will look for them."
+    title: "Hosting image: Node, ffmpeg, the built UI and the recorded findings"
+    layer: service
+    status: planned
+  - number: 2
+    feature: portable-gateway-runtime
+    depends_on: []
+    story_ids:
+      - run-the-same-gateway-locally-and-hosted
+    paths:
+      - gateway/src/config.ts
+      - gateway/src/index.ts
+      - gateway/test/hosting-config.test.ts
+      - .env.example
+    delivers:
+      - GATEWAY_HOST as validated configuration, defaulting to 127.0.0.1. The
+        local demo is byte-for-byte unchanged and stays loopback-only; only the
+        hosted image passes 0.0.0.0, which Modal's proxy requires to reach the
+        listener at all.
+      - A startup log line naming the mode and the resolved state directory, so
+        a container whose Volume did not mount is diagnosable immediately rather
+        than as a library that mysteriously forgot every voice.
+      - Confirmation, as a test rather than a claim, that the four store
+        directories and the findings directory are already environment-driven —
+        pointing them at a mount is configuration, and this slice adds no
+        persistence code.
+      - Confirmation that credentials resolve identically from a modal.Secret
+        and from the repo-root .env, since readEnv already treats a missing file
+        as empty and lets the process environment win.
+      - .env.example documenting the hosting variables alongside the local ones,
+        in the one .env the gateway and bench already share.
+    title: Bind host and state locations as configuration, local default unchanged
+    layer: api
+    status: planned
+  - number: 3
+    feature: modal-hosted-gateway
+    depends_on:
+      - 1
+      - 2
+    story_ids:
+      - deploy-the-hosted-demo
+      - keep-voices-across-a-container-restart
+    paths:
+      - infra/hosting.py
+      - infra/config.py
+      - infra/tests/test_hosting.py
+    data_surface: "A modal.Volume holding the four stores the gateway already writes
+      to disk: generated clips, saved voices, scripts, and staged reference
+      audio with its transcript sidecar. No new kind of data is collected — the
+      same bytes move from the operator's .cache/ to a mounted Volume. Nothing
+      personal is added; reference audio is voice recordings the visitor
+      supplies deliberately, as it already was locally."
+    new_stores:
+      - name: breeze-tts-hosted-state (modal.Volume)
+        retention: bounded
+        rationale: Mount for all four stores; boundedness is per-store below and is
+          enforced by the existing write paths, unchanged by hosting.
+      - name: clips (CLIP_CACHE_DIR on the Volume)
+        retention: bounded
+        rationale: "Self-limiting write path: oldest-first eviction at
+          CLIP_CACHE_MAX_BYTES, 2 GiB by default, enforced in
+          gateway/src/cache.ts exactly as it is locally."
+      - name: references (REFERENCE_STORE_DIR on the Volume)
+        retention: bounded
+        rationale: Staged working material. The WAV and its transcript sidecar expire
+          together at REFERENCE_MAX_AGE_MS, 24 hours by default.
+      - name: voices (VOICE_STORE_DIR on the Volume)
+        retention: finding
+        rationale: An honest leak, and hosting is what makes it one. Voices are durable
+          by design and each owns its own WAV copy; soft-deleted records purge
+          after a 30-second undo window, but live voices accumulate without
+          limit. On the operator's Mac that was their own disk and their own
+          restraint. In a shared hosted workspace with a password handed around,
+          nothing bounds it. Declared rather than hidden; no mechanism is
+          proposed in this capability.
+      - name: scripts (SCRIPT_STORE_DIR on the Volume)
+        retention: finding
+        rationale: "Same shape as voices and smaller: durable documents that accumulate
+          without limit. The cue audio they reference lives in the bounded clip
+          cache, so the leak is text. Dormant behind a capability gate today,
+          which reduces the rate but does not bound it."
+    delivers:
+      - A third Modal app serving the Node gateway through modal.web_server,
+        with a startup_timeout that accounts for the four stores loading their
+        directories into memory before the port answers.
+      - "A Volume mounted where the store environment variables point. Nothing
+        inside the Node process learns about Modal: background commits are
+        enabled on every volume mount, so durability needs no commit call in
+        TypeScript."
+      - max_containers=1, with the reason recorded next to it — each store is an
+        authoritative in-memory Map over its directory, so a second replica
+        would hold a stale index and last-write-wins would quietly destroy the
+        other's work. This is the store design's own requirement, not a Modal
+        limitation.
+      - min_containers=1 so the first visitor does not pay a container start
+        before the page renders. It is a CPU container; this is the cheap half
+        of the latency story.
+      - "requires_proxy_auth deliberately False on this endpoint, and the reason
+        stated: proxy auth here would demand a wk-/ws- pair in the browser,
+        which is the exact thing the gateway exists to prevent. The password
+        gate is what protects this app."
+      - The hosting posture expressed in infra/config.py with the other two
+        services, honouring the standing relation that config.py is the single
+        decoration-time surface and no module carries its own decorator
+        arguments.
+    title: "The hosting app: web_server, Volume-backed state, single-container
+      posture"
+    layer: service
+    status: planned
+  - number: 4
+    feature: shared-password-gate
+    depends_on: []
+    story_ids:
+      - open-the-hosted-demo-with-the-shared-password
+      - be-returned-to-the-gate-without-losing-my-work
+    paths:
+      - gateway/src/auth/hash.ts
+      - gateway/src/auth/session.ts
+      - gateway/src/auth/rate-limit.ts
+      - gateway/test/auth-session.test.ts
+      - gateway/test/auth-rate-limit.test.ts
+    data_surface: No personal data. A session record holds an opaque random id, a
+      creation timestamp, and nothing else — no name, no address, no identifier
+      tied to a person, because there are no accounts. Rate-limit counters key
+      on a coarse request source and hold a count and a window start.
+    new_stores:
+      - name: session store (in-memory Map)
+        retention: bounded
+        rationale: Two independent bounds. Each entry expires 60 minutes after login and
+          is swept on access; the whole map dies with the process, which is the
+          stated behaviour of a container restart ending every session rather
+          than an accident to be fixed.
+      - name: login attempt counters (in-memory Map)
+        retention: bounded
+        rationale: Fixed-window counters evicted when their window closes. Bounded by
+          the number of distinct sources within one window and destroyed with
+          the process.
+    delivers:
+      - Argon2id verification against a hash supplied as configuration. Only the
+        hash is ever deployed; the plaintext exists in the operator's head and
+        in no file, image layer, or environment variable.
+      - Constant-time comparison, and a failure that says only that it failed —
+        a one-password system leaks its password through timing or through a
+        helpful error message or not at all.
+      - A session store keyed by an opaque random id with a 60-minute lifetime
+        from login, injected with a clock so expiry is tested rather than slept
+        through, matching the injected-clock pattern the rest of the gateway
+        already uses.
+      - An in-memory store by deliberate choice, recorded here so that a restart
+        ending every session reads as the decision it is.
+      - Fixed-window rate limiting on login attempts, because one shared
+        password behind a public URL is precisely the shape brute force is good
+        at.
+      - These as pure modules with no Fastify import, so their rules are
+        testable alone — the same separation cache-index.ts and voices-index.ts
+        already keep from their filesystem halves.
+    title: Password verification, sessions, and login rate limiting
+    layer: domain
+    status: planned
+  - number: 5
+    feature: shared-password-gate
+    depends_on:
+      - 2
+      - 4
+    story_ids:
+      - open-the-hosted-demo-with-the-shared-password
+    paths:
+      - gateway/src/auth/plugin.ts
+      - gateway/src/index.ts
+      - gateway/test/auth-plugin.test.ts
+    delivers:
+      - A Fastify onRequest hook refusing everything without a valid session —
+        every /api/* route and the static UI alike. A gate that protects the API
+        but serves the console shell is not a gate.
+      - POST /api/session as the single exemption, and a matching DELETE for
+        signing out.
+      - "The session in an HttpOnly, Secure, SameSite=Lax cookie rather than a
+        bearer token. This is forced, not preferred: the UI puts gateway URLs
+        directly into <audio src> and <a download>, and neither can carry an
+        Authorization header. Choosing a token here would mean rewriting every
+        media path into blob fetches."
+      - A 401 carrying the existing typed error envelope with type 'auth', so
+        the browser's error handling stays one shape rather than growing a
+        special case.
+      - The gate disabled entirely when no password hash is configured, which is
+        what keeps the local demo exactly as it was — no login on a
+        loopback-only listener the operator already trusts.
+      - Registration ordered ahead of the static handler and the API routes,
+        since a gate registered after the route it guards guards nothing.
+    title: The gate in front of every route, and the login exchange
+    layer: api
+    status: planned
+  - number: 6
+    feature: shared-password-gate
+    depends_on:
+      - 5
+    story_ids:
+      - open-the-hosted-demo-with-the-shared-password
+      - be-returned-to-the-gate-without-losing-my-work
+    paths:
+      - ui/src/components/AccessGate.tsx
+      - ui/src/api/client.ts
+      - ui/src/App.tsx
+      - ui/test/access-gate.test.tsx
+    delivers:
+      - A single password field rendered before any part of the console, making
+        no API call until it is submitted.
+      - Failure shown in place beside the field, never as a toast, with the
+        input constrained rather than validated after the fact — the standing UX
+        rules do not get an exception because the surface is a login.
+      - A typed 'auth' failure recognised centrally in the API client, so an
+        expiry anywhere returns the viewer to the gate without each call site
+        handling it.
+      - The typed draft preserved across the gate and restored after re-entry.
+        An hour passing is not a reason to lose someone's work, and this is the
+        one place an expiry could quietly do it.
+      - Re-entry resuming where the viewer was rather than at a default screen.
+      - "No change to the relative-URL discipline: the gate is another
+        same-origin /api call, and the browser still learns nothing about
+        upstream."
+    title: The access gate in the browser, and a 401 that does not lose work
+    layer: ui
+    status: planned
+  - number: 7
+    feature: shared-workspace-honesty
+    depends_on:
+      - 5
+    story_ids:
+      - understand-that-someone-else-is-using-it
+    paths:
+      - ui/src/components/SpeakWorkspace.tsx
+      - ui/src/components/VoiceWorkspace.tsx
+      - ui/src/state/voices.ts
+      - ui/test/shared-workspace.test.tsx
+    delivers:
+      - A waiting state that distinguishes someone else's generation from this
+        viewer's own. The vendor's process-wide lock returns the same 409 for
+        both, so the distinction is drawn from whether this client has a request
+        in flight — the only place that knows.
+      - "Waiting on someone else presented as a disabled control with the reason
+        beside it, which is what the standing rules already say a busy state is:
+        not an error, not a spinner, not a toast."
+      - The single-operator busy wording left untouched for this viewer's own
+        in-flight request, so the local demo reads exactly as it did.
+      - A voice deleted by another viewer disappearing without an undo
+        affordance this viewer cannot act on. The 30-second window in
+        voices-index.ts is real, but the pending record lives in the deleter's
+        client state — offering the button to anyone else would be offering a
+        lie.
+      - One statement in the voice library that voices here are shared, placed
+        where a first-time visitor reads it before creating anything rather than
+        after losing something.
+      - No live push. Refresh behaviour is unchanged; this slice makes the
+        current behaviour honest, and says so rather than implying more.
+    title: Shared-workspace truth in Speak and Voices
+    layer: ui
+    status: planned
+  - number: 8
+    feature: modal-hosted-gateway
+    depends_on:
+      - 3
+      - 6
+      - 7
+    story_ids:
+      - deploy-the-hosted-demo
+      - run-the-same-gateway-locally-and-hosted
+    paths:
+      - docs/runbooks/hosted-demo.md
+      - README.md
+      - package.json
+      - infra/hosting_smoke_check.py
+    delivers:
+      - "The deploy path as one documented sequence: build the UI, create the
+        password secret, deploy the hosting app, hand out the URL."
+      - A runbook covering the operations the hosted demo actually needs —
+        rotating the password, reading the state Volume, and what a restart does
+        to sessions and to saved voices, which are opposite answers and the pair
+        people get wrong.
+      - docs/runbooks/local-demo.md left standing and verified still true, since
+        local remains a supported way to run this rather than a legacy path.
+      - A root script for the hosted deploy alongside the existing
+        build/start/test scripts, so the sequence is not three remembered
+        commands.
+      - "A post-deploy smoke check asserting the properties that must hold: the
+        gate refuses an unauthenticated request, the login exchange succeeds,
+        and no response body, header, or bundled asset contains the proxy pair
+        or the .modal.run URL."
+      - README orientation for the hosted option, naming plainly that it is one
+        shared password over one shared workspace — the thing a reader must know
+        before handing the link to anyone.
+    title: Wire the hosted deployment
+    layer: integration
+    status: planned
+  - number: 9
+    feature: modal-hosted-gateway
+    depends_on:
+      - 8
+    story_ids:
+      - deploy-the-hosted-demo
+      - open-the-hosted-demo-with-the-shared-password
+      - keep-voices-across-a-container-restart
+    paths:
+      - gateway/test/hosted-e2e.test.ts
+      - infra/tests/test_hosting_deploy.py
+    delivers:
+      - "End-to-end coverage of the gate over a real server instance:
+        unauthenticated requests refused on both an API route and the UI shell,
+        the login exchange succeeding, expiry returning 401, and rate limiting
+        engaging."
+      - A test proving a media URL in an <audio src> position authenticates by
+        cookie, since that is the constraint that chose cookies over tokens and
+        a regression there would be silent until someone pressed play.
+      - Coverage of both configuration paths — the loopback default and the
+        hosted override — because a default only one path exercises is a default
+        that drifts.
+      - "Resolution of the one unknown this capability carries: whether Modal's
+        web proxy passes a body at MAX_AUDIO_UPLOAD_BYTES (512 MiB). Recorded as
+        a measured result, and if the proxy imposes a lower ceiling the
+        gateway's limit is lowered to match it so the refusal names a real
+        number instead of being a stall."
+      - Modal SDK objects constructed but never called, keeping the standing
+        rule that no test needs a GPU, an external network, or a deployed
+        service.
+    title: Test the hosted deployment
+    layer: integration
+    status: planned

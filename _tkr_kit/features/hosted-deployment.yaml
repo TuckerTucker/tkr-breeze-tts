@@ -1,0 +1,165 @@
+capability: hosted-deployment
+features:
+  - name: modal-hosted-gateway
+    status: planned
+    wiring_assignment:
+      territory:
+        - infra/hosting.py
+        - infra/hosting_image.py
+        - infra/config.py
+        - infra/tests/test_hosting.py
+        - infra/tests/test_hosting_image.py
+    user_story: As the operator, I want the gateway itself running on Modal on an
+      image that has Node and ffmpeg, so that I can send someone a link instead
+      of a repository and a Mac.
+    acceptance_criteria:
+      - A third Modal app serves the Node gateway through modal.web_server,
+        alongside the synthesis and recognition apps and sharing none of their
+        GPU posture.
+      - "The image carries Node 20 and ffmpeg. ffmpeg is not optional here:
+        without it the gateway starts in its degraded WAV-only mode and
+        reference capture silently stops working."
+      - bench/findings/*.json is baked into the image, because the UI reads
+        measured latency through the gateway and would otherwise render 'not yet
+        measured' for figures that are in fact measured.
+      - "max_containers is 1, and the reason is written down rather than
+        assumed: the stores hold authoritative in-memory indexes."
+      - min_containers is 1 so the first visitor does not pay a container start
+        before the page renders.
+      - The hosting posture lives in infra/config.py with the other two
+        services' configuration, not in decorator arguments scattered across the
+        new module.
+      - The endpoint does not require Modal proxy auth — that is what lets the
+        browser reach it at all without holding a wk-/ws- pair.
+    scope_in:
+      - The image, the app, the web_server entry point, and the deploy-time
+        configuration.
+      - The Volume declaration and its mount path.
+    scope_out:
+      - What the gateway does once it is running — bind host, store locations,
+        findings path (portable-gateway-runtime).
+      - The password gate (shared-password-gate).
+      - Any change to the synthesis or recognition apps (modal-inference).
+  - name: portable-gateway-runtime
+    status: planned
+    wiring_assignment:
+      territory:
+        - gateway/src/config.ts
+        - gateway/src/index.ts
+        - gateway/test/hosting-config.test.ts
+        - gateway/test/volume-store.test.ts
+        - .env.example
+    user_story: As the operator, I want the same gateway to run on my Mac and in a
+      container without forking, so that hosting is a configuration choice
+      rather than a second codebase to keep in step.
+    acceptance_criteria:
+      - The bind host is configuration. It stays 127.0.0.1 by default, so the
+        local demo is unchanged and stays loopback-only; the hosted image sets
+        0.0.0.0, which Modal's proxy requires.
+      - The four store directories already read from the environment, so
+        pointing them at a mounted Volume needs configuration and no new
+        persistence code.
+      - Credentials resolve identically from a modal.Secret and from the
+        repo-root .env, because readEnv already treats a missing .env as empty
+        and lets the process environment win.
+      - Startup logs say which mode it is in and where its state lives, so a
+        container whose Volume failed to mount is diagnosable from the first log
+        line rather than from missing voices.
+      - Both paths are covered by tests — the local default and the hosted
+        override — since a default that only one path exercises is a default
+        that drifts.
+    scope_in:
+      - Bind host, store directories, findings directory, and UI directory as
+        resolved configuration.
+      - Keeping the local runbook true.
+    scope_out:
+      - The Modal image and app that set those values (modal-hosted-gateway).
+      - Session handling and the login route (shared-password-gate).
+      - Any change to what the stores contain or how they evict.
+  - name: shared-password-gate
+    status: planned
+    wiring_assignment:
+      territory:
+        - gateway/src/auth/session.ts
+        - gateway/src/auth/hash.ts
+        - gateway/src/auth/rate-limit.ts
+        - gateway/src/auth/plugin.ts
+        - gateway/test/auth-session.test.ts
+        - gateway/test/auth-rate-limit.test.ts
+        - gateway/test/auth-plugin.test.ts
+        - ui/src/components/AccessGate.tsx
+        - ui/src/api/client.ts
+        - ui/test/access-gate.test.tsx
+    user_story: As the operator, I want one shared password in front of the hosted
+      demo, so that a link I hand out reaches people I chose without turning the
+      demo into an accounts system.
+    acceptance_criteria:
+      - Only an Argon2id hash is deployed, held in a modal.Secret. The plaintext
+        password exists in the operator's head and nowhere in the repository,
+        the image, or the environment.
+      - A session lasts 60 minutes from login, after which the next request
+        returns 401 and the gate reappears.
+      - The session store is in-memory by deliberate choice, so a container
+        restart ends every session. This is stated as behaviour, not discovered
+        as a bug.
+      - Login attempts are rate-limited, because one shared password behind a
+        public URL is exactly the shape brute force is good at.
+      - The session travels in an HttpOnly, Secure, SameSite cookie — not a
+        bearer token — because the UI puts gateway URLs directly into <audio
+        src> and <a download>, and those requests cannot carry an Authorization
+        header.
+      - Every /api/* route and the static UI sit behind the gate; the login
+        route itself and nothing else is exempt.
+      - Password comparison is constant-time, and a failed attempt says only
+        that it failed.
+      - A 401 mid-session returns the browser to the gate without losing the
+        typed draft, per the standing rule that user work is never lost.
+    scope_in:
+      - Hashing, verification, session lifetime, rate limiting, the Fastify
+        hook, the login route, and the browser-side gate.
+      - 401 handling in the existing API client.
+    scope_out:
+      - Accounts, per-user identity, or scoping any store to a user — one
+        password, one workspace.
+      - Password rotation tooling beyond redeploying the secret.
+      - What the shared workspace then looks like to more than one person
+        (shared-workspace-honesty).
+  - name: shared-workspace-honesty
+    status: planned
+    wiring_assignment:
+      territory:
+        - ui/src/components/SpeakWorkspace.tsx
+        - ui/src/components/VoiceWorkspace.tsx
+        - ui/src/state/voices.ts
+        - ui/test/shared-workspace.test.tsx
+    user_story: As someone using the hosted demo at the same time as someone else, I
+      want the interface to mean what it says, so that a shared workspace does
+      not read as a broken private one.
+    acceptance_criteria:
+      - The busy state distinguishes 'you are already generating' from 'someone
+        else is'. The vendor holds a process-wide lock and returns the same 409
+        for both, so the distinction is made where the request was issued rather
+        than read out of the error.
+      - Waiting on someone else's generation is a named waiting state with the
+        control disabled and the reason beside it — not an error, and not a
+        spinner.
+      - A voice deleted by someone else disappears without offering this viewer
+        an undo they do not have. The 30-second undo window is real but belongs
+        to the deleter, whose client holds the pending record.
+      - The voice library states that it is shared, once, where a first-time
+        visitor will read it before creating anything.
+      - No toasts and no confirmation dialogs are added — the shared case is
+        handled with in-place status and the existing soft-delete, exactly as
+        the single-operator case is.
+    scope_in:
+      - Copy and state for concurrency and shared ownership in the two active
+        workspaces.
+      - The deletion-visibility gap between viewers.
+    scope_out:
+      - Live push of another viewer's changes. Polling and refresh stay as they
+        are; this feature makes the current behaviour honest rather than making
+        it real-time.
+      - Any dormant surface — Scripts, described voices and temporary references
+        stay gated.
+      - Per-user scoping of the stores, which is out of scope for the whole
+        capability.

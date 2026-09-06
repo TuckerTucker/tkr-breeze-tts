@@ -1,0 +1,239 @@
+capability: hosted-deployment
+stories:
+  - name: deploy-the-hosted-demo
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Turn the working local demo into a URL I can hand to someone, without
+      handing them a credential or a checkout.
+    preconditions:
+      - The synthesis and recognition apps are deployed and reachable
+      - A proxy token pair exists
+      - The UI has been built
+    trigger_action: The operator deploys the hosting app
+    steps:
+      - actor: Operator
+        action: Builds the UI and deploys the hosting app
+        system_response: An image carrying Node, ffmpeg, the built UI and the recorded
+          findings is built, and a URL is printed
+      - actor: Operator
+        action: Opens the URL
+        system_response: The password gate renders, served from the same origin that
+          will serve the API
+      - actor: Operator
+        action: Looks at the page source and the network tab
+        system_response: No Modal-Key, no Modal-Secret, and no .modal.run URL appears in
+          any asset, header, or response body
+    acceptance_criteria:
+      - given: a deployed hosting app
+        when: the browser loads any asset or calls any route
+        then: the proxy credential and the upstream endpoint are absent from everything
+          it receives
+      - given: the hosting endpoint
+        when: a request arrives without Modal proxy auth headers
+        then: it is served, because proxy auth is deliberately off on this app and the
+          password gate is what protects it
+      - given: the deployed image
+        when: the gateway starts
+        then: ffmpeg is present and reference capture is not silently degraded to
+          WAV-only
+      - given: the deployed image
+        when: the UI asks for measured latency
+        then: the baked-in findings are read and real numbers are shown rather than 'not
+          yet measured'
+    feature: modal-hosted-gateway
+  - name: run-the-same-gateway-locally-and-hosted
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Keep developing on the Mac exactly as before, with hosting as a
+      deployment target rather than a fork.
+    preconditions:
+      - The repo is checked out with a valid .env
+    trigger_action: The operator runs npm start locally after hosting exists
+    steps:
+      - actor: Operator
+        action: Runs npm start with no new configuration
+        system_response: The gateway binds 127.0.0.1 as it always has, reads .env, and
+          writes to .cache/ — nothing about the local demo has changed
+      - actor: Operator
+        action: Deploys the same source to Modal
+        system_response: The image supplies 0.0.0.0, a Volume mount path, and
+          credentials from a Secret, and the identical code serves them
+    acceptance_criteria:
+      - given: no hosting configuration
+        when: the gateway starts
+        then: it binds 127.0.0.1 and remains unreachable from off the machine
+      - given: a hosted container
+        when: the gateway starts
+        then: it binds 0.0.0.0, because Modal's proxy cannot reach a loopback-only
+          listener
+      - given: credentials supplied only through the process environment
+        when: configuration is validated
+        then: it succeeds, and a missing .env file is not an error
+      - given: either mode
+        when: the gateway logs its first line
+        then: it names the mode and the resolved state directory, so a Volume that
+          failed to mount is visible immediately rather than as missing voices
+    feature: portable-gateway-runtime
+  - name: keep-voices-across-a-container-restart
+    status: draft
+    number: 2
+    actor: Demo visitor
+    intent: Find the voice I saved yesterday still there, rather than discovering
+      that the demo forgets.
+    preconditions:
+      - The hosted demo is deployed with a Volume
+      - A voice has been saved
+    trigger_action: The visitor returns after the container has scaled down and started again
+    steps:
+      - actor: Demo visitor
+        action: Saves a voice, then leaves
+        system_response: The voice and its WAV are written to the mounted Volume and
+          committed in the background
+      - actor: Demo visitor
+        action: Returns after a restart and opens Voices
+        system_response: The voice is listed and plays, having been read back off the
+          Volume at startup
+    acceptance_criteria:
+      - given: a saved voice
+        when: the container is replaced
+        then: the voice, its transcript and its audio survive, because Modal enables
+          background commits on every volume mount
+      - given: a clip in the cache
+        when: the cache exceeds its ceiling
+        then: eviction stays oldest-first and bounded exactly as it is locally — hosting
+          does not change the retention rule
+      - given: a staged reference
+        when: its maximum age passes
+        then: the WAV and its transcript sidecar expire together, on the Volume as on
+          disk
+      - given: two containers
+        when: anything at all
+        then: this cannot arise, because the app is pinned to one container precisely so
+          two in-memory indexes cannot diverge over one Volume
+    feature: portable-gateway-runtime
+  - name: open-the-hosted-demo-with-the-shared-password
+    status: draft
+    number: 1
+    actor: Demo visitor
+    intent: Get into the demo with the password I was given, and then not think
+      about authentication again.
+    preconditions:
+      - The hosting app is deployed with a password hash in its Secret
+      - The visitor has the link and the password
+    trigger_action: The visitor opens the hosted URL
+    steps:
+      - actor: Demo visitor
+        action: Opens the URL
+        system_response: A single password field is shown; no part of the console
+          renders behind it and no API call has been made
+      - actor: Demo visitor
+        action: Enters the password
+        system_response: The password is verified against the Argon2id hash in constant
+          time, a session cookie is set, and the console loads
+      - actor: Demo visitor
+        action: Plays a clip and downloads it
+        system_response: Both work, because the session is a same-origin cookie that the
+          audio element and the download link send automatically
+      - actor: Demo visitor
+        action: Enters the wrong password several times
+        system_response: Each attempt fails identically, and further attempts are rate-limited
+    acceptance_criteria:
+      - given: no valid session
+        when: any /api/* route or any UI asset is requested
+        then: it is refused, with the login route the only exemption
+      - given: a wrong password
+        when: the attempt fails
+        then: the response says only that it failed, and reveals nothing about the
+          password's length or shape
+      - given: repeated failures from one source
+        when: attempts continue
+        then: they are rate-limited, because one shared password behind a public URL is
+          what brute force is best at
+      - given: a valid session
+        when: the browser loads an <audio src> or an <a download> pointing at the
+          gateway
+        then: the request carries the session, which a bearer token in a header could
+          not have done
+      - given: the deployed image and repository
+        when: either is searched
+        then: only the hash is present and the plaintext password appears nowhere
+    feature: shared-password-gate
+  - name: be-returned-to-the-gate-without-losing-my-work
+    status: draft
+    number: 2
+    actor: Demo visitor
+    intent: Not lose the line I was in the middle of writing because an hour passed.
+    preconditions:
+      - The visitor has an active session
+      - Text has been typed into the console
+    trigger_action: The session reaches 60 minutes, or the container restarts
+    steps:
+      - actor: Demo visitor
+        action: Types a line, then leaves the tab open past the session lifetime
+        system_response: The next request returns 401 and the gate reappears
+      - actor: Demo visitor
+        action: Re-enters the password
+        system_response: The console returns with the typed line still there
+    acceptance_criteria:
+      - given: a session older than 60 minutes
+        when: any request is made
+        then: it is refused and the gate is shown
+      - given: a container restart
+        when: a previously valid session is presented
+        then: it is refused, because the session store is in memory by choice — this is
+          stated behaviour, not a defect
+      - given: a 401 arriving mid-session
+        when: the gate is shown
+        then: the draft is preserved and restored after re-entry, because losing user
+          work is never an acceptable outcome of an expiry
+      - given: re-authentication
+        when: the password is accepted
+        then: the visitor resumes where they were rather than at a default screen
+    feature: shared-password-gate
+  - name: understand-that-someone-else-is-using-it
+    status: draft
+    number: 1
+    actor: Demo visitor
+    intent: Tell the difference between the demo being broken and the demo being
+      busy with someone else.
+    preconditions:
+      - Two people are in the hosted demo behind the same password
+      - One of them is generating
+    trigger_action: The second visitor presses Speak while the first is generating
+    steps:
+      - actor: Demo visitor
+        action: Presses Speak while another generation is running
+        system_response: The control shows a waiting state naming that someone else is
+          generating, beside the control itself
+      - actor: Demo visitor
+        action: Waits
+        system_response: The generation proceeds when the upstream lock frees; nothing
+          was lost and nothing was retried by hand
+      - actor: Demo visitor
+        action: Opens Voices
+        system_response: The library states once that voices here are shared
+      - actor: Demo visitor
+        action: Watches a voice they did not delete disappear
+        system_response: It is simply gone; no undo is offered to someone who cannot perform it
+    acceptance_criteria:
+      - given: a 409 from the vendor's process-wide lock
+        when: this viewer did not issue the running request
+        then: it is presented as waiting on someone else, not as an error and not as
+          this viewer's own busy state
+      - given: a 409 from a request this viewer did issue
+        when: it is presented
+        then: the existing single-operator busy wording is unchanged
+      - given: a voice deleted by another viewer
+        when: this viewer's list refreshes
+        then: the voice is absent and no undo affordance appears, because the pending
+          undo lives in the deleter's client for 30 seconds
+      - given: the shared workspace
+        when: a first-time visitor opens Voices
+        then: they are told once that the library is shared, before they create anything
+          in it
+      - given: any of these states
+        when: they are shown
+        then: no toast and no confirmation dialog is used
+    feature: shared-workspace-honesty
