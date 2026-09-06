@@ -133,6 +133,12 @@ capabilities:
       - "Wake state: cold start surfaced as a first-class, honest state
         alongside measured warm latency."
       - Clip history and re-audition from the local cache.
+      - "Integrity of the surface that actually renders: one owner for audible
+        output, the declared transport honoured, capture and staged references
+        released deterministically, drafts durable on both sides of the app,
+        and a suite plus a lint gate pointed at the shipped capability
+        configuration rather than at the mode-era code the workspace redesign
+        superseded."
     scope_out:
       - Credential handling and audio transcoding (local-gateway).
       - Any direct call to the Modal endpoint — the browser talks only to the

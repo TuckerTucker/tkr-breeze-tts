@@ -892,3 +892,277 @@ stories:
       kind: manual
       ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
+  - name: hear-one-clip-at-a-time
+    status: draft
+    number: 1
+    actor: Operator
+    intent: Compare two clips by ear without the app playing both of them at once.
+    preconditions:
+      - At least one clip is in history
+      - A saved voice is selected in Speak
+    trigger_action: The operator replays a cached clip and then generates a new one
+    steps:
+      - actor: Operator
+        action: Replays a clip from history
+        system_response: The cached clip plays from the local cache, reaching no GPU
+      - actor: Operator
+        action: Presses Generate without waiting for the replay to finish
+        system_response: The replay stops and only the new clip is audible
+      - actor: Operator
+        action: Replays a clip while streaming playback is still running
+        system_response: The streaming playback stops and only the replay is audible
+    acceptance_criteria:
+      - given: a cached replay is playing
+        when: a generation begins
+        then: the replay is stopped before the first streamed sample reaches the audio
+          graph
+      - given: streaming playback is running
+        when: a cached clip is replayed
+        then: the streaming player is stopped and its context released
+      - given: either order
+        when: the second source starts
+        then: exactly one source is audible, and the comparison is between clips rather
+          than over them
+    feature: live-surface-integrity
+  - name: play-at-the-declared-rate
+    status: draft
+    number: 2
+    actor: Operator
+    intent: Hear the model at the speed it actually generated, and be told plainly
+      when the service describes audio the browser cannot play.
+    preconditions:
+      - The gateway is reachable
+    trigger_action: The operator generates a line
+    steps:
+      - actor: System
+        action: Returns a PCM stream with its rate and format declared in headers
+        system_response: The player builds its context from the declared rate and
+          converts using the declared format
+      - actor: System
+        action: Returns a response whose rate header is missing or unparseable
+        system_response: The failure is named as a bad transport declaration rather than
+          surfacing as an unexplained generation error
+      - actor: System
+        action: Provides a browser where the AudioWorklet cannot start
+        system_response: Playback degrades to the buffered path and says so, rather than
+          producing silence
+    acceptance_criteria:
+      - given: a declared sample rate
+        when: the audio context is created
+        then: it runs at that rate, and no second hardcoded default stands behind it
+      - given: a declared sample format
+        when: samples are converted
+        then: the declared format is what drives the conversion
+      - given: an absent or malformed rate header
+        when: playback is attempted
+        then: the operator is told the transport declaration was unusable, in place
+      - given: any failure inside the streaming path
+        when: it is caught
+        then: buffered audio plays or the failure is reported honestly, and the audio
+          context is released either way
+    feature: live-surface-integrity
+  - name: release-the-microphone-when-i-leave
+    status: draft
+    number: 3
+    actor: Operator
+    intent: Stop recording by walking away from it, and trust the microphone light
+      to tell the truth.
+    preconditions:
+      - ffmpeg is available so capture is offered
+      - A recording is in progress
+    trigger_action: The operator navigates away, reloads, or the recorder fails to
+      start
+    steps:
+      - actor: Operator
+        action: Switches workspace or reloads while recording
+        system_response: The capture stream stops and the browser's recording indicator
+          goes out
+      - actor: System
+        action: Fails to construct a recorder after permission was granted
+        system_response: The granted stream is released rather than left open behind an
+          error message
+      - actor: Operator
+        action: Replaces a staged reference with another
+        system_response: The abandoned reference is released rather than left on the
+          gateway until it expires
+    acceptance_criteria:
+      - given: a recording in progress
+        when: the capture component unmounts
+        then: every track on the stream is stopped
+      - given: a granted microphone stream
+        when: recorder construction throws
+        then: the stream is released and the reason is shown in place
+      - given: a staged reference the operator has replaced or discarded
+        when: it is no longer referenced by any draft
+        then: it is deleted rather than left to the twenty-four hour expiry
+    feature: live-surface-integrity
+  - name: keep-an-unfinished-voice-through-a-reload
+    status: draft
+    number: 4
+    actor: Operator
+    intent: Come back to a half-built voice and find the recording, the corrected
+      transcript and the name still there.
+    preconditions:
+      - A voice-creation draft is in progress in Voices
+    trigger_action: The operator reloads the page or closes and reopens the tab
+    steps:
+      - actor: Operator
+        action: Uploads a reference, trims it, corrects the transcript, and names the
+          voice
+        system_response: Each change is retained without being asked to save
+      - actor: Operator
+        action: Reloads the page
+        system_response: Voices reopens with the staged reference, the selected window,
+          the corrected transcript, the name and the description intact
+      - actor: System
+        action: Reads a draft with one corrupt field
+        system_response: That field falls back to its initial value and the rest of the
+          draft survives
+    acceptance_criteria:
+      - given: an in-progress voice-creation draft
+        when: the page reloads
+        then: the draft is restored, as the Speak draft already is
+      - given: a hand-edited reference transcript
+        when: the draft is restored
+        then: the edit is still marked operator-owned and is not overwritten by word
+          tracking
+      - given: a stored draft with one invalid field
+        when: it is restored
+        then: only that field resets, matching how the Speak draft is validated
+      - given: continuous typing in the draft
+        when: it is persisted
+        then: persistence does not cost a synchronous whole-state write per keystroke
+    feature: live-surface-integrity
+  - name: read-only-the-code-that-ships
+    status: draft
+    number: 5
+    actor: Maintainer
+    intent: Open a component and know it is rendered, so that reading the UI
+      describes the program the operator uses.
+    preconditions:
+      - The workspace redesign is shipped and its predecessors are superseded
+    trigger_action: The maintainer opens ui/src to change a rendered behaviour
+    steps:
+      - actor: Maintainer
+        action: Looks for where rename and delete-with-undo are implemented
+        system_response: One implementation is found, and it is the one that renders
+      - actor: Maintainer
+        action: Follows an exported helper to its callers
+        system_response: It has callers, or it does not exist
+      - actor: Maintainer
+        action: Runs the project's checks
+        system_response: An unused export is reported, not silently tolerated
+    acceptance_criteria:
+      - given: any module under ui/src
+        when: its importers are enumerated
+        then: at least one is production code, or the module is deleted with its tests
+      - given: the retired components
+        when: they are removed
+        then: no rendered behaviour changes and the dormant gated surfaces are untouched
+      - given: an export with no caller
+        when: the checks run
+        then: the lint gate reports it, because noUnusedLocals cannot
+      - given: the unwired reroll path and the uncalled wake method
+        when: they are reviewed
+        then: each is either wired deliberately or removed, with the decision recorded
+          rather than left as an intention in the code
+    feature: live-surface-integrity
+  - name: trust-the-suite-to-cover-what-ships
+    status: draft
+    number: 6
+    actor: Maintainer
+    intent: Read a green suite as evidence about the build the operator runs, not
+      about a configuration the gates disable.
+    preconditions:
+      - Scripts, described voices and temporary references are gated off
+    trigger_action: The maintainer runs the UI suite before a release
+    steps:
+      - actor: Maintainer
+        action: Runs the suite and reads what passed
+        system_response: The passing tests describe the shipped Voices and Speak surface
+      - actor: Maintainer
+        action: Looks for coverage of generating with a saved voice
+        system_response: A test asserts that the saved voice reaches the request as
+          voice_id
+      - actor: Maintainer
+        action: Finds a test that enables a dormant source
+        system_response: Its name says it is testing a gated capability, so it is not
+          mistaken for coverage of the shipped one
+    acceptance_criteria:
+      - given: the default capability configuration
+        when: a saved voice is chosen and a line generated
+        then: the outgoing request carries voice_id, asserted end to end rather than only
+          as a pure function
+      - given: the two components that render
+        when: coverage is enumerated
+        then: VoiceWorkspace and SpeakWorkspace each have direct tests
+      - given: rename, delete-with-undo and library reuse
+        when: they are tested
+        then: they are tested against the component that implements what renders
+      - given: a test that overrides an availability gate
+        when: it is read
+        then: it declares itself a dormant-capability test in its name
+    feature: live-surface-integrity
+  - name: use-clip-history-with-a-screen-reader
+    status: draft
+    number: 7
+    actor: Operator
+    intent: Work through clip history without sight, and hear which clip is selected.
+    preconditions:
+      - Several clips are in history
+      - A screen reader is active
+    trigger_action: The operator moves through the history list
+    steps:
+      - actor: Operator
+        action: Moves to a clip and selects it
+        system_response: The clip is announced as selected, and its actions become
+          available
+      - actor: Operator
+        action: Drags the reference selection window
+        system_response: The window's times update without the audio element being
+          rebuilt on every step
+    acceptance_criteria:
+      - given: a selected clip
+        when: it is announced
+        then: the selected state is carried by a role that supports it, not by
+          aria-selected on a listitem
+      - given: the console's labelled fields
+        when: the markup is validated
+        then: no flow content is nested inside a label
+      - given: a reference window being dragged
+        when: the selection moves
+        then: the preview source settles at the end of the gesture rather than on every
+          intermediate position
+    feature: live-surface-integrity
+  - name: open-the-scripts-gate-without-a-regression
+    status: draft
+    number: 8
+    actor: Maintainer
+    intent: Be able to enable the Scripts workspace as a configuration change,
+      without shipping defects that were never exercised while it was dormant.
+    preconditions:
+      - Scripts remains gated off by WORKSPACE_AVAILABILITY
+    trigger_action: The maintainer prepares the dormant workspace for a future gate
+      opening
+    steps:
+      - actor: Operator
+        action: Exports a script from a browser that is not Chrome
+        system_response: The file downloads, because the anchor is in the document and
+          its object URL outlives the click
+      - actor: System
+        action: Emits cue transitions while a script runs
+        system_response: The cue state shown follows the events in order, without a
+          stale full-document refetch overwriting a newer one
+    acceptance_criteria:
+      - given: a script export
+        when: it is triggered outside Chrome
+        then: the download starts, rather than silently doing nothing
+      - given: overlapping refreshes during a run
+        when: responses return out of order
+        then: an older response cannot replace a newer one, matching the revision guards
+          already used for cue edits and defaults
+      - given: an SSE progress event
+        when: it arrives
+        then: its payload is used, instead of being discarded in favour of refetching the
+          whole document once per cue
+    feature: live-surface-integrity

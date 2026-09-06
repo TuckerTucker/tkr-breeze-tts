@@ -336,3 +336,70 @@ features:
       kind: manual
       ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
+  - name: live-surface-integrity
+    status: planned
+    wiring_assignment:
+      territory:
+        - ui/src/App.tsx
+        - ui/src/audio/player.ts
+        - ui/src/components/ReferenceCapture.tsx
+        - ui/src/components/History.tsx
+        - ui/src/components/ReferenceTrimmer.tsx
+        - ui/src/state/workspace.ts
+        - ui/test
+        - ui/eslint.config.js
+    user_story: As the operator, I want the surface the app actually renders to be
+      the surface that is correct and covered, so that what this capability
+      claims and what it runs are the same program.
+    acceptance_criteria:
+      - Exactly one audio source is audible at a time. Starting a generation
+        stops a cached replay, and starting a replay stops streaming playback.
+      - The player reads the sample rate and sample format the gateway declares
+        rather than assuming them; 24000 and s16le are named once on the client,
+        not a second time as a silent fallback.
+      - A worklet failure reaches buffered audio, as `player.ts` already
+        promises in prose, and the AudioContext is released on every exit path
+        rather than only on the next generation.
+      - Microphone tracks stop on unmount, on a workspace switch, and when
+        MediaRecorder construction fails — not only after a successful stop.
+      - An unfinished voice-creation draft survives a reload, as the Speak draft
+        already does. The expensive draft is not the volatile one.
+      - Every module under ui/src has a production importer, or it is deleted
+        together with the tests that keep it alive.
+      - No test asserts behaviour through a capability configuration the shipped
+        build disables, unless it is explicitly a dormant-capability test and
+        says so in its name.
+      - The shipping saved-voice path is asserted end to end — a saved voice
+        chosen in Speak puts `voice_id` on the outgoing request.
+      - Selection state in clip history is exposed through an ARIA role that
+        supports it, so a screen reader can hear which clip is selected.
+      - ESLint runs over ui/ in the same command that already runs typecheck and
+        tests.
+    scope_in:
+      - Correctness of the live Voices and Speak paths — audio ownership,
+        declared transport, capture lifetime, draft durability.
+      - Removal of the mode-era components and unreferenced exports the
+        workspace redesign superseded but did not retire.
+      - Repointing the interaction suite at the shipped capability
+        configuration, and covering the two workspace components that render.
+      - Accessibility and persistence defects in the live surface.
+      - "A lint gate: `noUnusedLocals` cannot see an unused export, which is
+        exactly how the orphaned surface accumulated undetected."
+      - "Correctness of dormant code that a gate would expose. Scripts stays
+        gated; the two defects in its export and run paths are repaired here so
+        opening the gate later is a configuration change rather than a release."
+    scope_out:
+      - Waking any dormant capability. Scripts, described voices and temporary
+        references stay gated exactly as they are (voice-workspaces).
+      - Any change to the gateway's request contract, ceilings, or stores
+        (local-gateway).
+      - Re-measuring latency or changing a displayed figure (measurement).
+      - "New product surface. Every slice here restores a property the
+        capability already claims; none adds an affordance the operator did not
+        already have."
+    continues:
+      - demo-ui/feature/voice-workspaces
+      - demo-ui/feature/streaming-playback
+      - demo-ui/feature/reference-trimmer
+      - demo-ui/feature/clip-history
+      - demo-ui/feature/script-editor

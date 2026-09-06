@@ -533,3 +533,266 @@ slices:
       kind: manual
       ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
+  - number: 16
+    feature: live-surface-integrity
+    depends_on: []
+    story_ids:
+      - hear-one-clip-at-a-time
+    paths:
+      - ui/src/App.tsx
+      - ui/src/audio/player.ts
+      - ui/test/app.test.tsx
+    delivers:
+      - "One owner for audible output. App.tsx currently holds two independent
+        handles: playResponse stops player.current, replayClip pauses
+        replay.current, and neither touches the other."
+      - "The defect this closes is reachable in the shipped surface, not a
+        dormant one: History renders Replay for the selected clip, generating
+        sets selectedClipId, so Generate during a replay plays both streams at
+        once."
+      - Either a single playback owner that both paths route through, or an
+        explicit stop of the other handle at each entry point. The first is
+        preferred — two handles that must remember each other is the shape that
+        produced this.
+      - Coverage asserting the second source is silenced, in both orders —
+        generate-during-replay and replay-during-stream.
+    title: One audio owner across generation and replay
+    layer: ui
+    status: planned
+  - number: 17
+    feature: live-surface-integrity
+    depends_on: []
+    story_ids:
+      - play-at-the-declared-rate
+    paths:
+      - ui/src/audio/player.ts
+      - ui/src/audio/worklet.ts
+      - ui/test/playback.test.ts
+    delivers:
+      - "The declared sample rate honoured without a second hardcoded default.
+        player.ts:95 reads `Number(headers.get('x-sample-rate') ?? '24000')`,
+        which restates the constant the codemap invariant says must be named
+        once — a wrong rate does not fail, it plays at the wrong speed."
+      - "A guard for a missing or non-numeric header. Today a malformed value
+        yields NaN and `new AudioContext({ sampleRate: NaN })` throws, which
+        surfaces as an unexplained generation failure rather than as a bad
+        header."
+      - "X-Sample-Format read rather than ignored. The gateway parses it
+        (gateway/src/transport.ts:63) and every stubbed response in
+        app.test.tsx sends it, but the client applies s16leToFloat32
+        unconditionally — and StagedReferenceResource shows s24le, s32le and
+        f32le are representable in this system."
+      - "Reconciliation of `play()`'s catch block with its own comment. It says
+        a worklet failure must degrade to working audio, never to silence, then
+        calls onFallback and rethrows; only addModule unavailability actually
+        falls back."
+      - Release of the AudioContext on the throwing path, which today stays open
+        until the next generation calls stop().
+    title: Honour the declared transport, and fall back where the comment says
+    layer: ui
+    status: planned
+  - number: 18
+    feature: live-surface-integrity
+    depends_on: []
+    story_ids:
+      - release-the-microphone-when-i-leave
+    paths:
+      - ui/src/components/ReferenceCapture.tsx
+      - ui/test/reference-capture.test.tsx
+    delivers:
+      - "Deterministic release of the getUserMedia stream. Tracks are stopped
+        only inside media.onstop today, so a component unmount, a workspace
+        switch, or a reload mid-recording leaves the microphone live and the
+        browser's recording indicator on."
+      - A stopped stream when `new MediaRecorder(stream)` throws. The catch
+        currently sets a message and abandons an open stream.
+      - An unmount cleanup effect, which the component has none of.
+      - "Release of an abandoned staged reference. client.deleteReference exists
+        and has no caller, so a reference the operator replaces or discards sits
+        on the gateway until the 24-hour expiry."
+      - The component's first dedicated test file, covering intake validation,
+        the staging failure path, and capture release.
+    title: Release the microphone and abandoned references deterministically
+    layer: ui
+    status: planned
+  - number: 19
+    feature: live-surface-integrity
+    depends_on: []
+    story_ids:
+      - keep-an-unfinished-voice-through-a-reload
+    paths:
+      - ui/src/App.tsx
+      - ui/src/state/workspace.ts
+      - ui/test/workspace-state.test.ts
+    delivers:
+      - "Durability for the voice-creation draft. `creation` is plain useState in
+        App.tsx:113 and is never written anywhere, so a reload loses the staged
+        reference, any hand-edited transcript, the name, the description and the
+        audition."
+      - "The asymmetry corrected in the right direction. The Speak draft is
+        versioned, validated field by field, and restored; the more expensive
+        draft is the volatile one, which inverts the project's own rule that no
+        user work is lost."
+      - Field-by-field validation on restore, matching safeSpeakDraft, so one
+        corrupt field cannot erase the rest of the draft.
+      - "Persistence that does not cost a synchronous write per keystroke. The
+        existing effect stringifies the whole workspace on every change; adding
+        a staged reference's 512 peaks and word timings to that payload without
+        addressing the cadence would make a keystroke cost roughly 10-20KB of
+        synchronous localStorage work."
+    data_surface: No new data is collected. A staged reference's derived
+      metadata — peak envelope, ASR word timings, transcript — moves from
+      component memory into the existing browser-local `breeze.workspace.v2`
+      key, alongside the Speak draft already stored there. It stays in the
+      operator's own browser, is never transmitted, and the reference audio
+      itself remains on the gateway under its existing 24-hour expiry.
+    title: Persist the voice-creation draft
+    layer: ui
+    status: planned
+  - number: 20
+    feature: live-surface-integrity
+    depends_on: []
+    story_ids:
+      - read-only-the-code-that-ships
+    paths:
+      - ui/src/components/VoiceModes.tsx
+      - ui/src/components/VoiceLibrary.tsx
+      - ui/src/components/ScriptEditor.tsx
+      - ui/src/components/CueRow.tsx
+      - ui/src/state/mode.ts
+      - ui/src/state/voices.ts
+      - ui/src/state/history.ts
+      - ui/src/state/draft.ts
+      - ui/src/api/client.ts
+      - ui/test/voice-modes.test.tsx
+      - ui/test/voice-library.test.tsx
+      - ui/test/script-editor.test.tsx
+    delivers:
+      - "Retirement of the four mode-era components with no production importer:
+        VoiceModes.tsx (324 lines), VoiceLibrary.tsx (162), ScriptEditor.tsx
+        (173) and, transitively, CueRow.tsx (114). Rollup already tree-shakes
+        them out of the bundle; the cost is maintenance and false confidence,
+        not payload."
+      - "Retirement of the 63 tests that keep them alive — voice-modes 29,
+        script-editor 19, voice-library 15, being 32% of the 194-test suite.
+        Their replacements land in slice 21 against the components that render."
+      - "Retirement of the exports the redesign stranded: mode.ts INITIAL_MODE,
+        MODE_BLURB, switchMode, instructionFor, modeBlocker, needsReference,
+        CFG_LABEL, REFERENCE_MODES and the ModeState/Reference types; voices.ts
+        EMPTY_LIBRARY_COPY, isSelectable, referenceFromVoice; history.ts
+        promoteToReference, clipFilename; draft.ts rollSeed, MAX_TOKENS,
+        saveDraft; workspace.ts initialInstruction; client.ts wake,
+        scriptExportUrls, clipAudio."
+      - "Removal of the dead reroll path in App.tsx:389. `const seed =
+        effectiveSpeakDraft.seed` reassigns the value it already holds, and with
+        seedControlsVisible false in Speak the seed never changes and seedLocked
+        is inert — the line reads as an intention that was never wired."
+      - "A recorded decision on client.wake(). POST /api/wake exists in the
+        gateway and in architecture.md, but no acceptance criterion of wake-state
+        requires a deliberate warm-up: the criterion is that the operator can
+        tell before submitting whether the next request is cold, which
+        ReadinessBadge already satisfies. The method is retired here rather than
+        wired, and adding a deliberate-wake affordance stays a separate product
+        decision."
+      - "Preservation of what is dormant but real. Nothing gated by
+        WORKSPACE_AVAILABILITY or SPEAK_VOICE_SOURCE_AVAILABILITY is touched —
+        ScriptsWorkspace, ReferenceCapture and the staged/described paths are
+        reachable behind their gates and stay."
+    title: Retire the superseded mode-era surface
+    layer: ui
+    status: planned
+  - number: 21
+    feature: live-surface-integrity
+    depends_on:
+      - 20
+    story_ids:
+      - trust-the-suite-to-cover-what-ships
+      - create-and-manage-a-voice
+      - speak-with-one-voice-and-one-direction
+    paths:
+      - ui/test/app.test.tsx
+      - ui/test/voice-workspace.test.tsx
+      - ui/test/speak-workspace.test.tsx
+    delivers:
+      - "Integration coverage of the shipped Speak configuration. Eight of the
+        seventeen app tests pass speakVoiceSourceAvailability overrides enabling
+        `described` or `staged` — both false in production — so generation,
+        delivery-instruction fidelity, incomplete streams, the no-audio case and
+        reference trimming are all asserted against a surface no operator sees."
+      - "The missing end-to-end assertion: a saved voice chosen in Speak puts
+        voice_id on the outgoing FormData. resolveVoiceSpec and
+        projectSpeechRequest are well covered as pure functions in
+        workspace-state.test.ts; the wiring through the default availability is
+        covered nowhere."
+      - "First dedicated tests for the two components that actually render:
+        VoiceWorkspace.tsx (358 lines) and SpeakWorkspace.tsx (209), neither of
+        which has one today."
+      - "Rename, delete-with-undo and library reuse asserted against
+        VoiceWorkspace, which carries its own re-implemented copies of those
+        interactions. They are currently tested only against the retired
+        VoiceLibrary."
+      - Retained dormant-capability tests, renamed so an availability override
+        declares itself as testing a gated surface rather than reading as
+        coverage of the shipped one.
+    title: Cover the shipping configuration
+    layer: integration
+    status: planned
+  - number: 22
+    feature: live-surface-integrity
+    depends_on: []
+    story_ids:
+      - use-clip-history-with-a-screen-reader
+    paths:
+      - ui/src/components/History.tsx
+      - ui/src/components/Console.tsx
+      - ui/src/components/ReferenceTrimmer.tsx
+      - ui/src/App.tsx
+      - ui/eslint.config.js
+      - ui/package.json
+    delivers:
+      - "Selection state a screen reader can hear. History.tsx:62 puts
+        aria-selected on a bare <li>, and role listitem does not support it, so
+        the selected clip is announced as unselected — a listbox/option pair or
+        an equivalent construct that does support the state."
+      - "Valid label nesting in Console.tsx, which places <p> flow content inside
+        <label> phrasing content."
+      - "A settled audio src in ReferenceTrimmer.tsx:236. The element's src is
+        rebuilt from start/end on every pointermove and every 0.01s range step,
+        resetting the element continuously through a drag; it should settle on
+        pointerup."
+      - "Persistence that does not run a synchronous JSON.stringify and
+        localStorage.setItem on every keystroke (App.tsx:143)."
+      - "An ESLint configuration and a lint script wired into the same command
+        as typecheck and tests. The repository has none anywhere, against the
+        project standard, and noUnusedLocals sees only file-local bindings —
+        which is precisely why the slice 20 export surface accumulated
+        unnoticed."
+    title: Accessible history, settled playback, and a lint gate
+    layer: ui
+    status: planned
+  - number: 23
+    feature: live-surface-integrity
+    depends_on: []
+    story_ids:
+      - open-the-scripts-gate-without-a-regression
+    paths:
+      - ui/src/App.tsx
+      - ui/src/api/client.ts
+      - ui/test/scripts-workspace.test.tsx
+    delivers:
+      - "An export that works outside Chrome. exportScript revokes the object URL
+        synchronously after anchor.click() and never appends the anchor to the
+        document; both are Chrome-tolerated and both are no-ops in Firefox."
+      - "Ordered script refresh during a run. runCurrentScript's progress
+        callback discards the SSE payload entirely and refetches the whole
+        script per cue transition with no ordering guard, so an out-of-order
+        response renders stale cue state — while editScriptCue and
+        updateScriptDefaults both carry revision guards for exactly this."
+      - Use of the SSE event body the gateway already sends, instead of an
+        N-plus-one full-document refetch per cue.
+      - "Scope note: this corrects a dormant surface. Scripts stays gated by
+        WORKSPACE_AVAILABILITY; the work exists so the gate can be opened later
+        without shipping these two defects."
+    title: Correct the dormant Scripts surface before its gate opens
+    layer: ui
+    status: planned

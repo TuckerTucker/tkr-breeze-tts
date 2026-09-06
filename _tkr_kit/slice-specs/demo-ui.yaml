@@ -483,3 +483,197 @@ slice_specs:
       kind: manual
       ref: UI production build and typecheck passed; 194 UI tests and desktop/mobile
         browser QA passed with a clean console on 2026-09-01.
+  - slice: 16
+    status: draft
+    title: One audio owner
+    purpose: Make exactly one audio source audible, so comparing two clips is a
+      comparison rather than an overlap.
+    interface: A single playback owner in App.tsx that both the streaming path and
+      the cached-replay path route through, replacing the two independent refs
+      that must currently remember each other.
+    behavior: "Starting any playback stops whatever else is playing first, in both
+      directions. Today playResponse awaits player.current?.stop() and
+      replayClip pauses replay.current, and StreamingPlayer.stop() reaches only
+      its own buffered element — so neither path can silence the other. Prefer
+      one owner over cross-stopping at each call site: two handles that must
+      remember each other is the shape that produced the defect, and a third
+      playback entry point would reproduce it."
+    errors: A stop that throws must not prevent the new playback from starting; the
+      operator pressed Generate and is owed audio, not a failed stop. A replay
+      whose element cannot start is already reported in place beside the
+      control, and that stays.
+    tests: Generate during a cached replay leaves only the generated clip audible.
+      Replay during streaming playback leaves only the replay audible, and the
+      streaming context is closed. A stop failure does not block the subsequent
+      playback.
+  - slice: 17
+    status: draft
+    title: Declared transport honoured
+    purpose: Play at the rate and in the format the service declares, and make the
+      fallback the code already promises actually happen.
+    interface: StreamingPlayer.play, its private streaming and buffered paths, and
+      the conversion helpers in audio/worklet.ts.
+    behavior: "Read X-Sample-Rate and X-Sample-Format from the response and drive
+      both the AudioContext and the conversion from them. Name 24000 and s16le
+      once on the client, not a second time as a `?? '24000'` fallback —
+      the codemap invariant exists because a wrong rate does not fail, it plays
+      at the wrong speed. Treat a missing or unparseable rate as a transport
+      failure with a stated reason, rather than letting NaN reach the
+      AudioContext constructor and surface as an unexplained generation error.
+      Treat a declared format the client cannot convert the same way. Make the
+      catch in play() do what its own comment says — degrade to buffered audio —
+      or correct the comment to describe the rethrow; the current pair is a
+      promise the code does not keep. Release the AudioContext on every exit
+      path, including the throwing one, instead of leaving it open until the
+      next generation."
+    errors: Missing or malformed rate or format → a named transport failure beside
+      the control, never silence and never a wrong-speed clip. Worklet
+      unavailable → buffered playback, reported as such in the readout, which
+      already distinguishes the two paths.
+    tests: A declared non-default rate builds a context at that rate. A missing rate
+      header is reported rather than defaulted. A non-numeric rate never reaches
+      the AudioContext constructor. A declared format that is not s16le is
+      either converted correctly or refused with a reason. Every failure path
+      closes the context.
+  - slice: 18
+    status: draft
+    title: Deterministic capture release
+    purpose: Ensure the microphone stops when the operator stops caring about it,
+      not only when the recorder stops cleanly.
+    interface: ReferenceCapture's recorder lifecycle, plus release of a staged
+      reference the draft no longer holds.
+    behavior: "Stop every track on the getUserMedia stream on unmount, on workspace
+      change, and when MediaRecorder construction throws — today that only
+      happens inside media.onstop, so an unmount mid-recording leaves the stream
+      live and the browser's recording indicator on with nothing in the UI
+      explaining it. Add the cleanup effect the component does not have. Call
+      client.deleteReference, which currently has no caller anywhere, when a
+      staged reference is replaced or discarded, so working material is released
+      rather than waiting out the gateway's twenty-four hour expiry."
+    errors: Permission denial and an unavailable microphone already report in place
+      and keep upload available as a peer path; that is unchanged. A delete of
+      an already-expired reference is not an error worth showing — the operator
+      asked for it to be gone and it is gone.
+    tests: Unmounting mid-recording stops every track. A throwing recorder
+      construction releases the granted stream. Replacing a staged reference
+      deletes the previous one. Upload validation and the staging-failure path
+      keep their existing behaviour under the component's first dedicated suite.
+  - slice: 19
+    status: draft
+    title: Durable voice-creation draft
+    purpose: Stop losing the most expensive draft in the application to a reload.
+    interface: The creation draft moves from component state in App.tsx into the
+      same versioned, validated workspace persistence that already holds the
+      Speak draft.
+    behavior: "Persist the creation method, name, description, audition line, CFG,
+      seed, source clip and staged reference selection, and restore them
+      field by field so one corrupt value cannot erase the rest — matching
+      safeSpeakDraft rather than inventing a second convention. Keep a hand-edited
+      reference transcript marked operator-owned across the restore, or the
+      restore silently undoes a correction the operator made. Do not extend the
+      existing write-on-every-change effect as it stands: it stringifies the
+      whole workspace synchronously per keystroke, and a staged reference adds
+      512 peaks plus word timings to that payload."
+    errors: Storage that is full or disabled must not take the workspace down, as
+      loadWorkspaceState and saveWorkspaceState already guarantee. A restored
+      reference whose id the gateway no longer knows is reported in place, with
+      the rest of the draft kept.
+    tests: A complete creation draft survives a remount. A hand-edited transcript
+      survives with its edited flag. One corrupt field resets alone. An expired
+      reference id is reported without discarding the name, description or
+      audition line. Persistence does not perform a whole-state synchronous
+      write per keystroke.
+  - slice: 20
+    status: draft
+    title: Retire the superseded mode-era surface
+    purpose: Leave one implementation of each rendered behaviour, so reading ui/src
+      describes the program the operator runs.
+    interface: Deletion of VoiceModes, VoiceLibrary, ScriptEditor and CueRow, their
+      three test files, and the exports the workspace redesign stranded.
+    behavior: "Delete the four components with no production importer and the 63
+      tests that reference them — 32% of the suite, testing code Rollup already
+      removes from the bundle. Delete the stranded exports in mode.ts, voices.ts,
+      history.ts, draft.ts, workspace.ts and client.ts. Remove the dead reroll
+      line in App.tsx, where `const seed = effectiveSpeakDraft.seed` reassigns
+      the value it already holds and the seed consequently never changes.
+      Retire client.wake rather than wiring it: wake-state's acceptance criterion
+      is that the operator can tell before submitting whether the next request
+      is cold, which ReadinessBadge satisfies, so a deliberate warm-up
+      affordance is a new product decision and not a defect being repaired here.
+      Touch nothing that is dormant but reachable behind a gate."
+    errors: None at runtime — this slice must change no rendered behaviour. If a
+      deletion changes what the operator sees, the module was not dead and the
+      deletion is wrong.
+    tests: The suite passes with the retired tests removed and no coverage of a
+      shipped behaviour lost, which slice 21 establishes first for the paths
+      those tests were standing in for. A production build produces the same
+      rendered surface. Every remaining module under ui/src has a production
+      importer.
+  - slice: 21
+    status: draft
+    title: Cover the shipping configuration
+    purpose: Make a green suite evidence about the build the operator runs.
+    interface: app.test.tsx rebalanced onto the default capability configuration,
+      plus the first dedicated suites for VoiceWorkspace and SpeakWorkspace.
+    behavior: "Assert the shipped Speak path end to end: a saved voice selected,
+      a line written, one delivery instruction, and voice_id on the outgoing
+      FormData. Eight of seventeen app tests currently override
+      speakVoiceSourceAvailability to enable described or staged sources, both
+      false in production, so the highest-risk path is asserted only as pure
+      functions in workspace-state.test.ts. Cover VoiceWorkspace's own rename,
+      delete-with-undo, audition, keep and use-in-Speak — they are tested today
+      only against VoiceLibrary, which does not render. Keep the dormant-capability
+      tests and rename them so an availability override declares itself rather
+      than reading as coverage of the shipped surface."
+    errors: A test that needs a gate opened to pass is a dormant-capability test and
+      must say so in its name; otherwise it is a claim about a surface the
+      operator cannot reach.
+    tests: Saved-voice generation asserted through the App with default
+      availability. VoiceWorkspace and SpeakWorkspace each directly covered.
+      Voice lifecycle interactions asserted against the rendered component.
+      Dormant tests named for what they gate.
+  - slice: 22
+    status: draft
+    title: Accessible history, settled playback, and a lint gate
+    purpose: Close the accessibility, churn and tooling gaps that the shipped
+      surface carries and that no current check would catch.
+    interface: History's list semantics, Console's label markup, ReferenceTrimmer's
+      preview source, the workspace persistence effect, and an ESLint
+      configuration for ui/.
+    behavior: "Carry selection on a role that supports it — aria-selected on a bare
+      listitem is ignored, so the selected clip is announced as unselected.
+      Stop nesting flow content inside a label in Console. Settle the reference
+      preview's src at the end of a gesture instead of rebuilding the element on
+      every pointermove and every 0.01s step. Stop stringifying the whole
+      workspace synchronously on every keystroke. Add ESLint with the
+      recommended rules and run it beside typecheck and tests: the repository has
+      no configuration anywhere, and noUnusedLocals sees only file-local
+      bindings, which is how slice 20's export surface accumulated unnoticed."
+    errors: None new. Each item here is a correctness or tooling gap in behaviour
+      the capability already claims to have.
+    tests: The selected clip's state is exposed to accessibility tooling. Label
+      markup validates. Dragging the reference window does not rebuild the
+      preview element per step. The lint gate fails on an unused export and runs
+      in the project's standard check command.
+  - slice: 23
+    status: draft
+    title: Dormant Scripts correctness
+    purpose: Make the Scripts gate a configuration change rather than a release of
+      two untested defects.
+    interface: exportScript's download mechanics and runCurrentScript's progress
+      handling, both in the dormant Scripts path.
+    behavior: "Append the export anchor to the document and let its object URL
+      outlive the click; the current synchronous revoke immediately after
+      anchor.click(), on an anchor never added to the DOM, is Chrome-tolerated
+      and a no-op in Firefox. Use the SSE payload the gateway already sends
+      instead of discarding it and refetching the whole document once per cue,
+      and guard the refresh by revision the way editScriptCue and
+      updateScriptDefaults already do, so an out-of-order response cannot render
+      stale cue state."
+    errors: A failed export reports beside the control, as it does now. A dropped
+      SSE connection mid-run leaves the last ordered state visible rather than a
+      stale earlier one.
+    tests: An export triggers a download through a DOM-attached anchor whose URL is
+      still live. Out-of-order refresh responses cannot overwrite a newer cue
+      state. Progress events update cue state without a full-document refetch
+      per cue.
