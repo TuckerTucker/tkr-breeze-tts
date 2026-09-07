@@ -123,6 +123,43 @@ export function wakeCopy(
   };
 }
 
+/**
+ * What pressing Warm up costs, stated on the control.
+ *
+ * Roughly 170 seconds of H100 cold start, which holds the ten-minute warm
+ * window open. Named in time rather than dollars because the number a viewer
+ * can act on is how long they wait and how long it stays fast; the money is the
+ * operator's concern and lives in the README.
+ *
+ * Kept to a few words because it sits in the masthead beside the readiness
+ * badge. A full sentence there wrapped to four lines and doubled the header's
+ * height, which is how a helpful note becomes a layout defect.
+ */
+export const WARM_UP_COST = '~3 min to start, then fast for 10';
+
+/**
+ * Why the warm-up control is unavailable, or null when it is available.
+ *
+ * Returns a reason rather than a boolean so the caller can put it beside the
+ * disabled control, which is what the standing rules ask for instead of a
+ * button that silently does nothing.
+ *
+ * @param readiness - What the gateway last reported.
+ * @param waking - Whether a wake is already in flight.
+ * @returns The reason to show, or null when the press would do something.
+ */
+export function warmUpBlockedReason(
+  readiness: Readiness,
+  waking: boolean,
+): string | null {
+  if (waking) return 'Starting the GPU — about 3 min';
+  if (readiness === 'warm') return 'Already warm';
+  // 'unknown' stays pressable on purpose: the gateway has not answered, and
+  // refusing to let someone warm a demo because we are unsure whether it is
+  // already warm would be the wrong way round.
+  return null;
+}
+
 /** Why a cold start happens at all, shown in place rather than hidden. */
 export const WAKE_EXPLANATION = [
   'The container scaled to zero after the idle window.',

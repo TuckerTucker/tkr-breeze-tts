@@ -149,6 +149,26 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .chip[aria-pressed='true'] { background: var(--ink); color: var(--surface); }
 .chip:disabled { color: var(--ink-muted); border-color: var(--outline); cursor: not-allowed; }
 
+/* The warm-up control and the cost note it is described by. Column rather than
+   row so the note sits under the button instead of stretching the masthead,
+   and right-aligned to match .masthead__signals' flex-end. */
+.warm-up {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* Not .caption: that is 9px uppercase with 0.16em tracking, built for one-word
+   labels. This note is a short phrase and needs to stay on one line. */
+.warm-up__note {
+  font-size: 9px;
+  color: var(--ink-muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
 .generate {
   appearance: none;
   width: 100%;
@@ -263,6 +283,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (max-width: 560px) {
   .masthead { align-items: flex-start; }
   .masthead__signals { flex-direction: column; align-items: flex-end; gap: 4px; }
+  .warm-up { flex-direction: row; align-items: baseline; gap: var(--space-xs); }
   .activity-indicator { justify-content: flex-end; }
   .activity-indicator .caption { text-align: right; }
   .reference-trimmer__metrics { grid-template-columns: minmax(0, 1fr); }

@@ -14,8 +14,10 @@ import type { JSX } from 'react';
 
 import {
   WAKE_EXPLANATION,
+  WARM_UP_COST,
   readinessSummary,
   wakeCopy,
+  warmUpBlockedReason,
   type MeasuredLatency,
   type Readiness,
 } from '../state/readiness.js';
@@ -30,6 +32,51 @@ export function ReadinessBadge(props: {
       <span className={`status-dot status-dot--${props.readiness}`} aria-hidden="true" />
       <span className="caption caption--ink" role="status">
         {readinessSummary(props.readiness, props.measured)}
+      </span>
+    </div>
+  );
+}
+
+/** What the warm-up control needs. */
+export interface WarmUpButtonProps {
+  readonly readiness: Readiness;
+  /** True while a wake this control started is still in flight. */
+  readonly waking: boolean;
+  readonly onWarmUp: () => void;
+}
+
+/**
+ * Pay the cold start deliberately, instead of at the first generation.
+ *
+ * Disabled rather than hidden when it would do nothing, per the standing rule
+ * that an unavailable action is greyed out with its reason beside it. Hiding it
+ * would also make the control appear and vanish from the masthead as the warm
+ * window opens and closes, which reads as a glitch rather than as a state.
+ *
+ * The cost is stated on the control itself. This is the only button in the
+ * console that spends money — every other one is free, or is the direct
+ * consequence of a generation the operator asked for — and hosted, everyone
+ * holding the link can press it. A control that quietly draws down a shared
+ * budget is exactly the kind of thing this project writes down.
+ *
+ * @param props - Current readiness, whether a wake is running, and the handler.
+ * @returns The button and its explanation.
+ */
+export function WarmUpButton(props: WarmUpButtonProps): JSX.Element {
+  const reason = warmUpBlockedReason(props.readiness, props.waking);
+  return (
+    <div className="warm-up">
+      <button
+        type="button"
+        className="chip"
+        onClick={props.onWarmUp}
+        disabled={reason !== null}
+        aria-describedby="warm-up-note"
+      >
+        {props.waking ? 'Warming…' : 'Warm up'}
+      </button>
+      <span id="warm-up-note" className="warm-up__note">
+        {reason ?? WARM_UP_COST}
       </span>
     </div>
   );

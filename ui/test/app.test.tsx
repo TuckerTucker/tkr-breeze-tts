@@ -1087,3 +1087,88 @@ describe('the browser never learns the Modal endpoint', () => {
     }
   });
 });
+
+describe('the warm-up control in the masthead', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  /** A stub whose health starts cold and reports warm once /api/wake is hit. */
+  function coldThenWarmFetch(): typeof fetch & { wakes: number } {
+    let readiness = 'cold';
+    const impl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/wake') {
+        impl.wakes += 1;
+        readiness = 'warm';
+        return new Response(JSON.stringify({ readiness }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.startsWith('/api/health')) {
+        return new Response(JSON.stringify({ ...HEALTH, readiness }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return stubFetch()(input, init);
+    }) as typeof fetch & { wakes: number };
+    impl.wakes = 0;
+    return impl;
+  }
+
+  it('wakes the GPU on press and reflects the readiness that came back', async () => {
+    const fetchImpl = coldThenWarmFetch();
+    render(
+      <App client={new GatewayClient(fetchImpl)} audio={stubAudio()} storage={stubStorage()} />,
+    );
+
+    const button = await screen.findByRole('button', { name: 'Warm up' });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+
+    await waitFor(() => expect(fetchImpl.wakes).toBe(1));
+    // The badge follows the wake's own answer, not a hope.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Warm up' })).toBeDisabled(),
+    );
+    expect(screen.getByText(/Already warm/)).toBeInTheDocument();
+  });
+
+  it('is disabled from the start when the demo is already warm', async () => {
+    render(
+      <App client={new GatewayClient(stubFetch())} audio={stubAudio()} storage={stubStorage()} />,
+    );
+    const button = await screen.findByRole('button', { name: 'Warm up' });
+    await waitFor(() => expect(button).toBeDisabled());
+  });
+
+  it('a refused wake leaves the badge saying what it already said', async () => {
+    // A wake is a convenience, not composed work, so a failure belongs nowhere
+    // near the error surface a generation uses.
+    const fetchImpl = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/wake') {
+        return new Response(JSON.stringify({ error: { type: 'upstream', message: 'nope' } }), {
+          status: 502,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.startsWith('/api/health')) {
+        return new Response(JSON.stringify({ ...HEALTH, readiness: 'cold' }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return stubFetch()(input, init);
+    }) as typeof fetch;
+
+    render(
+      <App client={new GatewayClient(fetchImpl)} audio={stubAudio()} storage={stubStorage()} />,
+    );
+    const button = await screen.findByRole('button', { name: 'Warm up' });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Warm up' })).toBeEnabled(),
+    );
+    expect(screen.queryByText(/could not|failed/i)).not.toBeInTheDocument();
+  });
+});

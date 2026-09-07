@@ -10,7 +10,7 @@
  */
 
 import type { Clip } from '../state/history.js';
-import type { Health } from '../state/readiness.js';
+import type { Health, Readiness } from '../state/readiness.js';
 import type { StagedReferenceResource } from '../state/reference.js';
 import type {
   CuePatch,
@@ -294,6 +294,26 @@ export class GatewayClient {
   /** Read readiness, limits and recorded measurements. Never touches upstream. */
   async health(): Promise<Health> {
     return this.#read<Health>(await this.#fetch('/api/health'));
+  }
+
+  /**
+   * Ask the gateway to reach upstream, which starts a scaled-to-zero container.
+   *
+   * The standing rule is that readiness is INFERRED from idle time and never
+   * polled — a poll after scale-down would itself trigger the cold start it was
+   * checking for. This does not break that rule, it is its deliberate opposite:
+   * a person pressing a button, having been told what it costs, choosing to pay
+   * the cold start now instead of at their first generation.
+   *
+   * Returns the readiness observed after the wake, so the badge reflects what
+   * actually happened rather than what was hoped for.
+   *
+   * @returns Readiness once upstream has answered.
+   */
+  async wake(): Promise<{ readiness: Readiness }> {
+    return this.#read<{ readiness: Readiness }>(
+      await this.#fetch('/api/wake', { method: 'POST' }),
+    );
   }
 
   /** Read the recorded CFG fall-off finding, or its unmeasured default. */

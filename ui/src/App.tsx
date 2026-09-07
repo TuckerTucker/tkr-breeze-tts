@@ -31,7 +31,12 @@ import {
 } from './components/SpeakWorkspace.js';
 import { VoiceWorkspace } from './components/VoiceWorkspace.js';
 import { WorkspaceNav } from './components/WorkspaceNav.js';
-import { FirstAudioReadout, ReadinessBadge, WakeState } from './components/WakeState.js';
+import {
+  FirstAudioReadout,
+  ReadinessBadge,
+  WakeState,
+  WarmUpButton,
+} from './components/WakeState.js';
 import {
   activitySummary,
   addActivity,
@@ -238,6 +243,9 @@ export function App(props: AppProps): JSX.Element {
   const [running, setRunning] = useState(false);
   const [scriptLoading, setScriptLoading] = useState(false);
   const [waking, setWaking] = useState(false);
+  // Mirrors `waking` for the guard in warmUp, because a state read inside a
+  // callback would see the value from the render that created it.
+  const wakingRef = useRef(false);
   const [wakeElapsedMs, setWakeElapsedMs] = useState(0);
   const [playback, setPlayback] = useState<PlaybackResult | null>(null);
   const [speakFailure, setSpeakFailure] = useState<ContextFailure | null>(null);
@@ -411,6 +419,35 @@ export function App(props: AppProps): JSX.Element {
       setHealth(null);
     }
   }, [client]);
+
+  /**
+   * Pay the cold start now, at the viewer's request.
+   *
+   * Guarded on `waking` rather than debounced by time: a second press while the
+   * first wake is in flight would start nothing new upstream but would reset
+   * the elapsed timer, which reads as the wait restarting.
+   *
+   * The failure is deliberately quiet in the masthead. A wake is a
+   * convenience, not work the viewer composed, so a refused one leaves the
+   * badge saying what it already said rather than putting an error where a
+   * status belongs. A real problem resurfaces the moment they generate.
+   */
+  const warmUp = useCallback(async (): Promise<void> => {
+    if (wakingRef.current) return;
+    wakingRef.current = true;
+    setWaking(true);
+    setWakeElapsedMs(0);
+    try {
+      const { readiness } = await client.wake();
+      setHealth((current) => (current ? { ...current, readiness } : current));
+    } catch {
+      // Swallowed on purpose; see above.
+    } finally {
+      wakingRef.current = false;
+      setWaking(false);
+      await refreshHealth();
+    }
+  }, [client, refreshHealth]);
 
   const refreshClips = useCallback(async (): Promise<void> => {
     try {
@@ -1168,6 +1205,11 @@ export function App(props: AppProps): JSX.Element {
         <div className="masthead__signals">
           {currentActivity && <ActivityIndicator label={currentActivity} />}
           <ReadinessBadge readiness={health?.readiness ?? 'unknown'} measured={health?.measured ?? null} />
+          <WarmUpButton
+            readiness={health?.readiness ?? 'unknown'}
+            waking={waking}
+            onWarmUp={() => void warmUp()}
+          />
           {/* Only where a gate exists to sign out of, which the local demo
               never learns about because nothing there ever refuses a call. */}
           {gateInUse && (
