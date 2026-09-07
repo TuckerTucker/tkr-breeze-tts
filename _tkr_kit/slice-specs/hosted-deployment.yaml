@@ -16,12 +16,18 @@ slice_specs:
       on build day. Copy gateway/src, ui/dist, and bench/findings. Order the
       layers for cache reuse the way infra/image.py does: the npm install sits
       below the source copy, so editing a route rebuilds only the cheap layer.
-      Run a build-time check in the spirit of infra/smoke_check.py asserting
-      that node and ffmpeg both execute, that ui/dist/index.html exists where
-      UI_DIST_DIR will point, and that ui/public/pcm-processor.js survived the
-      Vite build into dist untransformed — it is deliberately not bundled, and
-      an image that lost it fails only at first playback. Assert
-      bench/findings/latency.json is present and parses."
+      Fix the in-image destinations as this slice's published contract — an
+      absolute path for the UI and an absolute path for the findings — because
+      slice 3 sets UI_DIST_DIR and BENCH_FINDINGS_DIR to exactly these and
+      config.ts resolves a relative path against a REPO_ROOT derived from the
+      module's own location, which in a container is not a layout worth
+      reasoning about. Run a build-time check in the spirit of
+      infra/smoke_check.py asserting that node and ffmpeg both execute, that
+      index.html exists at that fixed UI path, and that
+      ui/public/pcm-processor.js survived the Vite build into dist
+      untransformed — it is deliberately not bundled, and an image that lost it
+      fails only at first playback. Assert latency.json is present at the fixed
+      findings path and parses."
     errors: "ffmpeg absent or non-executable → fail the build. It is not optional
       here: at runtime the gateway degrades to WAV-only and writes one warning
       into a container log nobody reads, so recorded reference capture would
@@ -88,21 +94,44 @@ slice_specs:
       write contend with a checkpoint. Mount it and set CLIP_CACHE_DIR,
       VOICE_STORE_DIR, SCRIPT_STORE_DIR and REFERENCE_STORE_DIR beneath the
       mount, with BENCH_FINDINGS_DIR and UI_DIST_DIR pointing into the image.
+      Every one of these is an absolute path, without exception: config.ts
+      resolves a relative store path through resolveFromRoot against a REPO_ROOT
+      derived from the module's own location, which in the image is wherever the
+      source was copied and not a layout anyone should have to reason about.
       Set GATEWAY_HOST to 0.0.0.0. Attach the Modal proxy pair and the password
       hash from Secrets. In the web_server function, spawn the gateway with
       subprocess.Popen and return; Modal waits for the port. Set startup_timeout
       generously: the four stores each load their directory into memory and
       rechunkAll runs before listen(), so the port answers later than the
-      process starts. Set max_containers=1 and record why in a comment — each
-      store is an authoritative in-memory Map over its directory, so two
-      replicas over one Volume would each hold a stale index and last-write-wins
-      would destroy work silently. Set min_containers=1 so a visitor does not
-      pay a container start before the page renders. Set
-      requires_proxy_auth=False deliberately, with the reason stated: proxy auth
-      here would require a wk-/ws- pair in the browser, which is the exact thing
-      the gateway exists to prevent. Do not call volume.commit() anywhere —
-      Modal sets allow_background_commits on every volume mount, and a commit
-      from a Python process that does not own the writes would be theatre."
+      process starts. Declare request concurrency explicitly and high — the
+      standing 'no @modal.concurrent' invariant is about the synthesis and
+      recognition apps, where the vendor holds a process-wide lock and
+      configs/fast.json declares concurrency 1. It does not apply here and must
+      not be carried over. A Modal function processes one input at a time unless
+      told otherwise, and this container serves a browser UI in which a single
+      synthesis request holds a streaming connection open for as long as
+      GATEWAY_UPSTREAM_TIMEOUT_MS allows, 15 minutes by default. At concurrency
+      1 that one request would block every asset load, every poll, and every
+      other visitor, and the whole demo would present as hung. Node is
+      single-threaded and non-blocking, so the concurrency ceiling here is about
+      how many connections Modal will hand the container, not about parallel
+      CPU. Set max_containers=1 and record why in a comment — each store is an
+      authoritative in-memory Map over its directory, so two replicas over one
+      Volume would each hold a stale index and last-write-wins would destroy
+      work silently. Set min_containers=1 so a visitor does not pay a container
+      start before the page renders, and note that it is a standing cost rather
+      than a per-request one. Set requires_proxy_auth=False deliberately, with
+      the reason stated: proxy auth here would require a wk-/ws- pair in the
+      browser, which is the exact thing the gateway exists to prevent. Volume
+      writes commit in the background rather than synchronously, so state the
+      window rather than implying durability on return: a write is durable at
+      the next background commit, not when the gateway answers 200. Clips and
+      staged references are expendable and can live with that. Voices are the
+      one durable-by-design store, so the voice write path is where a commit is
+      worth taking — either an explicit commit after a voice is written, or the
+      window is documented in the runbook as a real if narrow way to lose a
+      voice saved seconds before a restart. Do not scatter commits anywhere
+      else."
     errors: The gateway process exiting → the container fails and Modal restarts it;
       a ConfigError already exits non-zero with a named remedy, so a bad Secret
       surfaces as a startup failure rather than a running service that 500s.
@@ -111,14 +140,16 @@ slice_specs:
       prevented by configuration rather than defended against in code, because
       there is no in-process defence against a divergent index.
     tests: Modal objects are constructed and never called, as infra/tests already
-      do. Assert max_containers is 1 and min_containers is 1. Assert
-      requires_proxy_auth is False on this app and unchanged (True) on the
-      synthesis and recognition apps — the asymmetry is the security decision
-      and a test is where it should be pinned. Assert the state Volume is not
-      the weights Volume. Assert every store environment variable resolves
-      beneath the mount path, and that UI and findings paths resolve into the
-      image rather than the Volume. Assert no volume.commit call exists in the
-      module.
+      do. Assert max_containers is 1 and min_containers is 1. Assert declared
+      request concurrency is greater than 1 on this app and remains 1 on the
+      synthesis and recognition apps — the asymmetry is the whole point and a
+      test is what stops the GPU invariant being copied onto a web server.
+      Assert requires_proxy_auth is False on this app and unchanged (True) on
+      the synthesis and recognition apps — the same shape of asymmetry, and the
+      security decision. Assert the state Volume is not the weights Volume.
+      Assert every store environment variable is an absolute path resolving
+      beneath the mount, and that UI and findings paths are absolute and resolve
+      into the image rather than the Volume.
   - slice: 4
     status: draft
     title: Password verification, sessions, and rate limiting
@@ -140,10 +171,17 @@ slice_specs:
       clock as a constructor argument, as the rest of the gateway does, so
       expiry is tested rather than slept through. Sweep expired entries on
       access; the map is small and a timer would be a second thing to shut down.
-      Rate limit login attempts on a fixed window keyed by a coarse source,
-      holding a count and a window start; evict a key when its window closes.
-      Choose the window and threshold so a person who mistypes twice is
-      unaffected and a script is stopped."
+      Rate limit login attempts on a fixed window keyed by a caller-supplied
+      string, holding a count and a window start; evict a key when its window
+      closes. The limiter takes the key and does not derive it — resolving a
+      client address from behind a proxy is a Fastify concern and belongs in
+      slice 5, and a pure module that reached for request.ip would be neither
+      pure nor correct. Choose the window and threshold so a person who mistypes
+      twice is unaffected and a script is stopped. Because the hosted deployment
+      may collapse many visitors onto one key if address resolution fails, the
+      threshold must be chosen so that a locked-out key is recoverable within a
+      window a waiting person will tolerate, rather than a long ban that turns a
+      shared bucket into an outage."
     errors: A malformed or absent hash → surfaced by configuration at startup as a
       ConfigError with a remedy, never at first login. Verification throwing →
       treated as a failed attempt and recorded as one; an Argon2 error must not
@@ -162,47 +200,85 @@ slice_specs:
       No module in this slice imports Fastify.
   - slice: 5
     status: draft
-    title: The gate in front of every route
-    purpose: Put the session in front of the whole surface — API and UI shell alike
-      — and add the one exchange that creates it.
+    title: The gate in front of every route that carries data
+    purpose: Put the session in front of everything that reads or writes state, and
+      add the one exchange that creates it — while still serving the inert shell
+      that has to render the password field.
     interface: A Fastify plugin registered in createServer before the API routes and
       the static handler. POST /api/session {password} => 204 with Set-Cookie;
-      DELETE /api/session => 204. An onRequest hook refusing everything else
-      without a valid session.
-    behavior: "Read the session id from an HttpOnly, Secure, SameSite=Lax cookie.
-      Not a bearer token, and the reason is structural rather than preferential:
+      DELETE /api/session => 204. An onRequest hook refusing every /api/* route
+      but the login exchange without a valid session, and serving the static
+      shell to anyone.
+    behavior: "Read the session id from an HttpOnly, SameSite=Lax cookie, Secure
+      whenever the gate is reachable over anything but loopback. Not a bearer
+      token, and the reason is structural rather than preferential:
       VoiceWorkspace.tsx puts /api/voices/:id/audio into an <audio src>,
       History.tsx puts a clip URL into an <a download>, and ReferenceTrimmer.tsx
       does the same — browser-issued requests that cannot carry an Authorization
       header. SameSite=Lax rather than Strict so a link into the demo does not
-      present as unauthenticated on first navigation. Exempt exactly one route,
-      POST /api/session, and nothing else — a gate that protects the API but
-      serves the console shell has only moved the problem to what the shell
-      renders. On refusal return 401 carrying the existing typed envelope with
-      type 'auth', so the browser's error path stays one shape. Rate-limit the
-      login route before verifying, so the limiter is not itself a way to spend
-      Argon2 time. Register the plugin before both fastifyStatic and the API
-      routes, since a hook registered after the route it guards guards nothing.
-      When no password hash is configured, register nothing at all: that is what
-      leaves the local demo untouched, and it is an explicit branch rather than
-      an accident of empty configuration."
-    errors: Missing or malformed cookie → 401 'auth'. Expired session → 401 'auth',
-      identical in shape, so nothing distinguishes a stale session from a forged
-      one. Wrong password → 401 with a message that says only that, and no
-      indication of the password's length or shape. Over the rate limit → 429,
-      with the same body shape and no hint about correctness. A request for a
-      static asset without a session → 401 rather than the SPA index, so the
-      shell never renders to someone who cannot use it.
-    tests: "Over a real server instance: /api/health, /api/voices, / and /index.html
-      are each refused without a session and served with one. POST /api/session
-      with the right password sets a cookie with HttpOnly, Secure and SameSite;
-      with the wrong one it returns 401 and sets nothing. DELETE ends the
+      present as unauthenticated on first navigation. Gate every /api/* route.
+      Exempt exactly two things and nothing else: POST /api/session, and the
+      static shell — index.html, the hashed Vite bundle, and
+      pcm-processor.js. The shell must be served to an unauthenticated visitor
+      because the shell is what renders AccessGate; 401-ing it would mean the
+      password field never loads and the visitor meets a bare Fastify error
+      body. This is not a hole. The shell discloses nothing — the upstream URL
+      and the proxy pair are absent from every bundled asset by standing
+      invariant, and an unauthenticated console can complete no call, because
+      every route behind it is gated. Serving the shell is also what lets slice
+      6 hold a draft in memory across an expiry; a 401 on index.html would force
+      a full page load and lose the work the gate exists not to lose. On refusal
+      return 401 carrying the existing typed envelope with type 'auth', so the
+      browser's error path stays one shape. Rate-limit the login route before
+      verifying, so the limiter is not itself a way to spend Argon2 time. Set
+      Fastify's trustProxy for the hosted mode and derive the limiter key from
+      the resolved client address — see the errors below; this is the one
+      decision that determines whether the limiter works at all. Register the
+      plugin before both fastifyStatic and the API routes, since a hook
+      registered after the route it guards guards nothing. When no password
+      hash is configured, register nothing at all: that is what leaves the local
+      demo untouched, and it is an explicit branch rather than an accident of
+      empty configuration."
+    errors: "Missing or malformed cookie on an /api/* route → 401 'auth'. Expired
+      session → 401 'auth', identical in shape, so nothing distinguishes a stale
+      session from a forged one. Wrong password → 401 with a message that says
+      only that, and no indication of the password's length or shape. Over the
+      rate limit → 429, with the same body shape and no hint about correctness.
+      A request for the static shell without a session → served, deliberately,
+      so the gate can render; every route it could call is still refused. A
+      request for any other static path → the existing SPA fallback, which
+      returns index.html and therefore discloses nothing either. Rate limiting
+      behind Modal's proxy with trustProxy unset → request.ip is the proxy for
+      every visitor, so all of them share one bucket and a single wrong-password
+      loop locks out the whole demo; this is a denial of service produced by the
+      control meant to prevent one. Trusting X-Forwarded-For unconditionally →
+      the opposite failure, a limiter an attacker defeats by varying a header.
+      Resolve it as configuration: trust the proxy only in hosted mode, take the
+      RIGHT-most address in X-Forwarded-For, and fall back to the socket address
+      when the header is absent. Right-most, not left-most: a client sends its
+      own X-Forwarded-For and the proxy APPENDS to it, so the left-most entry is
+      attacker-chosen and trusting it would defeat the limiter with a header.
+      The right-most entry is the one the adjacent proxy observed and wrote
+      itself, and is the only value in the chain nobody upstream of that proxy
+      can choose. Resolve it in a pure function taking the socket address, the
+      header and the mode, rather than through the framework's own trustProxy
+      setting — the hop policy is the whole of the limiter's correctness and
+      belongs somewhere it can be unit-tested."
+    tests: "Over a real server instance: /api/health and /api/voices are refused
+      without a session and served with one. / and /index.html are served
+      without a session, and the response body contains no wk-/ws- token and no
+      .modal.run URL — the shell being public is a decision, so the reason it is
+      safe is asserted rather than assumed. POST /api/session with the right
+      password sets a cookie with HttpOnly and SameSite, and Secure in hosted
+      mode; with the wrong one it returns 401 and sets nothing. DELETE ends the
       session and the next request is refused. An expired session is refused,
-      driven by the injected clock. Repeated wrong passwords produce 429. With
-      no hash configured, every route behaves exactly as it does today and no
-      cookie is ever set. The gate is registered before the static handler —
-      asserted by requesting a static path, not by reading the registration
-      order."
+      driven by the injected clock. Repeated wrong passwords produce 429. Two
+      requests arriving with different X-Forwarded-For values are limited
+      independently in hosted mode and are not separable in local mode, so the
+      spoofing question is pinned in both directions. With no hash configured,
+      every route behaves exactly as it does today and no cookie is ever set.
+      The gate is registered before the API routes — asserted by requesting a
+      gated route, not by reading the registration order."
   - slice: 6
     status: draft
     title: The access gate in the browser
@@ -211,10 +287,34 @@ slice_specs:
       upstream.
     interface: An AccessGate component rendered by App.tsx ahead of the console.
       GatewayClient gains createSession(password) and endSession(). The existing
-      typed 'auth' failure gains a central handler.
-    behavior: "Render a single password field and nothing else until a session
-      exists; make no API call before submission, so an unauthenticated
-      visitor's first request is the one they chose to make. Show failure in
+      typed 'auth' failure gains a central handler. Sequencing note - App.tsx
+      and api/client.ts are also demo-ui slices 16, 19, 20, 22 and 23. The
+      capability edge already puts demo-ui first; this slice must be written
+      against the post-16-23 App.tsx, not the current one, or the draft-restore
+      work here will be rewritten by slice 19's durable creation draft.
+    behavior: "This component is why slice 5 serves the static shell to an
+      unauthenticated visitor: the gate is React, so the bundle has to load
+      before anyone can type a password, and it is also what holds the draft in
+      memory across an expiry. Render a single password field and nothing else
+      until a session exists; make no API call before submission, so an
+      unauthenticated visitor's first request is the one they chose to make.
+      SCOPE CORRECTION, found in implementation: that sentence holds of the
+      AccessGate COMPONENT, not of the page load, and it cannot hold of the page
+      load without breaking something else. The browser cannot know a gate
+      exists before it asks. Slice 5 registers the gate only when a password
+      hash is configured, precisely so the local demo is untouched, and the
+      static shell carries no configuration by standing invariant — so nothing
+      in the bundle can tell the two deployments apart. Remembering 'gate
+      required' in browser storage would make a returning visitor WITH a live
+      cookie retype their password on every load, which is the opposite of the
+      point. What actually happens on a hosted first load: the console's own
+      load calls are refused, the gate goes up, and from that moment no request
+      is issued until the viewer submits. Closing the remaining gap needs a
+      deliberate unauthenticated hint — a meta tag stamped into index.html at
+      build time, or one exempt GET /api/gate — and is not worth it unless the
+      four refused calls on a first hosted load ever become a real cost. The
+      shell being served is not the console being shown — nothing behind the
+      gate renders, and every route it could call is refused. Show failure in
       place beside the field — no toast, per the standing rules, which do not
       get an exception for being a login. Disable submit while a request is in
       flight rather than erroring on a double press. On any typed 'auth' failure
@@ -248,6 +348,12 @@ slice_specs:
     interface: No API change. SpeakWorkspace distinguishes a busy state it caused
       from one it did not. VoiceWorkspace states the library is shared and
       withholds the undo strip for a disappearance it did not initiate.
+      Sequencing note - state/voices.ts is also demo-ui slice 20, and
+      SpeakWorkspace and VoiceWorkspace get their first tests in demo-ui slice
+      21. Writing shared-workspace.test.tsx before 21 lands would mean this
+      slice's tests are the only coverage those two components have, which
+      inverts what 21 is for; the capability edge already orders demo-ui first
+      and this slice depends on that being honoured rather than assumed.
     behavior: "The vendor holds a process-wide lock and returns 409 for every
       contended request, so the error carries no information about who holds it;
       the distinction must come from whether this client has a request in
@@ -255,7 +361,16 @@ slice_specs:
       read as it always did. When it does not, present a waiting state naming
       that someone else is generating: the control disabled with the reason
       beside it, which is what the standing rules already say a busy state is.
-      For voices, show the undo strip only for a deletion this client performed,
+      A waiting state that only waits would still lose the press that produced
+      it, so the request this viewer made is held and retried when the lock is
+      likely free, with bounded backoff and a bounded number of attempts. This
+      is the smallest thing that makes the state honest: the standing rules say
+      user work is never lost, and a press that produces a message and then
+      nothing is lost work. It is a retry of one held request, not a queue and
+      not a live channel — the viewer can cancel, the attempts are finite, and
+      when they run out the state says so and leaves the composed request
+      intact so a second press costs nothing but the press. For voices, show
+      the undo strip only for a deletion this client performed,
       since the PendingUndo record lives in this client's state and the
       30-second window in voices-index.ts belongs to the deleter. A voice that
       vanishes from a refresh is simply absent — offering a button that cannot
@@ -265,15 +380,24 @@ slice_specs:
       polling and no push. Refresh behaviour is unchanged, and the copy must not
       imply a liveness the demo does not have."
     errors: A 409 while this client has a request in flight → today's own-busy
-      state, unchanged. A 409 with nothing in flight → the waiting state. A
+      state, unchanged. A 409 with nothing in flight → the waiting state, with
+      the request held and retried. Retries exhausted → the state says the
+      demo stayed busy and the composed request is still there; it does not
+      silently clear. A retry that succeeds → indistinguishable from a normal
+      generation, because it is one. The viewer navigating away or cancelling →
+      the held request is dropped and nothing retries in the background. A
       voice absent on refresh → removed from the list with no undo offered. A
       voice absent because this client deleted it → the existing undo strip for
       its 30 seconds. A delete that fails because another viewer already deleted
       it → the typed not-found is presented as already gone rather than as a
       failure, since the viewer's intent was satisfied.
     tests: A 409 with a request in flight renders the existing wording; a 409 with
-      none renders the waiting state and disables the control. Neither renders a
-      toast or a dialog. A voice removed by a refresh renders no undo
+      none renders the waiting state and disables the control. A held request
+      retried after a 409 succeeds without the viewer pressing again, driven by
+      an injected clock rather than a slept-through delay. Exhausted retries
+      leave the composed request present and say so. Cancelling stops the
+      retries. Neither renders a toast or a dialog. A voice removed by a refresh
+      renders no undo
       affordance; a voice removed by this client's delete does, and it expires
       after the window. The shared-library statement is present in the voice
       library. A not-found on delete is presented as already gone. No polling
@@ -284,7 +408,7 @@ slice_specs:
     purpose: Make the hosted demo one documented sequence, and keep the local one
       true rather than quietly stale.
     interface: docs/runbooks/hosted-demo.md; a root npm script for the hosted deploy
-      beside build/start/test; infra/hosting_smoke_check.py run after deploy.
+      beside build/start/test; infra/hosting_deploy_check.py run after deploy, distinct from the build-time infra/hosting_smoke_check.py of slice 1 — a build-time check has no URL and a post-deploy check has no filesystem, so one file cannot be both.
     behavior: "Document the sequence end to end: build the UI, create the Argon2id
       hash and put it in a modal.Secret, deploy the hosting app, hand out the
       URL. State plainly that the operator generates the hash and never commits
@@ -296,12 +420,19 @@ slice_specs:
       survives. Re-verify docs/runbooks/local-demo.md and npm run setup against
       the changed configuration surface; local remains supported, so a runbook
       that has drifted is a defect this slice owns. The smoke check asserts,
-      against the deployed URL: an unauthenticated request to an API route and
-      to the UI shell are both refused; the login exchange succeeds and sets a
+      against the deployed URL: an unauthenticated request to an API route is
+      refused; an unauthenticated request to the UI shell is served, because
+      that is the deliberate exemption and an exemption nobody checks is an
+      exemption that silently widens; the login exchange succeeds and sets a
       cookie; and no response body, header, or bundled asset contains the proxy
       pair or the .modal.run URL — the standing invariant, checked where it can
-      actually be violated. The README gains a short hosted section saying
-      plainly that it is one shared password over one shared workspace."
+      actually be violated and checked hardest on the one surface served to
+      strangers. The README gains a short hosted section saying plainly that it
+      is one shared password over one shared workspace, that anything anyone
+      uploads or saves is audible to everyone else holding the link, and that
+      min_containers=1 means the hosting app bills for a resident CPU container
+      continuously rather than per request — the README already states the cost
+      shape for the GPU apps and this is the half that does not scale to zero."
     errors: The smoke check finding the credential or the upstream URL in any served
       byte → fail loudly and treat the deployment as compromised, since that is
       the invariant the whole architecture is built on. An unauthenticated
@@ -319,37 +450,55 @@ slice_specs:
   - slice: 9
     status: draft
     title: Test the hosted deployment
-    purpose: Cover the seams hosting creates, and close the one empirical unknown
-      this capability carries rather than shipping it as an assumption.
+    purpose: Cover the seams hosting creates, and close the two empirical unknowns
+      this capability carries rather than shipping them as assumptions.
     interface: gateway/test/hosted-e2e.test.ts over a real server instance with the
       gate enabled; infra/tests/test_hosting_deploy.py over constructed Modal
-      objects.
+      objects; bench/hosting_probe.py writing bench/findings/hosting.json, run
+      deliberately against a deployment the way the other three probes are.
     behavior: "Exercise the gate end to end against a started server: an API route
-      and the UI shell both refused without a session, both served with one,
-      expiry refusing, rate limiting engaging. Include a test that authenticates
-      the way an <audio src> does — a plain GET carrying only the cookie, no
-      custom headers — because that is the constraint that chose cookies over
-      tokens and a regression there is silent until someone presses play. Cover
-      both configuration paths, loopback default and hosted override, since a
-      default only one path exercises is a default that drifts. Then resolve the
-      upload question: MAX_AUDIO_UPLOAD_BYTES is 512 MiB, chosen so a long
+      refused without a session and served with one, the static shell served
+      without one, expiry refusing, rate limiting engaging. Include a test that
+      authenticates the way an <audio src> does — a plain GET carrying only the
+      cookie, no custom headers — because that is the constraint that chose
+      cookies over tokens and a regression there is silent until someone presses
+      play. Cover both configuration paths, loopback default and hosted
+      override, since a default only one path exercises is a default that
+      drifts. Then close the two unknowns with one probe against a deployment.
+      The first is response streaming, and it is the one that matters most:
+      this demo exists so the latency claim is heard rather than asserted, and
+      if Modal's web proxy buffers a web_server response then the hosted demo
+      silently becomes the buffered transport with no error anywhere and the
+      whole point evaporates. Measure time to first audio byte through the
+      hosted URL against total response time, exactly as the gateway's own
+      streaming verification did locally (17ms first byte against 176ms total);
+      a first-byte time that tracks the total is a buffering proxy. If it
+      buffers, the remedy is already built — set GATEWAY_TRANSPORT=buffered for
+      the hosted deployment and say so in the UI, because a demo that is honest
+      about being slower is worth more than one that is quietly slower. The
+      second is upload size: MAX_AUDIO_UPLOAD_BYTES is 512 MiB, chosen so a long
       reference is uploaded once, and whether Modal's web proxy passes a body
-      that large is not known. Measure it against the deployed endpoint, record
-      the result the way bench records a finding, and if the proxy imposes a
-      lower ceiling, lower the gateway's limit to match so an oversized upload
-      is refused with a real number at the boundary instead of stalling. Keep
-      the standing rule intact: no test in the suite needs a GPU, an external
-      network, or a deployed service — the upload probe is a recorded
-      measurement, like the bench probes, not a unit test."
-    errors: The proxy silently truncating a large body → the worst outcome, because
-      it presents as a corrupt reference rather than a refusal; the probe must
-      distinguish truncation from rejection and the finding must say which. A
-      cookie not sent on a media request → treated as a blocking defect, not a
-      nuisance, since it makes half the UI unusable while every fetch-based call
-      still works. A test needing a deployed service → not accepted into the
-      suite; it belongs in the probe.
+      that large is not known. Measure it, and if the proxy imposes a lower
+      ceiling, lower the gateway's limit to match so an oversized upload is
+      refused with a real number at the boundary instead of stalling. Record
+      both the way bench records a finding. Keep the standing rule intact: no
+      test in the suite needs a GPU, an external network, or a deployed
+      service — the probe is a recorded measurement, like the bench probes, not
+      a unit test."
+    errors: A buffering proxy → not an error the code can raise, which is exactly why
+      it needs a probe; it presents as a demo that works and underperforms, and
+      an unmeasured streaming claim on the hosted URL is the one failure that
+      would make the deployment worse than not shipping it. The proxy silently
+      truncating a large body → the worst upload outcome, because it presents as
+      a corrupt reference rather than a refusal; the probe must distinguish
+      truncation from rejection and the finding must say which. A cookie not
+      sent on a media request → treated as a blocking defect, not a nuisance,
+      since it makes half the UI unusable while every fetch-based call still
+      works. A test needing a deployed service → not accepted into the suite; it
+      belongs in the probe.
     tests: "This slice is the tests. Its own bar: every assertion above runs without
-      a GPU, a network, or a deployment, except the upload probe, which is a
-      recorded measurement invoked deliberately and never part of npm test. The
-      recorded finding names the observed ceiling and whether the failure mode
-      was refusal or truncation."
+      a GPU, a network, or a deployment, except the probe, which is a recorded
+      measurement invoked deliberately and never part of npm test. The recorded
+      finding names the observed first-byte and total times and whether the
+      hosted path streams, plus the observed upload ceiling and whether the
+      failure mode was refusal or truncation."

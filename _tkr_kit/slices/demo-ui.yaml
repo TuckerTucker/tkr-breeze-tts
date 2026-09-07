@@ -558,7 +558,7 @@ slices:
         generate-during-replay and replay-during-stream.
     title: One audio owner across generation and replay
     layer: ui
-    status: planned
+    status: done
   - number: 17
     feature: live-surface-integrity
     depends_on: []
@@ -590,7 +590,7 @@ slices:
         until the next generation calls stop().
     title: Honour the declared transport, and fall back where the comment says
     layer: ui
-    status: planned
+    status: done
   - number: 18
     feature: live-surface-integrity
     depends_on: []
@@ -614,7 +614,7 @@ slices:
         the staging failure path, and capture release.
     title: Release the microphone and abandoned references deterministically
     layer: ui
-    status: planned
+    status: done
   - number: 19
     feature: live-surface-integrity
     depends_on: []
@@ -648,7 +648,7 @@ slices:
       itself remains on the gateway under its existing 24-hour expiry.
     title: Persist the voice-creation draft
     layer: ui
-    status: planned
+    status: done
   - number: 20
     feature: live-surface-integrity
     depends_on: []
@@ -700,7 +700,7 @@ slices:
         reachable behind their gates and stay."
     title: Retire the superseded mode-era surface
     layer: ui
-    status: planned
+    status: done
   - number: 21
     feature: live-surface-integrity
     depends_on:
@@ -736,7 +736,7 @@ slices:
         coverage of the shipped one.
     title: Cover the shipping configuration
     layer: integration
-    status: planned
+    status: done
   - number: 22
     feature: live-surface-integrity
     depends_on: []
@@ -747,8 +747,12 @@ slices:
       - ui/src/components/Console.tsx
       - ui/src/components/ReferenceTrimmer.tsx
       - ui/src/App.tsx
+      - ui/src/styles.css
       - ui/eslint.config.js
       - ui/package.json
+      - ui/test/history.test.tsx
+      - ui/test/console.test.tsx
+      - ui/test/reference-trimmer.test.tsx
     delivers:
       - "Selection state a screen reader can hear. History.tsx:62 puts
         aria-selected on a bare <li>, and role listitem does not support it, so
@@ -769,7 +773,7 @@ slices:
         unnoticed."
     title: Accessible history, settled playback, and a lint gate
     layer: ui
-    status: planned
+    status: done
   - number: 23
     feature: live-surface-integrity
     depends_on: []
@@ -795,4 +799,4 @@ slices:
         without shipping these two defects."
     title: Correct the dormant Scripts surface before its gate opens
     layer: ui
-    status: planned
+    status: done

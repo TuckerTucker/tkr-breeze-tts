@@ -24,8 +24,16 @@ features:
         measured' for figures that are in fact measured.
       - "max_containers is 1, and the reason is written down rather than
         assumed: the stores hold authoritative in-memory indexes."
+      - "Request concurrency is declared explicitly and is greater than 1. The
+        standing 'no @modal.concurrent' invariant is about the GPU apps, where
+        the vendor holds a process-wide lock; a web server at concurrency 1
+        would let one 15-minute synthesis stream block every asset and every
+        other visitor."
       - min_containers is 1 so the first visitor does not pay a container start
-        before the page renders.
+        before the page renders, and the README says it bills continuously.
+      - "Volume durability is stated as the background-commit window it is,
+        rather than implied to be synchronous. Voices, the one durable-by-design
+        store, either commit explicitly or the window is documented."
       - The hosting posture lives in infra/config.py with the other two
         services' configuration, not in decorator arguments scattered across the
         new module.
@@ -104,14 +112,21 @@ features:
         as a bug.
       - Login attempts are rate-limited, because one shared password behind a
         public URL is exactly the shape brute force is good at.
-      - The session travels in an HttpOnly, Secure, SameSite cookie — not a
-        bearer token — because the UI puts gateway URLs directly into <audio
-        src> and <a download>, and those requests cannot carry an Authorization
-        header.
-      - Every /api/* route and the static UI sit behind the gate; the login
-        route itself and nothing else is exempt.
+      - The session travels in an HttpOnly, SameSite cookie, Secure wherever the
+        listener is not loopback — not a bearer token — because the UI puts
+        gateway URLs directly into <audio src> and <a download>, and those
+        requests cannot carry an Authorization header.
+      - "Every /api/* route sits behind the gate. Exactly two things are exempt:
+        the login exchange, and the inert static shell, which must be served
+        because it is what renders the password field — refusing it would mean
+        the gate never loads and a visitor meets a bare 401 body. The shell
+        carries no credential and no upstream URL, and can complete no call."
       - Password comparison is constant-time, and a failed attempt says only
         that it failed.
+      - "Rate limiting keys on a client address resolved through an explicit
+        trustProxy decision. Unset behind Modal's proxy, every visitor shares
+        one bucket and one wrong-password loop locks out the demo; trusted
+        blindly, the limiter is defeated by a header."
       - A 401 mid-session returns the browser to the gate without losing the
         typed draft, per the standing rule that user work is never lost.
     scope_in:
@@ -143,11 +158,18 @@ features:
       - Waiting on someone else's generation is a named waiting state with the
         control disabled and the reason beside it — not an error, and not a
         spinner.
+      - "The refused request is held and retried with bounded backoff and finite
+        attempts, so the press is not lost. A waiting state that only waits
+        discards the work it was reporting on, which the standing rules forbid.
+        It is a retry of one held request, cancellable and finite — not a queue
+        and not a live channel."
       - A voice deleted by someone else disappears without offering this viewer
         an undo they do not have. The 30-second undo window is real but belongs
         to the deleter, whose client holds the pending record.
-      - The voice library states that it is shared, once, where a first-time
-        visitor will read it before creating anything.
+      - The voice library states, once and before a first-time visitor creates
+        anything, that it is shared and that a recording uploaded here is
+        audible to everyone else holding the link. This is the disclosure the
+        hosted data surface rests on, not a courtesy.
       - No toasts and no confirmation dialogs are added — the shared case is
         handled with in-place status and the existing soft-delete, exactly as
         the single-operator case is.

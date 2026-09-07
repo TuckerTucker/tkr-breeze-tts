@@ -20,12 +20,16 @@ slices:
       - bench/findings/*.json copied in, so GET /api/health reports the measured
         warm TTFA and RTF rather than the null that makes the UI say 'not yet
         measured'.
+      - "Fixed absolute in-image destinations for the UI and the findings,
+        published as this slice's contract: slice 3 points UI_DIST_DIR and
+        BENCH_FINDINGS_DIR at exactly these, rather than each slice assuming
+        where the other put things."
       - "A build-time check in the spirit of infra/smoke_check.py: node runs,
-        ffmpeg runs, the UI's index.html and the findings files are where
-        configuration will look for them."
+        ffmpeg runs, and index.html, pcm-processor.js and the findings files sit
+        at those fixed paths."
     title: "Hosting image: Node, ffmpeg, the built UI and the recorded findings"
     layer: service
-    status: planned
+    status: done
   - number: 2
     feature: portable-gateway-runtime
     depends_on: []
@@ -55,7 +59,7 @@ slices:
         in the one .env the gateway and bench already share.
     title: Bind host and state locations as configuration, local default unchanged
     layer: api
-    status: planned
+    status: done
   - number: 3
     feature: modal-hosted-gateway
     depends_on:
@@ -70,10 +74,33 @@ slices:
       - infra/tests/test_hosting.py
     data_surface: "A modal.Volume holding the four stores the gateway already writes
       to disk: generated clips, saved voices, scripts, and staged reference
-      audio with its transcript sidecar. No new kind of data is collected — the
-      same bytes move from the operator's .cache/ to a mounted Volume. Nothing
-      personal is added; reference audio is voice recordings the visitor
-      supplies deliberately, as it already was locally."
+      audio with its transcript sidecar. No new *kind* of file is written — but
+      calling this an unchanged data surface would be false in the way that
+      matters most, so it is stated plainly instead. Locally, reference audio is
+      the operator's own voice, on the operator's own disk, audible to the
+      operator alone. Hosted, it is a third party's voice recording, on
+      operator-controlled storage, audible to every other holder of a
+      password that is handed around — and this product's function is to clone
+      a voice from exactly that recording. Recorded voice is personal data of a
+      biometric character; that it was supplied deliberately governs consent to
+      the demo, not consent to every other visitor. Two things follow, and
+      neither is optional: the shared-visibility statement in slice 7 and the
+      README line in slice 8 are the disclosure this rests on, and the voices
+      store below is an unbounded accumulation of that same audio. TRIAGED
+      2026-09-06 — .claude/rules/compliance-triage.md records all ten fields
+      against retrieved provisions (PIPEDA@2026-06-21, Alberta PIPA@2025-09-01,
+      GDPR@2016-05-04), with the corpus payload preserved in _tkr_kit/corpus/.
+      Two of its findings bind this slice. First, reference.audio is NOT GDPR
+      art. 9 special-category data — art. 9(1) reaches biometric data 'for the
+      purpose of uniquely identifying a natural person' and this product
+      synthesizes rather than identifies, so the recording is ordinary personal
+      data under arts. 5, 6 and 32. That exclusion turns on purpose, so adding
+      any speaker-identification or verification feature voids it and forces a
+      re-triage. Second, the cited basis for reference.audio is consent
+      (PIPEDA Sch1-4.3), and hosted disclosure to every other password-holder is
+      outside what a visitor consented to unless they are told — which is what
+      makes the slice 7 and slice 8 disclosures load-bearing rather than
+      polite."
     new_stores:
       - name: breeze-tts-hosted-state (modal.Volume)
         retention: bounded
@@ -87,7 +114,11 @@ slices:
       - name: references (REFERENCE_STORE_DIR on the Volume)
         retention: bounded
         rationale: Staged working material. The WAV and its transcript sidecar expire
-          together at REFERENCE_MAX_AGE_MS, 24 hours by default.
+          together at REFERENCE_MAX_AGE_MS, 24 hours by default. Bounded in
+          time, but note what hosting changes underneath that bound — for its 24
+          hours a visitor's uploaded recording is reachable by every other
+          visitor, which is a disclosure question rather than a retention one
+          and is answered in the data surface above.
       - name: voices (VOICE_STORE_DIR on the Volume)
         retention: finding
         rationale: An honest leak, and hosting is what makes it one. Voices are durable
@@ -107,18 +138,37 @@ slices:
       - A third Modal app serving the Node gateway through modal.web_server,
         with a startup_timeout that accounts for the four stores loading their
         directories into memory before the port answers.
-      - "A Volume mounted where the store environment variables point. Nothing
-        inside the Node process learns about Modal: background commits are
-        enabled on every volume mount, so durability needs no commit call in
-        TypeScript."
+      - "Request concurrency declared explicitly and high, with the reason
+        recorded beside it, because the standing 'no @modal.concurrent'
+        invariant belongs to the GPU apps and would be catastrophic if carried
+        here. A Modal function takes one input at a time unless told otherwise,
+        and this container serves a browser UI in which one synthesis holds a
+        streaming connection for up to GATEWAY_UPSTREAM_TIMEOUT_MS — 15 minutes
+        by default. At concurrency 1 that single request blocks every asset,
+        every poll and every other visitor, and the demo presents as hung rather
+        than as busy."
+      - "A Volume mounted where the store environment variables point, all of
+        them absolute: config.ts resolves a relative store path against a
+        REPO_ROOT derived from its own module location, which in a container is
+        not a layout anyone should have to reason about."
+      - "The commit window stated rather than glossed. Volume writes commit in
+        the background, so a write is durable at the next commit and not when
+        the gateway answers 200. Clips and staged references are expendable and
+        can live with that; voices are the one durable-by-design store, so
+        either the voice write path takes an explicit commit or the window is
+        documented in the runbook as a real if narrow way to lose a voice saved
+        seconds before a restart. What is not acceptable is the story promising
+        survival while the mechanism only makes it likely."
       - max_containers=1, with the reason recorded next to it — each store is an
         authoritative in-memory Map over its directory, so a second replica
         would hold a stale index and last-write-wins would quietly destroy the
         other's work. This is the store design's own requirement, not a Modal
         limitation.
       - min_containers=1 so the first visitor does not pay a container start
-        before the page renders. It is a CPU container; this is the cheap half
-        of the latency story.
+        before the page renders. It is a CPU container, so this is the cheap
+        half of the latency story — but cheap is not free, and it bills
+        continuously rather than per request, which slice 8 states in the
+        README beside the GPU cost shape.
       - "requires_proxy_auth deliberately False on this endpoint, and the reason
         stated: proxy auth here would demand a wk-/ws- pair in the browser,
         which is the exact thing the gateway exists to prevent. The password
@@ -130,7 +180,7 @@ slices:
     title: "The hosting app: web_server, Volume-backed state, single-container
       posture"
     layer: service
-    status: planned
+    status: done
   - number: 4
     feature: shared-password-gate
     depends_on: []
@@ -145,8 +195,11 @@ slices:
       - gateway/test/auth-rate-limit.test.ts
     data_surface: No personal data. A session record holds an opaque random id, a
       creation timestamp, and nothing else — no name, no address, no identifier
-      tied to a person, because there are no accounts. Rate-limit counters key
-      on a coarse request source and hold a count and a window start.
+      tied to a person, because there are no accounts. Rate-limit counters hold
+      a count and a window start against a key the caller supplies; resolving
+      that key from a client address is slice 5's problem, since a pure module
+      that reached for request.ip would be neither pure nor correct behind a
+      proxy.
     new_stores:
       - name: session store (in-memory Map)
         retention: bounded
@@ -172,15 +225,18 @@ slices:
         already uses.
       - An in-memory store by deliberate choice, recorded here so that a restart
         ending every session reads as the decision it is.
-      - Fixed-window rate limiting on login attempts, because one shared
+      - "Fixed-window rate limiting on login attempts, because one shared
         password behind a public URL is precisely the shape brute force is good
-        at.
+        at. The limiter takes its key rather than deriving one, and its
+        threshold is chosen so that a key which does end up shared recovers
+        within a wait a person tolerates — a long ban would turn a collapsed
+        bucket into an outage."
       - These as pure modules with no Fastify import, so their rules are
         testable alone — the same separation cache-index.ts and voices-index.ts
         already keep from their filesystem halves.
     title: Password verification, sessions, and login rate limiting
     layer: domain
-    status: planned
+    status: done
   - number: 5
     feature: shared-password-gate
     depends_on:
@@ -193,16 +249,42 @@ slices:
       - gateway/src/index.ts
       - gateway/test/auth-plugin.test.ts
     delivers:
-      - A Fastify onRequest hook refusing everything without a valid session —
-        every /api/* route and the static UI alike. A gate that protects the API
-        but serves the console shell is not a gate.
-      - POST /api/session as the single exemption, and a matching DELETE for
-        signing out.
-      - "The session in an HttpOnly, Secure, SameSite=Lax cookie rather than a
-        bearer token. This is forced, not preferred: the UI puts gateway URLs
-        directly into <audio src> and <a download>, and neither can carry an
-        Authorization header. Choosing a token here would mean rewriting every
-        media path into blob fetches."
+      - A Fastify onRequest hook refusing every /api/* route without a valid
+        session. Everything that reads or writes state is behind it; nothing
+        that does is in front of it.
+      - "Two exemptions and no others: POST /api/session, with a matching DELETE
+        for signing out, and the inert static shell — index.html, the hashed
+        bundle, pcm-processor.js. The shell must be served to an
+        unauthenticated visitor because the shell is what renders the password
+        field. Refusing it would mean the gate never loads and a visitor handed
+        the link meets a bare 401 body instead of a login."
+      - "The reason serving the shell is not a hole, recorded where someone will
+        later be tempted to close it: the bundle carries no upstream URL and no
+        credential by standing invariant, and an unauthenticated console can
+        complete no call because every route behind it is refused. Serving it is
+        also what lets slice 6 hold a draft across an expiry — a 401 on
+        index.html forces a full page load and loses the work the gate exists
+        not to lose."
+      - "The session in an HttpOnly, SameSite=Lax cookie, Secure wherever the
+        listener is not loopback, rather than a bearer token. This is forced,
+        not preferred: the UI puts gateway URLs directly into <audio src> and <a
+        download>, and neither can carry an Authorization header. Choosing a
+        token here would mean rewriting every media path into blob fetches."
+      - "The client address resolved by an explicit hop policy, and the limiter
+        keyed on it. This is what decides whether rate limiting works at all:
+        ignore X-Forwarded-For behind Modal's proxy and every visitor shares one
+        bucket, so one wrong-password loop locks out the whole demo — a denial
+        of service produced by the control meant to prevent one. Trust it
+        unconditionally and the limiter is defeated by varying a header. The
+        RIGHT-most entry is taken, because a client supplies its own header and
+        the proxy appends to it: the left-most value is attacker-chosen, and
+        only the right-most one was written by the adjacent proxy itself."
+      - "That policy expressed as a pure function over the socket address, the
+        header and the mode, rather than delegated to the framework's trustProxy
+        option. It is the whole of the limiter's correctness, so it belongs
+        somewhere it can be unit-tested — and Fastify's own typings fight the
+        pinned logger generic when trustProxy is set, so the framework route
+        cost more than it bought."
       - A 401 carrying the existing typed error envelope with type 'auth', so
         the browser's error handling stays one shape rather than growing a
         special case.
@@ -211,9 +293,9 @@ slices:
         loopback-only listener the operator already trusts.
       - Registration ordered ahead of the static handler and the API routes,
         since a gate registered after the route it guards guards nothing.
-    title: The gate in front of every route, and the login exchange
+    title: The gate in front of every route that carries data, and the login exchange
     layer: api
-    status: planned
+    status: done
   - number: 6
     feature: shared-password-gate
     depends_on:
@@ -244,7 +326,7 @@ slices:
         upstream."
     title: The access gate in the browser, and a 401 that does not lose work
     layer: ui
-    status: planned
+    status: done
   - number: 7
     feature: shared-workspace-honesty
     depends_on:
@@ -264,6 +346,13 @@ slices:
       - "Waiting on someone else presented as a disabled control with the reason
         beside it, which is what the standing rules already say a busy state is:
         not an error, not a spinner, not a toast."
+      - "The refused request held and retried with bounded backoff and a bounded
+        number of attempts, so the press that produced the waiting state is not
+        the work the waiting state loses. A message followed by nothing is lost
+        work, which the standing rules do not permit. This is a retry of one
+        held request — cancellable, finite, no queue and no live channel — and
+        when the attempts run out the state says so and leaves the composed
+        request intact."
       - The single-operator busy wording left untouched for this viewer's own
         in-flight request, so the local demo reads exactly as it did.
       - A voice deleted by another viewer disappearing without an undo
@@ -271,14 +360,16 @@ slices:
         voices-index.ts is real, but the pending record lives in the deleter's
         client state — offering the button to anyone else would be offering a
         lie.
-      - One statement in the voice library that voices here are shared, placed
-        where a first-time visitor reads it before creating anything rather than
-        after losing something.
+      - One statement in the voice library that voices here are shared, and that
+        a recording uploaded here is audible to everyone else holding the link,
+        placed where a first-time visitor reads it before creating anything
+        rather than after losing something. This is the disclosure slice 3's
+        data surface rests on, so it is a requirement rather than a courtesy.
       - No live push. Refresh behaviour is unchanged; this slice makes the
         current behaviour honest, and says so rather than implying more.
     title: Shared-workspace truth in Speak and Voices
     layer: ui
-    status: planned
+    status: done
   - number: 8
     feature: modal-hosted-gateway
     depends_on:
@@ -290,12 +381,21 @@ slices:
       - run-the-same-gateway-locally-and-hosted
     paths:
       - docs/runbooks/hosted-demo.md
+      - docs/runbooks/local-demo.md
       - README.md
       - package.json
-      - infra/hosting_smoke_check.py
+      - infra/hosting_deploy_check.py
+      - infra/tests/test_hosting_deploy_check.py
     delivers:
       - "The deploy path as one documented sequence: build the UI, create the
         password secret, deploy the hosting app, hand out the URL."
+      - "Two checks with two names, because they answer different questions at
+        different times. infra/hosting_smoke_check.py (slice 1) runs INSIDE the
+        image at build time and asserts the container has what the gateway
+        needs. infra/hosting_deploy_check.py runs from OUTSIDE against a
+        deployed URL and asserts what must hold once it is serving. The plan
+        originally gave both the first name; one file cannot be both, since a
+        build-time check has no URL and a post-deploy check has no filesystem."
       - A runbook covering the operations the hosted demo actually needs —
         rotating the password, reading the state Volume, and what a restart does
         to sessions and to saved voices, which are opposite answers and the pair
@@ -305,16 +405,21 @@ slices:
       - A root script for the hosted deploy alongside the existing
         build/start/test scripts, so the sequence is not three remembered
         commands.
-      - "A post-deploy smoke check asserting the properties that must hold: the
-        gate refuses an unauthenticated request, the login exchange succeeds,
-        and no response body, header, or bundled asset contains the proxy pair
-        or the .modal.run URL."
-      - README orientation for the hosted option, naming plainly that it is one
-        shared password over one shared workspace — the thing a reader must know
-        before handing the link to anyone.
+      - "A post-deploy smoke check asserting the properties that must hold: an
+        unauthenticated API request is refused, an unauthenticated request for
+        the UI shell is served — the deliberate exemption, checked so it cannot
+        silently widen — the login exchange succeeds, and no response body,
+        header, or bundled asset contains the proxy pair or the .modal.run URL."
+      - "README orientation for the hosted option, naming plainly what a reader
+        must know before handing the link to anyone: it is one shared password
+        over one shared workspace, anything uploaded or saved is audible to
+        everyone else with the link, and min_containers=1 bills for a resident
+        CPU container continuously rather than per request — the README already
+        gives the cost shape for the GPU apps and this is the half that does not
+        scale to zero."
     title: Wire the hosted deployment
     layer: integration
-    status: planned
+    status: done
   - number: 9
     feature: modal-hosted-gateway
     depends_on:
@@ -326,25 +431,55 @@ slices:
     paths:
       - gateway/test/hosted-e2e.test.ts
       - infra/tests/test_hosting_deploy.py
+      - bench/hosting_probe.py
+      - bench/findings/hosting.json
     delivers:
-      - "End-to-end coverage of the gate over a real server instance:
-        unauthenticated requests refused on both an API route and the UI shell,
-        the login exchange succeeding, expiry returning 401, and rate limiting
-        engaging."
+      - "End-to-end coverage of the gate over a real server instance: an API
+        route refused without a session and served with one, the static shell
+        served without one, the login exchange succeeding, expiry returning 401,
+        and rate limiting engaging."
       - A test proving a media URL in an <audio src> position authenticates by
         cookie, since that is the constraint that chose cookies over tokens and
         a regression there would be silent until someone pressed play.
       - Coverage of both configuration paths — the loopback default and the
         hosted override — because a default only one path exercises is a default
         that drifts.
-      - "Resolution of the one unknown this capability carries: whether Modal's
-        web proxy passes a body at MAX_AUDIO_UPLOAD_BYTES (512 MiB). Recorded as
-        a measured result, and if the proxy imposes a lower ceiling the
-        gateway's limit is lowered to match it so the refusal names a real
-        number instead of being a stall."
-      - Modal SDK objects constructed but never called, keeping the standing
-        rule that no test needs a GPU, an external network, or a deployed
-        service.
+      - "Resolution of the streaming unknown, which is the one that decides
+        whether hosting is worth doing: whether Modal's web proxy passes a
+        web_server response through unbuffered. This demo exists so the latency
+        claim is heard rather than asserted, and a buffering proxy would turn
+        the hosted demo into the buffered transport with no error anywhere.
+        Measured as first-byte against total through the hosted URL, the way the
+        gateway's own 17ms-against-176ms verification was done locally. If it
+        buffers, the remedy is already built — GATEWAY_TRANSPORT=buffered for
+        the hosted deployment, said plainly in the UI, because a demo honest
+        about being slower beats one quietly slower."
+      - "Resolution of the upload unknown: whether Modal's web proxy passes a
+        body at MAX_AUDIO_UPLOAD_BYTES (512 MiB). Recorded as a measured result,
+        distinguishing truncation from refusal, and if the proxy imposes a lower
+        ceiling the gateway's limit is lowered to match it so the refusal names
+        a real number instead of being a stall."
+      - "BOTH UNKNOWNS CLOSED, 2026-09-06, against a real deployment.
+        STREAMING: Modal's web proxy does NOT buffer. Warm, first byte at 592ms
+        of a 3768ms response, ratio 0.16. The hosted demo delivers the streaming
+        the local one does and needs no GATEWAY_TRANSPORT change.
+        UPLOAD: the proxy passes 512 MiB intact — the gateway received a whole
+        MAX_AUDIO_UPLOAD_BYTES body and answered 200, so the limit needs no
+        change on the proxy's account. Recorded in bench/findings/hosting.json.
+        TWO PROBE DEFECTS FOUND BY RUNNING IT, both fixed: the first sample was
+        COLD, and a GPU cold start makes first-byte track total at ratio 0.98 —
+        indistinguishable from a buffering proxy, and very nearly the wrong
+        conclusion. The probe now warms first and records warm/cold, and
+        `streams` is anded with `warm` so an unwarmed run cannot claim a verdict.
+        The upload probe sent 512 MiB of ZEROS, which the gateway refused as
+        'not a recognised audio file' before size was ever in question; that
+        semantic 400 was misread as a proxy ceiling. It now sends a valid WAV,
+        and treats a typed gateway refusal as proof the body ARRIVED."
+      - "Both unknowns closed by one deliberately-invoked probe writing a
+        finding, the way bench's other three probes do — never part of npm test.
+        The test suite itself constructs Modal SDK objects and never calls them,
+        keeping the standing rule that no test needs a GPU, an external network,
+        or a deployed service."
     title: Test the hosted deployment
     layer: integration
-    status: planned
+    status: done

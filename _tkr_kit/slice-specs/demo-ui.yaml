@@ -651,10 +651,17 @@ slice_specs:
       bindings, which is how slice 20's export surface accumulated unnoticed."
     errors: None new. Each item here is a correctness or tooling gap in behaviour
       the capability already claims to have.
-    tests: The selected clip's state is exposed to accessibility tooling. Label
+    tests: "The selected clip's state is exposed to accessibility tooling. Label
       markup validates. Dragging the reference window does not rebuild the
-      preview element per step. The lint gate fails on an unused export and runs
-      in the project's standard check command.
+      preview element per step. These three live in ui/test/history.test.tsx,
+      console.test.tsx and reference-trimmer.test.tsx — which this slice's paths
+      originally omitted, so the behaviour shipped unasserted until the omission
+      was caught. The lint gate fails on an unused export and runs in the
+      project's standard check command: that fourth clause is tooling rather
+      than a component assertion and has no vitest home, so it is satisfied by
+      ui/package.json's lint = eslint + ts-unused-exports and the repo-root
+      check = typecheck && lint && test && test:python, and was demonstrated by
+      adding a throwaway export and watching the gate exit non-zero."
   - slice: 23
     status: draft
     title: Dormant Scripts correctness

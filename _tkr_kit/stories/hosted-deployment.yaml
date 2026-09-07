@@ -41,6 +41,12 @@ stories:
         when: the UI asks for measured latency
         then: the baked-in findings are read and real numbers are shown rather than 'not
           yet measured'
+      - given: the hosted URL
+        when: a generation streams through Modal's web proxy
+        then: first audio arrives well before the response completes, measured rather
+          than assumed — and if the proxy buffers, the hosted deployment says it
+          is on the buffered transport instead of being quietly slower, because
+          an unverified latency claim is the one thing this demo cannot ship
     feature: modal-hosted-gateway
   - name: run-the-same-gateway-locally-and-hosted
     status: draft
@@ -90,16 +96,23 @@ stories:
       - actor: Demo visitor
         action: Saves a voice, then leaves
         system_response: The voice and its WAV are written to the mounted Volume and
-          committed in the background
+          committed — either explicitly on the voice write path, or at the next
+          background commit, which is a real if narrow window in which a restart
+          seconds later would lose it
       - actor: Demo visitor
         action: Returns after a restart and opens Voices
         system_response: The voice is listed and plays, having been read back off the
           Volume at startup
     acceptance_criteria:
-      - given: a saved voice
+      - given: a voice saved and committed
         when: the container is replaced
-        then: the voice, its transcript and its audio survive, because Modal enables
-          background commits on every volume mount
+        then: the voice, its transcript and its audio survive, having been read back
+          off the Volume at startup
+      - given: a voice saved within the background-commit window
+        when: the container is replaced before that commit
+        then: it is lost — which is why the voice write path is the one place a commit
+          is worth taking, and why the runbook states the window rather than
+          promising a durability the mechanism does not give
       - given: a clip in the cache
         when: the cache exceeds its ceiling
         then: eviction stays oldest-first and bounded exactly as it is locally — hosting
@@ -141,8 +154,13 @@ stories:
         system_response: Each attempt fails identically, and further attempts are rate-limited
     acceptance_criteria:
       - given: no valid session
-        when: any /api/* route or any UI asset is requested
-        then: it is refused, with the login route the only exemption
+        when: any /api/* route is requested
+        then: it is refused, with the login exchange the only exempt route
+      - given: no valid session
+        when: the static shell is requested
+        then: it is served, deliberately, because the shell is what renders the
+          password field — and it carries no credential, no upstream URL, and no
+          call it could complete
       - given: a wrong password
         when: the attempt fails
         then: the response says only that it failed, and reveals nothing about the
@@ -209,8 +227,10 @@ stories:
           generating, beside the control itself
       - actor: Demo visitor
         action: Waits
-        system_response: The generation proceeds when the upstream lock frees; nothing
-          was lost and nothing was retried by hand
+        system_response: The held request is retried with bounded backoff and proceeds
+          when the upstream lock frees; nothing was lost and nothing was retried
+          by hand. If the attempts run out, the state says so and the composed
+          request is still there
       - actor: Demo visitor
         action: Opens Voices
         system_response: The library states once that voices here are shared
@@ -222,6 +242,10 @@ stories:
         when: this viewer did not issue the running request
         then: it is presented as waiting on someone else, not as an error and not as
           this viewer's own busy state
+      - given: a request refused while someone else was generating
+        when: the viewer waits
+        then: it is retried for them within a bounded number of attempts, because a
+          waiting state that discards the press it reports on is lost work
       - given: a 409 from a request this viewer did issue
         when: it is presented
         then: the existing single-operator busy wording is unchanged
