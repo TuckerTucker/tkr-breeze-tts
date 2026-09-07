@@ -1,7 +1,7 @@
 meta:
   fmt: 14
   name: breeze-tts-demo
-  ts: "2026-09-06T21:05:21Z"
+  ts: "2026-09-07T00:54:35Z"
   what: "A local demo of Breeze-TTS-2 (3B EN/ZH TTS). GPU inference serverless on
     Modal; a local gateway holds the credential and absorbs audio chores; a browser
     UI plays 24kHz PCM as it arrives, so the latency claim is heard, not asserted."
