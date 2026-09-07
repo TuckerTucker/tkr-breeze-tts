@@ -51,9 +51,27 @@ class TestHostingConfig:
         with pytest.raises(ConfigError, match="max_containers must be 1"):
             HostingConfig(max_containers=2)
 
-    def test_scaling_to_zero_is_refused(self) -> None:
-        with pytest.raises(ConfigError, match="min_containers"):
-            HostingConfig(min_containers=0)
+    def test_scaling_to_zero_is_allowed_and_is_the_operator_s_call(self) -> None:
+        """min_containers is a posture choice, not a correctness requirement.
+
+        It was once refused outright, which encoded a preference as a rule. The
+        resident container costs about 87 minutes of H100 headroom a month out
+        of the Starter plan's credits — worth it for a link handed out often,
+        not for one that sits idle. That trade belongs to the operator.
+        """
+        assert HostingConfig(min_containers=0).min_containers == 0
+
+    def test_a_negative_container_count_is_still_refused(self) -> None:
+        with pytest.raises(ConfigError, match="non-negative"):
+            HostingConfig(min_containers=-1)
+
+    def test_the_resident_container_is_the_default(self) -> None:
+        """Defaulting to 0 would make every first visitor wait; the default
+        stays 1 and scaling down is opt-in."""
+        assert hosting_config_from_env({}).min_containers == 1
+
+    def test_min_containers_is_environment_driven(self) -> None:
+        assert hosting_config_from_env({"BREEZE_HOSTING_MIN_CONTAINERS": "0"}).min_containers == 0
 
     def test_serialising_requests_is_refused(self) -> None:
         with pytest.raises(ConfigError, match="concurrency 1"):

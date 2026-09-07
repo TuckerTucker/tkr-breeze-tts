@@ -170,11 +170,19 @@ and staged references expire after 24 hours, but a saved voice or a script
 accumulates until someone clears it by hand. On your own Mac that was your disk
 and your restraint. Behind a password that gets passed around, it is neither.
 
-**The hosting app does not scale to zero.** It keeps one CPU container resident
-so the first visitor does not wait for a cold start, which means it bills
-continuously rather than per request — unlike the GPU apps, which do scale to
-zero and are where the real money is. `modal app stop breeze-tts-gateway` when
-you are done.
+**The hosting app does not scale to zero,** and what that costs is headroom
+rather than money. It keeps one CPU container resident so the first visitor does
+not wait for a container start. At Modal's minimum 0.125 cores that is roughly
+**$5–6 per month** — well inside the Starter plan's $30 of monthly credits, so
+on the free tier it produces no bill on its own.
+
+The number worth watching is what it leaves for the GPU. Those $30 buy about
+7.6 hours of warm H100 at ~$3.96/hr; the resident gateway takes about $5.76 of
+them, so it costs you roughly **87 minutes of H100 time a month**. If you demo
+often, sparing every first visitor a container start is a good trade. If the
+link sits idle for weeks it is 19% of your credits for nothing, and
+`BREEZE_HOSTING_MIN_CONTAINERS=0` would charge the first visitor a few seconds
+instead. `modal app stop breeze-tts-gateway` when you are done entirely.
 
 ## Tests
 

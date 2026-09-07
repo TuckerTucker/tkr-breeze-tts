@@ -119,8 +119,10 @@ slice_specs:
       authoritative in-memory Map over its directory, so two replicas over one
       Volume would each hold a stale index and last-write-wins would destroy
       work silently. Set min_containers=1 so a visitor does not pay a container
-      start before the page renders, and note that it is a standing cost rather
-      than a per-request one. Set requires_proxy_auth=False deliberately, with
+      start before the page renders. Make it environment-driven and allow 0:
+      it is a posture choice, not a correctness bound like max_containers. The
+      cost is ~$5-6/month at Modal's 0.125-core floor, inside the Starter plan's
+      $30 credits, and worth about 87 minutes of H100 headroom a month. Set requires_proxy_auth=False deliberately, with
       the reason stated: proxy auth here would require a wk-/ws- pair in the
       browser, which is the exact thing the gateway exists to prevent. Volume
       writes commit in the background rather than synchronously, so state the
@@ -430,9 +432,13 @@ slice_specs:
       strangers. The README gains a short hosted section saying plainly that it
       is one shared password over one shared workspace, that anything anyone
       uploads or saves is audible to everyone else holding the link, and that
-      min_containers=1 means the hosting app bills for a resident CPU container
-      continuously rather than per request — the README already states the cost
-      shape for the GPU apps and this is the half that does not scale to zero."
+      min_containers=1 keeps a resident CPU container at roughly $5-6/month.
+      State the figure rather than warning vaguely: it sits inside the Starter
+      plan's $30 of monthly credits and is no bill of its own, and the cost that
+      matters is the ~87 minutes of H100 headroom a month it takes from the same
+      budget. Name BREEZE_HOSTING_MIN_CONTAINERS=0 as the answer for a link that
+      sits idle, and note max_containers is not adjustable the same way because
+      that one is correctness."
     errors: The smoke check finding the credential or the upstream URL in any served
       byte → fail loudly and treat the deployment as compromised, since that is
       the invariant the whole architecture is built on. An unauthenticated

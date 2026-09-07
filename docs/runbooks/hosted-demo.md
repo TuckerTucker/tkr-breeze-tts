@@ -159,10 +159,35 @@ them afterwards (§7) so the demo starts clean for real visitors.
 ## 8. Cost shape
 
 `min_containers=1` keeps one **CPU** container resident so the first visitor does not wait for a
-container start. It bills continuously rather than per request. That is the cheap half of the
-latency story — the GPU apps still scale to zero and are where the money is — but it is not
-free, and it accrues while nobody is using the demo. `modal app stop breeze-tts-gateway` when
-you are done handing the link out.
+container start. What that costs is headroom rather than money.
+
+Modal bills a minimum of 0.125 cores at $0.0000131/core/sec, plus memory at
+$0.00000222/GiB/sec. A resident container at that floor:
+
+| RAM | Per hour | Per month (730 h) |
+|---|---|---|
+| 128 MiB | $0.0069 | **$5.03** |
+| 256 MiB | $0.0079 | **$5.76** |
+| 512 MiB | $0.0099 | $7.22 |
+
+A Node process serving a small UI sits in the 128–256 MiB band, so call it **$5–6 a month**.
+The Starter plan includes **$30/month in credits**, so on the free tier this produces no bill of
+its own — it is about 19% of the allowance.
+
+**The number to watch is what it leaves for the GPU,** which shares those credits. At roughly
+$3.96/hr warm, $30 buys about **7.6 hours** of H100. The resident gateway takes about $5.76 of
+them, so it costs you roughly **87 minutes of H100 time a month**.
+
+That makes it a real trade rather than a free win:
+
+- **Handing the link out regularly?** Keep it. Sparing every first visitor a container start is
+  worth 19% of the credits.
+- **Link sitting idle for weeks?** `BREEZE_HOSTING_MIN_CONTAINERS=0` before deploying. The first
+  visitor then waits a few seconds for the container instead, and you keep the headroom.
+  (`max_containers` is *not* adjustable the same way — it is 1 for correctness, because two
+  replicas over one Volume would diverge.)
+
+`modal app stop breeze-tts-gateway` when you are done handing the link out entirely.
 
 ## What this does not do
 

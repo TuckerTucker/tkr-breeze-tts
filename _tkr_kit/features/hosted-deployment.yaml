@@ -30,7 +30,8 @@ features:
         would let one 15-minute synthesis stream block every asset and every
         other visitor."
       - min_containers is 1 so the first visitor does not pay a container start
-        before the page renders, and the README says it bills continuously.
+        before the page renders; it is configurable and may be 0, and the
+        README gives the real figure rather than a vague warning.
       - "Volume durability is stated as the background-commit window it is,
         rather than implied to be synchronous. Voices, the one durable-by-design
         store, either commit explicitly or the window is documented."

@@ -234,7 +234,10 @@ config:
             LOG_LEVEL]
   modal: [BREEZE_GPU, BREEZE_PIN_GPU, BREEZE_SCALEDOWN_WINDOW_S, BREEZE_MIN_CONTAINERS,
           BREEZE_TIMEOUT_S, BREEZE_REQUIRES_PROXY_AUTH,
-          "BREEZE_ASR_* — 7 more, same shape, for the recognition app"]
+          "BREEZE_ASR_* — 7 more, same shape, for the recognition app",
+          "BREEZE_HOSTING_MIN_CONTAINERS (0 scales the hosted gateway to zero;
+           default 1 costs ~87 min of H100 headroom/month), _CONCURRENCY,
+           _STARTUP_TIMEOUT_S, _TIMEOUT_S — the hosting app"]
   defaults: { port: 8787, transport: streaming, gpu: "H100!", scaledown_s: 600, cache_max: 2GiB }
   tokens: "MODAL_KEY/MODAL_SECRET are proxy tokens (wk-/ws-). An ak-/as- API token
     authenticates to nothing here and is refused at startup by both the gateway and bench."

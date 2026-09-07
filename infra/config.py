@@ -456,10 +456,20 @@ class HostingConfig:
             would destroy the other's work silently. There is no in-process
             defence against a divergent index, so the divergence is prevented by
             configuration instead.
-        min_containers: Kept at 1 so the first visitor does not pay a container
-            start before the page renders. Unlike the GPU apps this is a CPU
-            container, which makes it the cheap half of the latency story — but
-            cheap is not free: it bills continuously rather than per request.
+        min_containers: Kept at 1 by default so the first visitor does not pay a
+            container start before the page renders. This is a posture choice,
+            not a correctness requirement like ``max_containers`` — 0 is
+            supported and is the right setting for a link that sits idle.
+
+            What it costs is headroom rather than money. Modal bills a minimum
+            0.125 cores at $0.0000131/core/sec plus memory at
+            $0.00000222/GiB/sec, so a resident container is roughly $5-6 a
+            month — inside the Starter plan's $30 of monthly credits, and no
+            bill of its own on the free tier. The figure that matters is what it
+            leaves for the GPU: those credits buy about 7.6 hours of warm H100,
+            and the resident gateway takes about 87 minutes of that per month.
+            Demo often and it is a good trade; leave the link idle for weeks and
+            it is not.
         max_concurrent_inputs: Deliberately high, and the reason matters. The
             standing "no ``@modal.concurrent``" rule belongs to the synthesis
             and recognition apps, where the vendor holds a process-wide lock and
@@ -501,11 +511,8 @@ class HostingConfig:
                 "in-memory index over its directory, so two replicas over one Volume "
                 "would diverge and last-write-wins would destroy work silently"
             )
-        if self.min_containers < 1:
-            raise ConfigError(
-                "min_containers must be at least 1 so the first visitor does not pay "
-                "a container start before the page renders"
-            )
+        if self.min_containers < 0:
+            raise ConfigError("min_containers must be non-negative")
         if self.max_concurrent_inputs < 2:
             raise ConfigError(
                 "max_concurrent_inputs must exceed 1. The 'no @modal.concurrent' rule "
@@ -547,12 +554,14 @@ def hosting_config_from_env(env: dict[str, str] | None = None) -> HostingConfig:
             raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
 
     port = _int("GATEWAY_PORT")
+    min_containers = _int("BREEZE_HOSTING_MIN_CONTAINERS")
     concurrency = _int("BREEZE_HOSTING_CONCURRENCY")
     startup = _int("BREEZE_HOSTING_STARTUP_TIMEOUT_S")
     timeout = _int("BREEZE_HOSTING_TIMEOUT_S")
 
     config = HostingConfig(
         port=8787 if port is None else port,
+        min_containers=1 if min_containers is None else min_containers,
         max_concurrent_inputs=100 if concurrency is None else concurrency,
         startup_timeout_s=300 if startup is None else startup,
         timeout_s=900 if timeout is None else timeout,

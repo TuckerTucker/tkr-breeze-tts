@@ -164,11 +164,15 @@ slices:
         would hold a stale index and last-write-wins would quietly destroy the
         other's work. This is the store design's own requirement, not a Modal
         limitation.
-      - min_containers=1 so the first visitor does not pay a container start
-        before the page renders. It is a CPU container, so this is the cheap
-        half of the latency story — but cheap is not free, and it bills
-        continuously rather than per request, which slice 8 states in the
-        README beside the GPU cost shape.
+      - "min_containers=1 by default so the first visitor does not pay a
+        container start. A CPU container at Modal's 0.125-core floor is roughly
+        $5-6 a month, inside the Starter plan's $30 of credits, so on the free
+        tier it is no bill of its own. What it actually spends is HEADROOM: the
+        same credits buy about 7.6 hours of warm H100, and the resident gateway
+        takes about 87 minutes of that a month. So it is a posture choice, not a
+        correctness one — BREEZE_HOSTING_MIN_CONTAINERS=0 is supported and is
+        right for a link that sits idle. max_containers stays 1 regardless,
+        because that one IS correctness."
       - "requires_proxy_auth deliberately False on this endpoint, and the reason
         stated: proxy auth here would demand a wk-/ws- pair in the browser,
         which is the exact thing the gateway exists to prevent. The password
@@ -413,10 +417,11 @@ slices:
       - "README orientation for the hosted option, naming plainly what a reader
         must know before handing the link to anyone: it is one shared password
         over one shared workspace, anything uploaded or saved is audible to
-        everyone else with the link, and min_containers=1 bills for a resident
-        CPU container continuously rather than per request — the README already
-        gives the cost shape for the GPU apps and this is the half that does not
-        scale to zero."
+        everyone else with the link, and min_containers=1 keeps a resident CPU
+        container at roughly $5-6/month. Give the real figure, not a warning:
+        that is inside the Starter plan's $30 credits, so it is no bill of its
+        own — what it actually spends is about 87 minutes of H100 headroom a
+        month out of the same budget, which is a trade a reader can weigh."
     title: Wire the hosted deployment
     layer: integration
     status: done
