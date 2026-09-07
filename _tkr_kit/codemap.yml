@@ -91,9 +91,11 @@ state:
        TTFA/RTF and leaves client-observed cold TTFA null."
     - "HOSTED AND LIVE at breeze-tts-gateway. The gate refuses every /api/*
        without a session, serves the shell without one, and leaks neither the
-       proxy pair nor the upstream URL. Re-run `npm run check:hosted <url>`
-       after any redeploy — it is the check that would notice the exemption
-       widening."
+       proxy pair nor the upstream URL. Re-run
+       `BREEZE_DEMO_PASSWORD=... npm run check:hosted -- <url>` after any
+       redeploy — npm drops the URL without the `--`, and without the password
+       the two login checks SKIP rather than fail, which reads like a pass. It
+       is the check that would notice the exemption widening."
     - "A cold sample cannot answer the streaming question. The GPU's ~150s start
        makes first-byte track total at ratio 0.98, which is exactly what a
        buffering proxy looks like — the first probe run nearly recorded that as
