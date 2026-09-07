@@ -1,0 +1,12 @@
+canonicalId: mem-vcvJaN8F
+sourceId: find-E0MifxNr
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: 44245e38-8cb9-4616-be84-9462bc7ba29a
+  sourceHash: ac53cb2370f255a7f216ecb2821cc68afa6b2080ae6ec1c72f92c86463f49c2f
+  snapshotAt: 2026-09-07T01:08:01.993Z
+rationale: null
+who: claude
+when: 2026-09-07T01:08:01.993Z

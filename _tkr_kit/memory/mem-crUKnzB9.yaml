@@ -1,0 +1,12 @@
+canonicalId: mem-crUKnzB9
+sourceId: find-eORhP9vs
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: 1495025d-0f25-4246-ac2e-07e9150dc016
+  sourceHash: 70bc5169efef7899bcb07249069c28f510ea42cb1e610f80df853aebb2dafd05
+  snapshotAt: 2026-09-07T01:08:04.813Z
+rationale: null
+who: claude
+when: 2026-09-07T01:08:04.813Z

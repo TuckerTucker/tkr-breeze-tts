@@ -1,0 +1,12 @@
+canonicalId: mem-QA8XBrNJ
+sourceId: find-nWF4-EdU
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: 54cb2e4f-853f-4609-bdb8-8155b4c3a09d
+  sourceHash: f94a9a16a8e9eed344867b73cb5255afbfac9aae65d1a580461e00f49d4d8e8e
+  snapshotAt: 2026-09-07T01:08:06.242Z
+rationale: null
+who: claude
+when: 2026-09-07T01:08:06.242Z

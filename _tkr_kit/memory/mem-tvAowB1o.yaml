@@ -1,0 +1,12 @@
+canonicalId: mem-tvAowB1o
+sourceId: find-eDZKygZ-
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: 18cd2a09-d812-4a09-8bbc-0fd279901661
+  sourceHash: 0702a78e0f4f6cf60d08d06486515ce53daf8104687541152a909bbe6716484b
+  snapshotAt: 2026-09-07T01:08:07.641Z
+rationale: null
+who: claude
+when: 2026-09-07T01:08:07.641Z

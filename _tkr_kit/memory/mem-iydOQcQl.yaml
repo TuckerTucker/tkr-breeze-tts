@@ -1,0 +1,12 @@
+canonicalId: mem-iydOQcQl
+sourceId: find-x2rymcvG
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: a5a56ac0-7e08-4b85-81fa-ededca9da2b6
+  sourceHash: 4e4d5403bb7d84eba651c4a64a2079e1af921fe7928faa38d8882e573d2d25ac
+  snapshotAt: 2026-09-07T01:08:06.940Z
+rationale: null
+who: claude
+when: 2026-09-07T01:08:06.940Z

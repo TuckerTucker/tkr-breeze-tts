@@ -1,0 +1,12 @@
+canonicalId: mem-anbcqOsD
+sourceId: find-6p5N_GOZ
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: badb791e-9669-48cf-9847-af021a80bf1c
+  sourceHash: cd8007a01fa83954c302716579b5af2942dbbe16b6ab9dfe493f1dc06be24b4a
+  snapshotAt: 2026-09-07T01:08:05.516Z
+rationale: null
+who: claude
+when: 2026-09-07T01:08:05.516Z

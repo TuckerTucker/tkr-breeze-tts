@@ -1,0 +1,12 @@
+canonicalId: mem-elZa9sX2
+sourceId: find-FqC2_ww5
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: 9075c16f-9c2d-4c01-b77d-288d4d06ad35
+  sourceHash: 3927015c2465005981c91f5f1aed2dd387b2a79668b37edffd5f4717b2f9c3c5
+  snapshotAt: 2026-09-07T01:08:04.118Z
+rationale: null
+who: claude
+when: 2026-09-07T01:08:04.118Z

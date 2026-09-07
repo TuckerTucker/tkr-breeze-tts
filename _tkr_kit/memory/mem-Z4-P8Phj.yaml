@@ -1,0 +1,12 @@
+canonicalId: mem-Z4-P8Phj
+sourceId: find-4-p4ju3s
+kind: finding
+disposition: discarded
+body: null
+provenance:
+  sourceSessionId: b5536452-e0bc-4112-87a2-c3aa73acaed7
+  sourceHash: 6c322cc99ea1e25a5dd5b89852119b1643a19dd6a22a51bc457dc2baaafa4538
+  snapshotAt: 2026-09-07T01:08:03.391Z
+rationale: null
+who: claude
+when: 2026-09-07T01:08:03.391Z
