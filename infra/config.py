@@ -436,3 +436,133 @@ def validate_proxy_token_pair(key: str | None, secret: str | None) -> None:
 
 SERVICE_CONFIG: Final[ServiceConfig] = config_from_env()
 ASR_CONFIG: Final[AsrConfig] = asr_config_from_env()
+
+
+@dataclass(frozen=True)
+class HostingConfig:
+    """Everything the gateway hosting app needs at decoration time.
+
+    This is the third app and the only one with no GPU. It serves the Node
+    gateway — and through it the browser UI — so its posture is decided by what
+    the gateway's stores require, not by anything about inference.
+
+    Attributes:
+        port: The port the gateway listens on inside the container, handed to
+            ``@modal.web_server``.
+        max_containers: Pinned to 1, and this is the store design's own
+            requirement rather than a Modal limitation. Each store is an
+            authoritative in-memory ``Map`` over its directory, so a second
+            replica over one Volume would hold a stale index and last-write-wins
+            would destroy the other's work silently. There is no in-process
+            defence against a divergent index, so the divergence is prevented by
+            configuration instead.
+        min_containers: Kept at 1 so the first visitor does not pay a container
+            start before the page renders. Unlike the GPU apps this is a CPU
+            container, which makes it the cheap half of the latency story — but
+            cheap is not free: it bills continuously rather than per request.
+        max_concurrent_inputs: Deliberately high, and the reason matters. The
+            standing "no ``@modal.concurrent``" rule belongs to the synthesis
+            and recognition apps, where the vendor holds a process-wide lock and
+            ``configs/fast.json`` declares concurrency 1. It does not apply here
+            and must not be carried over. A Modal function takes one input at a
+            time unless told otherwise, and this container serves a browser UI
+            in which a single synthesis holds a streaming connection open for as
+            long as ``GATEWAY_UPSTREAM_TIMEOUT_MS`` allows — 15 minutes by
+            default. At concurrency 1 that one request would block every asset
+            load, every poll and every other visitor, and the demo would present
+            as hung rather than as busy. Node is single-threaded and
+            non-blocking, so what this number bounds is how many connections
+            Modal hands the container, not parallel CPU.
+        startup_timeout_s: Generous, because the four stores each load their
+            directory into memory before ``listen()`` is called, so the port
+            answers later than the process starts.
+        timeout_s: Per-request ceiling, tracking the gateway's own upstream
+            timeout: a synthesis that the gateway is still willing to wait for
+            must not be cut off by the platform underneath it.
+        requires_proxy_auth: Deliberately **False**, and the only endpoint in
+            this project for which that is true. Proxy auth here would demand a
+            ``wk-``/``ws-`` pair in the browser, which is the exact thing the
+            gateway exists to prevent. The shared-password gate is what protects
+            this app.
+    """
+
+    port: int = 8787
+    max_containers: int = 1
+    min_containers: int = 1
+    max_concurrent_inputs: int = 100
+    startup_timeout_s: int = 300
+    timeout_s: int = 900
+    requires_proxy_auth: bool = False
+
+    def __post_init__(self) -> None:
+        if self.max_containers != 1:
+            raise ConfigError(
+                "max_containers must be 1: each gateway store is an authoritative "
+                "in-memory index over its directory, so two replicas over one Volume "
+                "would diverge and last-write-wins would destroy work silently"
+            )
+        if self.min_containers < 1:
+            raise ConfigError(
+                "min_containers must be at least 1 so the first visitor does not pay "
+                "a container start before the page renders"
+            )
+        if self.max_concurrent_inputs < 2:
+            raise ConfigError(
+                "max_concurrent_inputs must exceed 1. The 'no @modal.concurrent' rule "
+                "is about the GPU apps' process-wide vendor lock; a web server at "
+                "concurrency 1 lets one streaming synthesis block every asset and "
+                "every other visitor"
+            )
+        if self.port <= 0:
+            raise ConfigError("port must be positive")
+        if self.requires_proxy_auth:
+            raise ConfigError(
+                "requires_proxy_auth must be False on the hosting app: proxy auth here "
+                "would require a wk-/ws- pair in the browser, which is precisely what "
+                "the gateway exists to prevent. The password gate protects this app"
+            )
+
+
+def hosting_config_from_env(env: dict[str, str] | None = None) -> HostingConfig:
+    """Build a `HostingConfig`, letting the environment override defaults.
+
+    Args:
+        env: Environment mapping to read. Defaults to `os.environ`.
+
+    Returns:
+        The validated configuration.
+
+    Raises:
+        ConfigError: If any supplied value is outside its permitted range.
+    """
+    source = os.environ if env is None else env
+
+    def _int(name: str) -> int | None:
+        raw = source.get(name)
+        if raw is None or raw.strip() == "":
+            return None
+        try:
+            return int(raw)
+        except ValueError as exc:
+            raise ConfigError(f"{name} must be an integer, got {raw!r}") from exc
+
+    port = _int("GATEWAY_PORT")
+    concurrency = _int("BREEZE_HOSTING_CONCURRENCY")
+    startup = _int("BREEZE_HOSTING_STARTUP_TIMEOUT_S")
+    timeout = _int("BREEZE_HOSTING_TIMEOUT_S")
+
+    config = HostingConfig(
+        port=8787 if port is None else port,
+        max_concurrent_inputs=100 if concurrency is None else concurrency,
+        startup_timeout_s=300 if startup is None else startup,
+        timeout_s=900 if timeout is None else timeout,
+    )
+    log.info(
+        "hosting_config.resolved",
+        port=config.port,
+        max_containers=config.max_containers,
+        min_containers=config.min_containers,
+        max_concurrent_inputs=config.max_concurrent_inputs,
+        requires_proxy_auth=config.requires_proxy_auth,
+    )
+    return config
