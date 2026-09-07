@@ -11,7 +11,7 @@
  */
 
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { existsSync } from 'node:fs';
 
@@ -28,6 +28,7 @@ import pino, { type Logger } from 'pino';
 
 import {
   ConfigError,
+  isExposedHost,
   loadConfig,
   redact,
   type GatewayConfig,
@@ -76,6 +77,10 @@ import {
   type ReferenceProvenance,
   type VoiceIntentResolver,
 } from './voice-intent.js';
+import { argon2Verifier, type PasswordVerifier } from './auth/hash.js';
+import { RateLimiter } from './auth/rate-limit.js';
+import { SessionStore } from './auth/session.js';
+import { registerAuth } from './auth/plugin.js';
 
 /**
  * The server's concrete type. Spelled out because the instance carries a real
@@ -102,6 +107,14 @@ export interface ServerDeps {
   readonly ffmpeg: FfmpegStatus;
   /** Optional in tests; production uses the shared pure resolver. */
   readonly intentResolver?: VoiceIntentResolver;
+  /**
+   * The gate's collaborators. All optional: production builds the defaults, and
+   * a test injects a clock-driven store or a stub verifier so expiry and rate
+   * limiting are asserted rather than slept through.
+   */
+  readonly verifier?: PasswordVerifier;
+  readonly sessions?: SessionStore;
+  readonly limiter?: RateLimiter;
 }
 
 /** The conservative CFG control, used until the fall-off probe has run. */
@@ -291,6 +304,20 @@ export function createServer(deps: ServerDeps): GatewayServer {
   app.setErrorHandler((error, request, reply) => {
     sendError(reply, error, config, request.log as Logger);
   });
+
+  // Ahead of every API route and the static handler, because a hook registered
+  // after the route it guards guards nothing. When no hash is configured this
+  // registers nothing at all, which is what leaves the local demo untouched —
+  // an explicit branch, not an accident of empty configuration.
+  if (config.passwordHash !== null) {
+    registerAuth(app, {
+      passwordHash: config.passwordHash,
+      verifier: deps.verifier ?? argon2Verifier(),
+      sessions: deps.sessions ?? new SessionStore(),
+      limiter: deps.limiter ?? new RateLimiter(),
+      exposed: isExposedHost(config.host),
+    });
+  }
 
   /**
    * Library prompt-shape inputs by voice id.
@@ -1253,19 +1280,47 @@ export async function main(): Promise<void> {
     ffmpeg,
   });
 
-  await app.listen({ port: config.port, host: '127.0.0.1' });
+  await app.listen({ port: config.port, host: config.host });
   const uiPresent = existsSync(config.uiDir);
+  const exposed = isExposedHost(config.host);
   logger.info(
     {
       port: config.port,
+      host: config.host,
+      // Named rather than inferred downstream: a container whose Volume did not
+      // mount is diagnosable from this line, instead of surfacing later as a
+      // library that mysteriously forgot every voice.
+      mode: exposed ? 'hosted' : 'local',
+      stateRoot: stateRootOf(config),
       transport: config.transport,
       ui: uiPresent ? 'served' : 'not built (run: npm --prefix ui run build)',
       ffmpeg: ffmpeg.available,
       asr: asr.status().available,
       referenceMaxAgeMs: config.referenceMaxAgeMs,
     },
-    `gateway listening on http://127.0.0.1:${config.port}`,
+    `gateway listening on http://${config.host}:${config.port}`,
   );
+}
+
+/**
+ * Describe where the four stores actually resolved to.
+ *
+ * Reports their common parent when they share one — the hosted case, where all
+ * four sit under a mounted Volume — and lists them otherwise, because a partial
+ * mount is exactly the failure this line exists to make visible.
+ *
+ * @param config - The resolved configuration.
+ * @returns A single directory, or a comma-joined list.
+ */
+function stateRootOf(config: GatewayConfig): string {
+  const dirs = [
+    config.clipCacheDir,
+    config.voiceStoreDir,
+    config.scriptStoreDir,
+    config.referenceStoreDir,
+  ];
+  const parents = new Set(dirs.map((dir) => dirname(dir)));
+  return parents.size === 1 ? [...parents][0]! : dirs.join(', ');
 }
 
 if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {

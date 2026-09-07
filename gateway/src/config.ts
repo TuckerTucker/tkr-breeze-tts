@@ -14,6 +14,8 @@ import { readFileSync, existsSync } from 'node:fs';
 import { dirname, isAbsolute, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { validatePasswordHash } from './auth/hash.js';
+
 /** Repo root, resolved from this file so the gateway can start from anywhere. */
 export const REPO_ROOT: string = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -46,10 +48,40 @@ export class ConfigError extends Error {
   }
 }
 
+/**
+ * Loopback default for {@link GatewayConfig.host}.
+ *
+ * The local demo stays unreachable from off the machine unless an operator
+ * changes this deliberately.
+ */
+export const DEFAULT_HOST = '127.0.0.1';
+
+/** Bind addresses that make the listener reachable from off the machine. */
+const NON_LOOPBACK_WILDCARDS = new Set(['0.0.0.0', '::', '[::]']);
+
+/**
+ * Decide whether a bind address exposes the listener beyond this machine.
+ *
+ * Drives two things that must agree: the mode named in the startup log, and
+ * whether the session cookie is marked `Secure`.
+ *
+ * @param host - A resolved bind address.
+ * @returns True when the address is not loopback-only.
+ */
+export function isExposedHost(host: string): boolean {
+  if (NON_LOOPBACK_WILDCARDS.has(host)) return true;
+  return !(host === 'localhost' || host === '::1' || host.startsWith('127.'));
+}
+
 /** The validated gateway configuration. */
 export interface GatewayConfig {
   /** Port the gateway listens on. The UI is served from the same origin. */
   readonly port: number;
+  /**
+   * Address the gateway binds. Loopback by default; the hosted image passes
+   * `0.0.0.0`, which Modal's proxy requires to reach the listener at all.
+   */
+  readonly host: string;
   /** Deployed Modal web endpoint. The browser never learns this. */
   readonly endpoint: string;
   /** Optional sibling transcription endpoint. The browser never learns this. */
@@ -84,6 +116,16 @@ export interface GatewayConfig {
   readonly uiDir: string;
   /** Upstream request ceiling. Generous: a cold start happens inside it. */
   readonly upstreamTimeoutMs: number;
+  /**
+   * Argon2id hash for the shared-password gate, or null when no gate is
+   * configured.
+   *
+   * Null is what leaves the local demo exactly as it was — no login on a
+   * loopback-only listener the operator already trusts. Only the hash is ever
+   * deployed; the plaintext exists in the operator's head and in no file, image
+   * layer, or environment variable.
+   */
+  readonly passwordHash: string | null;
 }
 
 /**
@@ -149,6 +191,47 @@ function requirePositiveInt(
 
 function resolveFromRoot(value: string): string {
   return isAbsolute(value) ? value : resolve(REPO_ROOT, value);
+}
+
+/**
+ * Literal IPv4 dotted-quad, IPv6, or the two hostnames that mean loopback.
+ *
+ * Deliberately not a DNS lookup: binding is a local decision that must succeed
+ * or fail at startup, and a name that resolves differently later would move the
+ * listener without anyone changing configuration.
+ */
+const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+
+function isLiteralAddress(value: string): boolean {
+  if (value === 'localhost') return true;
+  const v4 = IPV4_RE.exec(value);
+  if (v4) return v4.slice(1).every((part) => Number(part) <= 255);
+  // IPv6, optionally bracketed: hex groups and separators only.
+  const bare = value.startsWith('[') && value.endsWith(']') ? value.slice(1, -1) : value;
+  return bare.length > 0 && /^[0-9A-Fa-f:.]+$/.test(bare) && bare.includes(':');
+}
+
+/**
+ * Validate the bind address.
+ *
+ * A gateway that binds an address nobody expected is worse than one that
+ * refuses to start, so this rejects rather than falls back.
+ *
+ * @param raw - Value of `GATEWAY_HOST`, or undefined for the default.
+ * @returns The address to bind.
+ * @throws {ConfigError} When the value is not a literal address.
+ */
+export function resolveHost(raw: string | undefined): string {
+  if (raw === undefined || raw === '') return DEFAULT_HOST;
+  const value = raw.trim();
+  if (!isLiteralAddress(value)) {
+    throw new ConfigError(
+      `GATEWAY_HOST must be a literal address, got ${JSON.stringify(raw)}`,
+      'Use 127.0.0.1 for the local demo (the default), or 0.0.0.0 when the ' +
+        "listener must be reachable from off the machine, as Modal's proxy requires.",
+    );
+  }
+  return value;
 }
 
 /**
@@ -238,6 +321,7 @@ export function loadConfig(env: Record<string, string> = readEnv()): GatewayConf
 
   return {
     port: requirePositiveInt(env.GATEWAY_PORT, 8787, 'GATEWAY_PORT'),
+    host: resolveHost(env.GATEWAY_HOST),
     endpoint,
     asrEndpoint: asrRaw || null,
     key: env.MODAL_KEY!,
@@ -276,6 +360,7 @@ export function loadConfig(env: Record<string, string> = readEnv()): GatewayConf
       900_000,
       'GATEWAY_UPSTREAM_TIMEOUT_MS',
     ),
+    passwordHash: validatePasswordHash(env.GATEWAY_PASSWORD_HASH),
   };
 }
 

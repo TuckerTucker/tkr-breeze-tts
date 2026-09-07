@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import pino, { type Logger } from 'pino';
 
-import type { GatewayConfig } from '../src/config.js';
+import { DEFAULT_HOST, type GatewayConfig } from '../src/config.js';
 
 const run = promisify(execFile);
 
@@ -33,6 +33,7 @@ export function silentLogger(): Logger {
 export function stubConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfig {
   return {
     port: 0,
+    host: DEFAULT_HOST,
     endpoint: 'https://example--breeze-tts-serve.modal.run',
     asrEndpoint: null,
     key: 'wk-testkey0123456789',
@@ -48,6 +49,9 @@ export function stubConfig(overrides: Partial<GatewayConfig> = {}): GatewayConfi
     findingsDir: join(tmpdir(), 'breeze-test-findings'),
     uiDir: join(tmpdir(), 'breeze-test-ui'),
     upstreamTimeoutMs: 5_000,
+    // No gate by default: the overwhelming majority of tests describe the
+    // local demo, which has none. Tests that want the gate pass a hash.
+    passwordHash: null,
     ...overrides,
   };
 }
