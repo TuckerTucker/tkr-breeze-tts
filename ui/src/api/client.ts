@@ -312,7 +312,17 @@ export class GatewayClient {
    */
   async wake(): Promise<{ readiness: Readiness }> {
     return this.#read<{ readiness: Readiness }>(
-      await this.#fetch('/api/wake', { method: 'POST' }),
+      // An explicit empty JSON body rather than no body at all. The route takes
+      // no payload, but a bodyless POST arrives through Modal's proxy shaped so
+      // that Fastify refuses it as an unsupported media type — a 415 the local
+      // listener never produced. The gateway now accepts either; this half
+      // makes the browser's request well-formed on its own terms rather than
+      // relying on the server's tolerance.
+      await this.#fetch('/api/wake', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{}',
+      }),
     );
   }
 

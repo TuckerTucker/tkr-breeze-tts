@@ -20,6 +20,7 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
+import { request as httpRequest } from 'node:http';
 import { hash } from '@node-rs/argon2';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
@@ -260,5 +261,116 @@ describe('both configuration paths', () => {
   it('agrees with the host classification the startup log and cookie both read', () => {
     expect(isExposedHost(DEFAULT_HOST)).toBe(false);
     expect(isExposedHost('0.0.0.0')).toBe(true);
+  });
+});
+
+describe('a request body the route does not need', () => {
+  /**
+   * The defect this covers shipped and broke only in production.
+   *
+   * `POST /api/wake` takes no payload, and a browser's
+   * `fetch(url, {method:'POST'})` sends neither a body nor a content-type.
+   * Straight to the local listener Fastify tolerated that; the same request
+   * through Modal's proxy arrived shaped so that Fastify answered 415, which
+   * the error handler then flattened into a 500 labelled 'upstream' — a
+   * content-type mistake wearing the costume of a GPU failure.
+   *
+   * Nothing caught it because every test drove the route with a well-formed
+   * request, and the browser is the one caller that does not.
+   */
+  let d: Deployment;
+
+  beforeAll(async () => {
+    d = await deploy(false);
+  });
+  afterAll(async () => {
+    await d.server.close();
+    await rm(d.dir, { recursive: true, force: true });
+  });
+
+  async function session(): Promise<string> {
+    const login = await fetch(`${d.base}/api/session`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: PASSWORD }),
+    });
+    return sessionCookieFrom(login);
+  }
+
+  /**
+   * Issue a request with framing `fetch` will not let us choose.
+   *
+   * undici treats `transfer-encoding` as a forbidden header, so the one shape
+   * that reproduces this defect is unreachable through fetch. node:http will
+   * send it.
+   */
+  function rawRequest(
+    path: string,
+    headers: Record<string, string>,
+    body?: string,
+  ): Promise<{ status: number; body: string }> {
+    return new Promise((resolve, reject) => {
+      const url = new URL(`${d.base}${path}`);
+      const request = httpRequest(
+        { hostname: url.hostname, port: url.port, path: url.pathname, method: 'POST', headers },
+        (response) => {
+          let text = '';
+          response.on('data', (chunk) => { text += String(chunk); });
+          response.on('end', () => resolve({ status: response.statusCode ?? 0, body: text }));
+        },
+      );
+      request.on('error', reject);
+      if (body !== undefined) request.write(body);
+      request.end();
+    });
+  }
+
+  it('accepts a bodyless POST framed the way Modal\'s proxy frames one', async () => {
+    // `Transfer-Encoding: chunked` with no content-length and no content-type
+    // is the exact shape the proxy forwards, and it is what a plain
+    // `fetch(url, {method:'POST'})` became in production. Sent explicitly here
+    // because the shape is the bug: the same request straight to a local
+    // listener carries content-length: 0 and Fastify tolerates it, which is
+    // why nothing caught this before it shipped.
+    const cookie = await session();
+    const response = await rawRequest('/api/wake', { cookie, 'Transfer-Encoding': 'chunked' });
+    // The discriminator is the media-type refusal, not the status: this harness
+    // stubs upstream with PCM, so the handler is reached and then fails on the
+    // stub. Reaching it at all is the property under test.
+    expect(response.status).not.toBe(415);
+    expect(response.body).not.toMatch(/Unsupported Media Type/i);
+  });
+
+  it('accepts a bodyless DELETE of the session', async () => {
+    const cookie = await session();
+    const response = await fetch(`${d.base}/api/session`, { method: 'DELETE', headers: { cookie } });
+    expect(response.status).toBe(204);
+  });
+
+  it('still refuses actual content it cannot parse, with 415 and not 500', async () => {
+    // The tolerance is for EMPTY bodies only, decided by whether bytes arrive
+    // rather than by headers. Something with content in it must still declare a
+    // type it can be parsed as, or this becomes a way to post an unparsed body
+    // at any route.
+    const cookie = await session();
+    const response = await fetch(`${d.base}/api/wake`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-shrubbery' },
+      body: 'not parseable as anything',
+    });
+    expect(response.status).toBe(415);
+  });
+
+  it('reports a framework 4xx as the caller-side failure it is', async () => {
+    // Reported as 'upstream' this sends someone to check a GPU that is fine.
+    const cookie = await session();
+    const response = await fetch(`${d.base}/api/wake`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/x-shrubbery' },
+      body: 'nope',
+    });
+    const body = (await response.json()) as { error: { type: string } };
+    expect(body.error.type).toBe('validation');
+    expect(body.error.type).not.toBe('upstream');
   });
 });

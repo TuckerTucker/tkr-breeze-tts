@@ -270,6 +270,15 @@ function sendError(
     error instanceof Error ? error.message : String(error),
     config,
   );
+  // Fastify's own errors carry a statusCode — 415 for a content type it cannot
+  // parse, 400 for malformed JSON. Those are the caller's fault. Flattening
+  // them into a 500 'upstream' is how a content-type mistake came to look like
+  // a GPU failure, which is the wrong thing to go and investigate.
+  const frameworkStatus = (error as { statusCode?: unknown }).statusCode;
+  if (typeof frameworkStatus === 'number' && frameworkStatus >= 400 && frameworkStatus < 500) {
+    reply.code(frameworkStatus).send({ error: { type: 'validation', message } });
+    return;
+  }
   reply.code(500).send({ error: { type: 'upstream', message } });
 }
 
@@ -299,6 +308,47 @@ export function createServer(deps: ServerDeps): GatewayServer {
 
   app.register(multipart, {
     limits: { fileSize: MAX_AUDIO_UPLOAD_BYTES, files: 1 },
+  });
+
+  // POST /api/wake and DELETE /api/session carry no payload, and a browser's
+  // `fetch(url, {method:'POST'})` sends neither a body nor a content-type.
+  // Fastify answers that with 415 unless some parser claims it.
+  //
+  // This only ever failed HOSTED, which is why nothing caught it: a bodyless
+  // POST straight to the local listener is tolerated, but the same request
+  // through Modal's proxy arrives shaped so that Fastify demands a type. The
+  // gateway should not care — a request with nothing in it has nothing to
+  // parse — so an empty body is accepted whatever the content-type says.
+  //
+  // Deliberately narrow: anything with actual content still has to declare a
+  // type it can be parsed as, so this does not become a way to post an
+  // unparsed 512 MiB body at any route.
+  app.addContentTypeParser('*', (request, payload, done) => {
+    let settled = false;
+    const settle = (error: Error | null): void => {
+      if (settled) return;
+      settled = true;
+      done(error, undefined);
+    };
+
+    // Decided by whether bytes actually arrive, not by the headers. Modal's
+    // proxy forwards a bodyless POST as `Transfer-Encoding: chunked` with no
+    // content-length, so a content-length check would call a chunked body
+    // empty and wave it through unparsed.
+    payload.on('data', () =>
+      settle(
+        new GatewayError(
+          'validation',
+          `unsupported content type ${String(request.headers['content-type'] ?? '(none)')}`,
+          {
+            statusCode: 415,
+            remedy: 'Send application/json, or multipart/form-data for an upload.',
+          },
+        ),
+      ),
+    );
+    payload.on('end', () => settle(null));
+    payload.on('error', (error: Error) => settle(error));
   });
 
   app.setErrorHandler((error, request, reply) => {
