@@ -1,0 +1,75 @@
+{
+  "dataSurface": [
+    {
+      "field": "reference.audio",
+      "purpose": "A voice recording the visitor uploads or captures, normalized to WAV by ffmpeg and used to condition the TTS model on a target voice. It is the only way this model can be given a voice — there is no speaker embedding and no voice id.",
+      "retention": "Expires with its transcript sidecar at REFERENCE_MAX_AGE_MS (24 hours by default), swept by ReferenceStore. The pair is deliberately one lifetime. Hosted, it lives on a Modal Volume rather than the operator's disk.",
+      "lawfulBasis": "Consent to the collection, use and disclosure of the recording. Locally the recording and the listener were the same person, so consent was implicit in the act of recording. Hosted, the recording becomes readable by every other holder of the shared password, which is a disclosure the individual has not consented to unless told. That is why the shared-visibility statement in the voice library and the README line are recorded as requirements of the hosted capability rather than as courtesies.",
+      "provision": { "citation": { "instrumentId": "pipeda", "ref": "Sch1-4.3" } }
+    },
+    {
+      "field": "reference.transcript",
+      "purpose": "The verbatim transcript of the reference recording, with per-word timings, produced once by the ASR proxy. The model requires the exact transcript of its reference audio, so this is not optional metadata.",
+      "retention": "Expires together with reference.audio at REFERENCE_MAX_AGE_MS. A transcript outliving its audio would be unusable, and audio outliving its transcript is unusable to the model.",
+      "lawfulBasis": "Collection limited to what the purpose actually requires. The transcript is derived from audio the individual supplied, is required by the model, and nothing beyond the words and their timings is retained — no speaker identification, no diarization, no inferred attributes.",
+      "provision": { "citation": { "instrumentId": "ab-pipa", "ref": "s-11" } }
+    },
+    {
+      "field": "voice.audio",
+      "purpose": "A durable copy of a reference recording, saved under a name so it can be reused. It owns its own WAV rather than referencing the clip it came from, so a voice survives its source clip's eviction.",
+      "retention": "UNBOUNDED — this is the open finding. Soft-deleted records purge after a 30-second undo window (UNDO_WINDOW_MS, gateway/src/voices-index.ts), but live voices only accumulate. Nothing evicts them. Hosted, this is a shared library behind a password that is handed around, so no individual's restraint bounds it either.",
+      "lawfulBasis": "None adequate for indefinite retention. The governing rule is that personal information is retained only as long as necessary for the purpose it was collected for, and a demo voice has no purpose that requires permanent retention. This field is recorded as non-compliant-by-design pending a retention mechanism; the hosted capability declares it rather than hiding it, but declaring a leak is not the same as bounding one.",
+      "provision": { "citation": { "instrumentId": "pipeda", "ref": "Sch1-4.5" } }
+    },
+    {
+      "field": "voice.metadata",
+      "purpose": "The name a person gave a voice, the exact transcript of its audio, an optional default delivery direction, and the timestamps and audio geometry needed to play it back.",
+      "retention": "Same lifetime as voice.audio, and the same unbounded finding. The record is what makes the audio findable, so bounding one without the other would leave orphaned audio.",
+      "lawfulBasis": "Retention only for as long as the purpose reasonably requires, with destruction or de-identification after. Neither happens here today; a voice record persists until someone deletes it by hand.",
+      "provision": { "citation": { "instrumentId": "ab-pipa", "ref": "s-35" } }
+    },
+    {
+      "field": "clip.audio",
+      "purpose": "Generated speech, written as raw PCM plus a sidecar while it streams, so replay and download are a buffered read that reaches no GPU. Hosted, a clip is synthesized speech in whatever voice was referenced — including another visitor's.",
+      "retention": "Bounded and self-limiting: oldest-first eviction against CLIP_CACHE_MAX_BYTES, 2 GiB by default, enforced on every write that would exceed it (gateway/src/cache.ts). The ceiling is configuration; the enforcement is unconditional.",
+      "lawfulBasis": "Storage limitation. The cache keeps clips no longer than the space allows and evicts deterministically, so a generated clip's life is bounded by a rule rather than by anyone remembering to clear it.",
+      "provision": { "citation": { "instrumentId": "gdpr", "ref": "art-5" } }
+    },
+    {
+      "field": "clip.request",
+      "purpose": "What was asked for: the line of text spoken, the delivery instruction, the CFG scale, the seed, and the referenced voice id or reference transcript. Stored so a generation can be reproduced exactly and so history is meaningful.",
+      "retention": "Lives in the clip's sidecar and dies with the clip under the same oldest-first eviction.",
+      "lawfulBasis": "Purpose limitation and data minimisation. The stored request is exactly the input needed to reproduce the output and nothing more — no viewer identity is attached to it, because there is none to attach.",
+      "provision": { "citation": { "instrumentId": "gdpr", "ref": "art-5" } }
+    },
+    {
+      "field": "script.document",
+      "purpose": "A durable script with its cue list — the text a person intends to voice, and the per-cue voice, instruction, CFG and seed that derive each cue's clip id.",
+      "retention": "UNBOUNDED — the same finding as voices and a smaller one, since the cue audio lives in the bounded clip cache and what accumulates here is text. Nothing evicts a script. The surface is dormant behind a UI capability gate today, which lowers the rate of growth but bounds nothing; a gate is not a lifecycle.",
+      "lawfulBasis": "Retention only as long as reasonably required, with destruction afterwards. Not satisfied: nothing destroys a script.",
+      "provision": { "citation": { "instrumentId": "ab-pipa", "ref": "s-35" } }
+    },
+    {
+      "field": "auth.session",
+      "purpose": "PLANNED (hosted-deployment slice 4). An opaque 32-byte random session id and its creation timestamp, held so a visitor who entered the shared password is not asked again on every request. It encodes nothing and is tied to no person — there are no accounts.",
+      "retention": "In memory only, by deliberate choice. Each entry expires 60 minutes from creation and is swept on access; the whole map dies with the process, so a container restart ends every session. Stated as behaviour, not discovered as a defect.",
+      "lawfulBasis": "Security safeguards appropriate to the sensitivity of what is behind the gate. The session is the mechanism that keeps the shared workspace — including other people's voice recordings — away from anyone without the password, and it is deliberately the minimum that can do that job.",
+      "provision": { "citation": { "instrumentId": "pipeda", "ref": "Sch1-4.7" } }
+    },
+    {
+      "field": "auth.rate_limit_source",
+      "purpose": "PLANNED (hosted-deployment slices 4-5). A coarse client address, resolved through an explicit trustProxy decision, keying a fixed-window counter of failed login attempts. An IP address is personal data, so it is named here rather than treated as plumbing.",
+      "retention": "In memory, evicted when its window closes, and destroyed with the process. Only a count and a window start are held against the key — no request history, no correlation with sessions or generations.",
+      "lawfulBasis": "Legitimate interests in protecting one shared password behind a public URL from brute force, which is the precise shape this control exists to stop. Balanced against the visitor by holding the address for no longer than one window and deriving nothing from it beyond a count.",
+      "provision": { "citation": { "instrumentId": "gdpr", "ref": "art-6" } }
+    },
+    {
+      "field": "transport.security",
+      "purpose": "Cross-cutting. The Modal proxy credential is held server-side and never reaches a response body, header, or bundled asset; the browser issues only same-origin relative /api/* requests and never learns the upstream endpoint; the hosted gate refuses every /api/* route without a session.",
+      "retention": "Not a stored field. Recorded because the security arrangement is what makes every retention answer above meaningful — unbounded voice audio behind no gate would be a different finding entirely.",
+      "lawfulBasis": "Security of processing appropriate to the risk. The measures are the credential boundary, same-origin-only client requests, an Argon2id-verified shared password with constant-time comparison and rate limiting, and cookie-borne sessions marked HttpOnly and Secure off loopback.",
+      "provision": { "citation": { "instrumentId": "gdpr", "ref": "art-32" } }
+    }
+  ],
+  "scopeSnapshot": ["modal-inference", "measurement", "local-gateway", "demo-ui", "hosted-deployment"]
+}

@@ -1,0 +1,220 @@
+{
+  "instruments": [
+    {
+      "instrument": {
+        "id": "pipeda",
+        "jurisdiction": "ca-federal",
+        "title": "Personal Information Protection and Electronic Documents Act",
+        "officialCitation": "S.C. 2000, c. 5",
+        "sourceUrl": "https://laws-lois.justice.gc.ca/eng/acts/P-8.6/FullText.html",
+        "consolidatedAsOf": "2026-06-21",
+        "licenseNote": "Reproduced from the Justice Laws Website consolidation; not an official copy.",
+        "language": "en"
+      },
+      "provisions": [
+        {
+          "ref": "Sch1-4.2",
+          "heading": "4.2 Principle 2 — Identifying Purposes",
+          "text": "The purposes for which personal information is collected shall be identified by the organization at or before the time the information is collected.\n4.2.1\nThe organization shall document the purposes for which personal information is collected in order to comply with the Openness principle (Clause 4.8) and the Individual Access principle (Clause 4.9).\n4.2.2\nIdentifying the purposes for which personal information is collected at or before the time of collection allows organizations to determine the information they need to collect to fulfil these purposes. The Limiting Collection principle (Clause 4.4) requires an organization to collect only that information necessary for the purposes that have been identified.\n4.2.3\nThe identified purposes should be specified at or before the time of collection to the individual from whom the personal information is collected. Depending upon the way in which the information is collected, this can be done orally or in writing. An application form, for example, may give notice of the purposes.\n4.2.4\nWhen personal information that has been collected is to be used for a purpose not previously identified, the new purpose shall be identified prior to use. Unless the new purpose is required by law, the consent of the individual is required before information can be used for that purpose. For an elaboration on consent, please refer to the Consent principle (Clause 4.3).\n4.2.5\nPersons collecting personal information should be able to explain to individuals the purposes for which the information is being collected.\n4.2.6\nThis principle is linked closely to the Limiting Collection principle (Clause 4.4) and the Limiting Use, Disclosure, and Retention principle (Clause 4.5).",
+          "ordinal": 2,
+          "kind": "schedule-clause"
+        },
+        {
+          "ref": "Sch1-4.3",
+          "heading": "4.3 Principle 3 - Consent",
+          "text": "The knowledge and consent of the individual are required for the collection, use, or disclosure of personal information, except where inappropriate.\nNote: In certain circumstances personal information can be collected, used, or disclosed without the knowledge and consent of the individual. For example, legal, medical, or security reasons may make it impossible or impractical to seek consent. When information is being collected for the detection and prevention of fraud or for law enforcement, seeking the consent of the individual might defeat the purpose of collecting the information. Seeking consent may be impossible or inappropriate when the individual is a minor, seriously ill, or mentally incapacitated. In addition, organizations that do not have a direct relationship with the individual may not always be able to seek consent. For example, seeking consent may be impractical for a charity or a direct-marketing firm that wishes to acquire a mailing list from another organization. In such cases, the organization providing the list would be expected to obtain consent before disclosing personal information.\n4.3.1\nConsent is required for the collection of personal information and the subsequent use or disclosure of this information. Typically, an organization will seek consent for the use or disclosure of the information at the time of collection. In certain circumstances, consent with respect to use or disclosure may be sought after the information has been collected but before use (for example, when an organization wants to use information for a purpose not previously identified).\n4.3.2\nThe principle requires “knowledge and consent”. Organizations shall make a reasonable effort to ensure that the individual is advised of the purposes for which the information will be used. To make the consent meaningful, the purposes must be stated in such a manner that the individual can reasonably understand how the information will be used or disclosed.\n4.3.3\nAn organization shall not, as a condition of the supply of a product or service, require an individual to consent to the collection, use, or disclosure of information beyond that required to fulfil the explicitly specified, and legitimate purposes.\n4.3.4\nThe form of the consent sought by the organization may vary, depending upon the circumstances and the type of information. In determining the form of consent to use, organizations shall take into account the sensitivity of the information. Although some information (for example, medical records and income records) is almost always considered to be sensitive, any information can be sensitive, depending on the context. For example, the names and addresses of subscribers to a newsmagazine would generally not be considered sensitive information. However, the names and addresses of subscribers to some special-interest magazines might be considered sensitive.\n4.3.5\nIn obtaining consent, the reasonable expectations of the individual are also relevant. For example, an individual buying a subscription to a magazine should reasonably expect that the organization, in addition to using the individual’s name and address for mailing and billing purposes, would also contact the person to solicit the renewal of the subscription. In this case, the organization can assume that the individual’s request constitutes consent for specific purposes. On the other hand, an individual would not reasonably expect that personal information given to a health-care professional would be given to a company selling health-care products, unless consent were obtained. Consent shall not be obtained through deception.\n4.3.6\nThe way in which an organization seeks consent may vary, depending on the circumstances and the type of information collected. An organization should generally seek express consent when the information is likely to be considered sensitive. Implied consent would generally be appropriate when the information is less sensitive. Consent can also be given by an authorized representative (such as a legal guardian or a person having power of attorney).\n4.3.7\nIndividuals can give consent in many ways. For example:\n(a) an application form may be used to seek consent, collect information, and inform the individual of the use that will be made of the information. By completing and signing the form, the individual is giving consent to the collection and the specified uses;\n(b) a checkoff box may be used to allow individuals to request that their names and addresses not be given to other organizations. Individuals who do not check the box are assumed to consent to the transfer of this information to third parties;\n(c) consent may be given orally when information is collected over the telephone; or\n(d) consent may be given at the time that individuals use a product or service.\n4.3.8\nAn individual may withdraw consent at any time, subject to legal or contractual restrictions and reasonable notice. The organization shall inform the individual of the implications of such withdrawal.",
+          "ordinal": 3,
+          "kind": "schedule-clause"
+        },
+        {
+          "ref": "Sch1-4.4",
+          "heading": "4.4 Principle 4 — Limiting Collection",
+          "text": "The collection of personal information shall be limited to that which is necessary for the purposes identified by the organization. Information shall be collected by fair and lawful means.\n4.4.1\nOrganizations shall not collect personal information indiscriminately. Both the amount and the type of information collected shall be limited to that which is necessary to fulfil the purposes identified. Organizations shall specify the type of information collected as part of their information-handling policies and practices, in accordance with the Openness principle (Clause 4.8).\n4.4.2\nThe requirement that personal information be collected by fair and lawful means is intended to prevent organizations from collecting information by misleading or deceiving individuals about the purpose for which information is being collected. This requirement implies that consent with respect to collection must not be obtained through deception.\n4.4.3\nThis principle is linked closely to the Identifying Purposes principle (Clause 4.2) and the Consent principle (Clause 4.3).",
+          "ordinal": 4,
+          "kind": "schedule-clause"
+        },
+        {
+          "ref": "Sch1-4.5",
+          "heading": "4.5 Principle 5 —Limiting Use, Disclosure, and Retention",
+          "text": "Personal information shall not be used or disclosed for purposes other than those for which it was collected, except with the consent of the individual or as required by law. Personal information shall be retained only as long as necessary for the fulfilment of those purposes.\n4.5.1\nOrganizations using personal information for a new purpose shall document this purpose (see Clause 4.2.1).\n4.5.2\nOrganizations should develop guidelines and implement procedures with respect to the retention of personal information. These guidelines should include minimum and maximum retention periods. Personal information that has been used to make a decision about an individual shall be retained long enough to allow the individual access to the information after the decision has been made. An organization may be subject to legislative requirements with respect to retention periods.\n4.5.3\nPersonal information that is no longer required to fulfil the identified purposes should be destroyed, erased, or made anonymous. Organizations shall develop guidelines and implement procedures to govern the destruction of personal information.\n4.5.4\nThis principle is closely linked to the Consent principle (Clause 4.3), the Identifying Purposes principle (Clause 4.2), and the Individual Access principle (Clause 4.9).",
+          "ordinal": 5,
+          "kind": "schedule-clause"
+        },
+        {
+          "ref": "Sch1-4.7",
+          "heading": "4.7 Principle 7 — Safeguards",
+          "text": "Personal information shall be protected by security safeguards appropriate to the sensitivity of the information.\n4.7.1\nThe security safeguards shall protect personal information against loss or theft, as well as unauthorized access, disclosure, copying, use, or modification. Organizations shall protect personal information regardless of the format in which it is held.\n4.7.2\nThe nature of the safeguards will vary depending on the sensitivity of the information that has been collected, the amount, distribution, and format of the information, and the method of storage. More sensitive information should be safeguarded by a higher level of protection. The concept of sensitivity is discussed in Clause 4.3.4.\n4.7.3\nThe methods of protection should include\n(a) physical measures, for example, locked filing cabinets and restricted access to offices;\n(b) organizational measures, for example, security clearances and limiting access on a “need-to-know” basis; and\n(c) technological measures, for example, the use of passwords and encryption.\n4.7.4\nOrganizations shall make their employees aware of the importance of maintaining the confidentiality of personal information.\n4.7.5\nCare shall be used in the disposal or destruction of personal information, to prevent unauthorized parties from gaining access to the information (see Clause 4.5.3).",
+          "ordinal": 7,
+          "kind": "schedule-clause"
+        }
+      ],
+      "topicLinks": [
+        {
+          "topicSlug": "identifying-purposes",
+          "provisionRef": "Sch1-4.2"
+        },
+        {
+          "topicSlug": "consent",
+          "provisionRef": "Sch1-4.3"
+        },
+        {
+          "topicSlug": "data-minimization",
+          "provisionRef": "Sch1-4.4"
+        },
+        {
+          "topicSlug": "retention",
+          "provisionRef": "Sch1-4.5"
+        },
+        {
+          "topicSlug": "safeguards",
+          "provisionRef": "Sch1-4.7"
+        }
+      ]
+    },
+    {
+      "instrument": {
+        "id": "ab-pipa",
+        "jurisdiction": "ca-ab",
+        "title": "Personal Information Protection Act",
+        "officialCitation": "SA 2003, c P-6.5",
+        "sourceUrl": "https://kings-printer.alberta.ca/documents/Acts/P06P5.pdf",
+        "consolidatedAsOf": "2025-09-01",
+        "licenseNote": "Reproduced from the Alberta King's Printer consolidation; not an official copy.",
+        "language": "en"
+      },
+      "provisions": [
+        {
+          "ref": "s-7",
+          "heading": "Consent required",
+          "text": "7(1) Except where this Act provides otherwise, an organization shall not, with respect to personal information about an individual,\n(a) collect that information unless the individual consents to the collection of that information,\n(b) collect that information from a source other than the individual unless the individual consents to the collection of that information from the other source,\n(c) use that information unless the individual consents to the use of that information, or\n(d) disclose that information unless the individual consents to the disclosure of that information.\n(2) An organization shall not, as a condition of supplying a product or service, require an individual to consent to the collection, use or disclosure of personal information about an individual beyond what is necessary to provide the product or service.\n(3) An individual may give a consent subject to any reasonable terms, conditions or qualifications established, set, approved by or otherwise acceptable to the individual.",
+          "ordinal": 1,
+          "kind": "section"
+        },
+        {
+          "ref": "s-11",
+          "heading": "Collection of personal information",
+          "text": "11(1) An organization may collect personal information only for purposes that are reasonable.\n(2) Where an organization collects personal information, it may do so only to the extent that is reasonable for meeting the purposes for which the information is collected.",
+          "ordinal": 2,
+          "kind": "section"
+        },
+        {
+          "ref": "s-34",
+          "heading": "Protection of information",
+          "text": "34 An organization must protect personal information that is in its custody or under its control by making reasonable security arrangements against such risks as unauthorized access, collection, use, disclosure, copying, modification, disposal or destruction.",
+          "ordinal": 3,
+          "kind": "section"
+        },
+        {
+          "ref": "s-35",
+          "heading": "Retention and destruction of information",
+          "text": "35(1) An organization may retain personal information only for as long as the organization reasonably requires the personal information for legal or business purposes.\n(2) Within a reasonable period of time after an organization no longer reasonably requires personal information for legal or business purposes, the organization must\n(a) destroy the records containing the personal information, or\n(b) render the personal information non-identifying so that it can no longer be used to identify an individual.\n(3) Subsection (1) applies notwithstanding any withdrawal or variation of the consent of the individual that the personal information is about under section 9.",
+          "ordinal": 4,
+          "kind": "section"
+        }
+      ],
+      "topicLinks": [
+        {
+          "topicSlug": "consent",
+          "provisionRef": "s-7"
+        },
+        {
+          "topicSlug": "data-minimization",
+          "provisionRef": "s-11"
+        },
+        {
+          "topicSlug": "safeguards",
+          "provisionRef": "s-34"
+        },
+        {
+          "topicSlug": "retention",
+          "provisionRef": "s-35"
+        }
+      ]
+    },
+    {
+      "instrument": {
+        "id": "gdpr",
+        "jurisdiction": "eu",
+        "title": "Regulation (EU) 2016/679 (General Data Protection Regulation)",
+        "officialCitation": "OJ L 119, 4.5.2016, p. 1-88",
+        "sourceUrl": "https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=CELEX:32016R0679",
+        "consolidatedAsOf": "2016-05-04",
+        "licenseNote": "Reproduced from EUR-Lex; © European Union, 1998-2026. Not an official copy.",
+        "language": "en"
+      },
+      "provisions": [
+        {
+          "ref": "art-4",
+          "heading": "Article 4 Definitions",
+          "text": "Article 4\nDefinitions\nFor the purposes of this Regulation:\n(1)\n‘personal data’ means any information relating to an identified or identifiable natural person (‘data subject’); an identifiable natural person is one who can be identified, directly or indirectly, in particular by reference to an identifier such as a name, an identification number, location data, an online identifier or to one or more factors specific to the physical, physiological, genetic, mental, economic, cultural or social identity of that natural person;\n(2)\n‘processing’ means any operation or set of operations which is performed on personal data or on sets of personal data, whether or not by automated means, such as collection, recording, organisation, structuring, storage, adaptation or alteration, retrieval, consultation, use, disclosure by transmission, dissemination or otherwise making available, alignment or combination, restriction, erasure or destruction;\n(3)\n‘restriction of processing’ means the marking of stored personal data with the aim of limiting their processing in the future;\n(4)\n‘profiling’ means any form of automated processing of personal data consisting of the use of personal data to evaluate certain personal aspects relating to a natural person, in particular to analyse or predict aspects concerning that natural person's performance at work, economic situation, health, personal preferences, interests, reliability, behaviour, location or movements;\n(5)\n‘pseudonymisation’ means the processing of personal data in such a manner that the personal data can no longer be attributed to a specific data subject without the use of additional information, provided that such additional information is kept separately and is subject to technical and organisational measures to ensure that the personal data are not attributed to an identified or identifiable natural person;\n(6)\n‘filing system’ means any structured set of personal data which are accessible according to specific criteria, whether centralised, decentralised or dispersed on a functional or geographical basis;\n(7)\n‘controller’ means the natural or legal person, public authority, agency or other body which, alone or jointly with others, determines the purposes and means of the processing of personal data; where the purposes and means of such processing are determined by Union or Member State law, the controller or the specific criteria for its nomination may be provided for by Union or Member State law;\n(8)\n‘processor’ means a natural or legal person, public authority, agency or other body which processes personal data on behalf of the controller;\n(9)\n‘recipient’ means a natural or legal person, public authority, agency or another body, to which the personal data are disclosed, whether a third party or not. However, public authorities which may receive personal data in the framework of a particular inquiry in accordance with Union or Member State law shall not be regarded as recipients; the processing of those data by those public authorities shall be in compliance with the applicable data protection rules according to the purposes of the processing;\n(10)\n‘third party’ means a natural or legal person, public authority, agency or body other than the data subject, controller, processor and persons who, under the direct authority of the controller or processor, are authorised to process personal data;\n(11)\n‘consent’ of the data subject means any freely given, specific, informed and unambiguous indication of the data subject's wishes by which he or she, by a statement or by a clear affirmative action, signifies agreement to the processing of personal data relating to him or her;\n(12)\n‘personal data breach’ means a breach of security leading to the accidental or unlawful destruction, loss, alteration, unauthorised disclosure of, or access to, personal data transmitted, stored or otherwise processed;\n(13)\n‘genetic data’ means personal data relating to the inherited or acquired genetic characteristics of a natural person which give unique information about the physiology or the health of that natural person and which result, in particular, from an analysis of a biological sample from the natural person in question;\n(14)\n‘biometric data’ means personal data resulting from specific technical processing relating to the physical, physiological or behavioural characteristics of a natural person, which allow or confirm the unique identification of that natural person, such as facial images or dactyloscopic data;\n(15)\n‘data concerning health’ means personal data related to the physical or mental health of a natural person, including the provision of health care services, which reveal information about his or her health status;\n(16)\n‘main establishment’ means:\n(a)\nas regards a controller with establishments in more than one Member State, the place of its central administration in the Union, unless the decisions on the purposes and means of the processing of personal data are taken in another establishment of the controller in the Union and the latter establishment has the power to have such decisions implemented, in which case the establishment having taken such decisions is to be considered to be the main establishment;\n(b)\nas regards a processor with establishments in more than one Member State, the place of its central administration in the Union, or, if the processor has no central administration in the Union, the establishment of the processor in the Union where the main processing activities in the context of the activities of an establishment of the processor take place to the extent that the processor is subject to specific obligations under this Regulation;\n(17)\n‘representative’ means a natural or legal person established in the Union who, designated by the controller or processor in writing pursuant to Article 27, represents the controller or processor with regard to their respective obligations under this Regulation;\n(18)\n‘enterprise’ means a natural or legal person engaged in an economic activity, irrespective of its legal form, including partnerships or associations regularly engaged in an economic activity;\n(19)\n‘group of undertakings’ means a controlling undertaking and its controlled undertakings;\n(20)\n‘binding corporate rules’ means personal data protection policies which are adhered to by a controller or processor established on the territory of a Member State for transfers or a set of transfers of personal data to a controller or processor in one or more third countries within a group of undertakings, or group of enterprises engaged in a joint economic activity;\n(21)\n‘supervisory authority’ means an independent public authority which is established by a Member State pursuant to Article 51;\n(22)\n‘supervisory authority concerned’ means a supervisory authority which is concerned by the processing of personal data because:\n(a)\nthe controller or processor is established on the territory of the Member State of that supervisory authority;\n(b)\ndata subjects residing in the Member State of that supervisory authority are substantially affected or likely to be substantially affected by the processing; or\n(c)\na complaint has been lodged with that supervisory authority;\n(23)\n‘cross-border processing’ means either:\n(a)\nprocessing of personal data which takes place in the context of the activities of establishments in more than one Member State of a controller or processor in the Union where the controller or processor is established in more than one Member State; or\n(b)\nprocessing of personal data which takes place in the context of the activities of a single establishment of a controller or processor in the Union but which substantially affects or is likely to substantially affect data subjects in more than one Member State.\n(24)\n‘relevant and reasoned objection’ means an objection to a draft decision as to whether there is an infringement of this Regulation, or whether envisaged action in relation to the controller or processor complies with this Regulation, which clearly demonstrates the significance of the risks posed by the draft decision as regards the fundamental rights and freedoms of data subjects and, where applicable, the free flow of personal data within the Union;\n(25)\n‘information society service’ means a service as defined in point (b) of Article 1(1) of Directive (EU) 2015/1535 of the European Parliament and of the Council ( 19 ) ;\n(26)\n‘international organisation’ means an organisation and its subordinate bodies governed by public international law, or any other body which is set up by, or on the basis of, an agreement between two or more countries.\nCHAPTER II\nPrinciples",
+          "ordinal": 4,
+          "kind": "article"
+        },
+        {
+          "ref": "art-5",
+          "heading": "Article 5 Principles relating to processing of personal data",
+          "text": "Article 5\nPrinciples relating to processing of personal data\n1. Personal data shall be:\n(a)\nprocessed lawfully, fairly and in a transparent manner in relation to the data subject (‘lawfulness, fairness and transparency’);\n(b)\ncollected for specified, explicit and legitimate purposes and not further processed in a manner that is incompatible with those purposes; further processing for archiving purposes in the public interest, scientific or historical research purposes or statistical purposes shall, in accordance with Article 89(1), not be considered to be incompatible with the initial purposes (‘purpose limitation’);\n(c)\nadequate, relevant and limited to what is necessary in relation to the purposes for which they are processed (‘data minimisation’);\n(d)\naccurate and, where necessary, kept up to date; every reasonable step must be taken to ensure that personal data that are inaccurate, having regard to the purposes for which they are processed, are erased or rectified without delay (‘accuracy’);\n(e)\nkept in a form which permits identification of data subjects for no longer than is necessary for the purposes for which the personal data are processed; personal data may be stored for longer periods insofar as the personal data will be processed solely for archiving purposes in the public interest, scientific or historical research purposes or statistical purposes in accordance with Article 89(1) subject to implementation of the appropriate technical and organisational measures required by this Regulation in order to safeguard the rights and freedoms of the data subject (‘storage limitation’);\n(f)\nprocessed in a manner that ensures appropriate security of the personal data, including protection against unauthorised or unlawful processing and against accidental loss, destruction or damage, using appropriate technical or organisational measures (‘integrity and confidentiality’).\n2. The controller shall be responsible for, and be able to demonstrate compliance with, paragraph 1 (‘accountability’).",
+          "ordinal": 5,
+          "kind": "article"
+        },
+        {
+          "ref": "art-6",
+          "heading": "Article 6 Lawfulness of processing",
+          "text": "Article 6\nLawfulness of processing\n1. Processing shall be lawful only if and to the extent that at least one of the following applies:\n(a)\nthe data subject has given consent to the processing of his or her personal data for one or more specific purposes;\n(b)\nprocessing is necessary for the performance of a contract to which the data subject is party or in order to take steps at the request of the data subject prior to entering into a contract;\n(c)\nprocessing is necessary for compliance with a legal obligation to which the controller is subject;\n(d)\nprocessing is necessary in order to protect the vital interests of the data subject or of another natural person;\n(e)\nprocessing is necessary for the performance of a task carried out in the public interest or in the exercise of official authority vested in the controller;\n(f)\nprocessing is necessary for the purposes of the legitimate interests pursued by the controller or by a third party, except where such interests are overridden by the interests or fundamental rights and freedoms of the data subject which require protection of personal data, in particular where the data subject is a child.\nPoint (f) of the first subparagraph shall not apply to processing carried out by public authorities in the performance of their tasks.\n2. Member States may maintain or introduce more specific provisions to adapt the application of the rules of this Regulation with regard to processing for compliance with points (c) and (e) of paragraph 1 by determining more precisely specific requirements for the processing and other measures to ensure lawful and fair processing including for other specific processing situations as provided for in Chapter IX.\n3. The basis for the processing referred to in point (c) and (e) of paragraph 1 shall be laid down by:\n(a)\nUnion law; or\n(b)\nMember State law to which the controller is subject.\nThe purpose of the processing shall be determined in that legal basis or, as regards the processing referred to in point (e) of paragraph 1, shall be necessary for the performance of a task carried out in the public interest or in the exercise of official authority vested in the controller. That legal basis may contain specific provisions to adapt the application of rules of this Regulation, inter alia: the general conditions governing the lawfulness of processing by the controller; the types of data which are subject to the processing; the data subjects concerned; the entities to, and the purposes for which, the personal data may be disclosed; the purpose limitation; storage periods; and processing operations and processing procedures, including measures to ensure lawful and fair processing such as those for other specific processing situations as provided for in Chapter IX. The Union or the Member State law shall meet an objective of public interest and be proportionate to the legitimate aim pursued.\n4. Where the processing for a purpose other than that for which the personal data have been collected is not based on the data subject's consent or on a Union or Member State law which constitutes a necessary and proportionate measure in a democratic society to safeguard the objectives referred to in Article 23(1), the controller shall, in order to ascertain whether processing for another purpose is compatible with the purpose for which the personal data are initially collected, take into account, inter alia:\n(a)\nany link between the purposes for which the personal data have been collected and the purposes of the intended further processing;\n(b)\nthe context in which the personal data have been collected, in particular regarding the relationship between data subjects and the controller;\n(c)\nthe nature of the personal data, in particular whether special categories of personal data are processed, pursuant to Article 9, or whether personal data related to criminal convictions and offences are processed, pursuant to Article 10;\n(d)\nthe possible consequences of the intended further processing for data subjects;\n(e)\nthe existence of appropriate safeguards, which may include encryption or pseudonymisation.",
+          "ordinal": 6,
+          "kind": "article"
+        },
+        {
+          "ref": "art-9",
+          "heading": "Article 9 Processing of special categories of personal data",
+          "text": "Article 9\nProcessing of special categories of personal data\n1. Processing of personal data revealing racial or ethnic origin, political opinions, religious or philosophical beliefs, or trade union membership, and the processing of genetic data, biometric data for the purpose of uniquely identifying a natural person, data concerning health or data concerning a natural person's sex life or sexual orientation shall be prohibited.\n2. Paragraph 1 shall not apply if one of the following applies:\n(a)\nthe data subject has given explicit consent to the processing of those personal data for one or more specified purposes, except where Union or Member State law provide that the prohibition referred to in paragraph 1 may not be lifted by the data subject;\n(b)\nprocessing is necessary for the purposes of carrying out the obligations and exercising specific rights of the controller or of the data subject in the field of employment and social security and social protection law in so far as it is authorised by Union or Member State law or a collective agreement pursuant to Member State law providing for appropriate safeguards for the fundamental rights and the interests of the data subject;\n(c)\nprocessing is necessary to protect the vital interests of the data subject or of another natural person where the data subject is physically or legally incapable of giving consent;\n(d)\nprocessing is carried out in the course of its legitimate activities with appropriate safeguards by a foundation, association or any other not-for-profit body with a political, philosophical, religious or trade union aim and on condition that the processing relates solely to the members or to former members of the body or to persons who have regular contact with it in connection with its purposes and that the personal data are not disclosed outside that body without the consent of the data subjects;\n(e)\nprocessing relates to personal data which are manifestly made public by the data subject;\n(f)\nprocessing is necessary for the establishment, exercise or defence of legal claims or whenever courts are acting in their judicial capacity;\n(g)\nprocessing is necessary for reasons of substantial public interest, on the basis of Union or Member State law which shall be proportionate to the aim pursued, respect the essence of the right to data protection and provide for suitable and specific measures to safeguard the fundamental rights and the interests of the data subject;\n(h)\nprocessing is necessary for the purposes of preventive or occupational medicine, for the assessment of the working capacity of the employee, medical diagnosis, the provision of health or social care or treatment or the management of health or social care systems and services on the basis of Union or Member State law or pursuant to contract with a health professional and subject to the conditions and safeguards referred to in paragraph 3;\n(i)\nprocessing is necessary for reasons of public interest in the area of public health, such as protecting against serious cross-border threats to health or ensuring high standards of quality and safety of health care and of medicinal products or medical devices, on the basis of Union or Member State law which provides for suitable and specific measures to safeguard the rights and freedoms of the data subject, in particular professional secrecy;\n(j)\nprocessing is necessary for archiving purposes in the public interest, scientific or historical research purposes or statistical purposes in accordance with Article 89(1) based on Union or Member State law which shall be proportionate to the aim pursued, respect the essence of the right to data protection and provide for suitable and specific measures to safeguard the fundamental rights and the interests of the data subject.\n3. Personal data referred to in paragraph 1 may be processed for the purposes referred to in point (h) of paragraph 2 when those data are processed by or under the responsibility of a professional subject to the obligation of professional secrecy under Union or Member State law or rules established by national competent bodies or by another person also subject to an obligation of secrecy under Union or Member State law or rules established by national competent bodies.\n4. Member States may maintain or introduce further conditions, including limitations, with regard to the processing of genetic data, biometric data or data concerning health.",
+          "ordinal": 9,
+          "kind": "article"
+        },
+        {
+          "ref": "art-32",
+          "heading": "Article 32 Security of processing",
+          "text": "Article 32\nSecurity of processing\n1. Taking into account the state of the art, the costs of implementation and the nature, scope, context and purposes of processing as well as the risk of varying likelihood and severity for the rights and freedoms of natural persons, the controller and the processor shall implement appropriate technical and organisational measures to ensure a level of security appropriate to the risk, including inter alia as appropriate:\n(a)\nthe pseudonymisation and encryption of personal data;\n(b)\nthe ability to ensure the ongoing confidentiality, integrity, availability and resilience of processing systems and services;\n(c)\nthe ability to restore the availability and access to personal data in a timely manner in the event of a physical or technical incident;\n(d)\na process for regularly testing, assessing and evaluating the effectiveness of technical and organisational measures for ensuring the security of the processing.\n2. In assessing the appropriate level of security account shall be taken in particular of the risks that are presented by processing, in particular from accidental or unlawful destruction, loss, alteration, unauthorised disclosure of, or access to personal data transmitted, stored or otherwise processed.\n3. Adherence to an approved code of conduct as referred to in Article 40 or an approved certification mechanism as referred to in Article 42 may be used as an element by which to demonstrate compliance with the requirements set out in paragraph 1 of this Article.\n4. The controller and processor shall take steps to ensure that any natural person acting under the authority of the controller or the processor who has access to personal data does not process them except on instructions from the controller, unless he or she is required to do so by Union or Member State law.",
+          "ordinal": 32,
+          "kind": "article"
+        }
+      ],
+      "definitions": [
+        {
+          "term": "biometric data",
+          "provisionRef": "art-4"
+        },
+        {
+          "term": "personal data",
+          "provisionRef": "art-4"
+        }
+      ],
+      "topicLinks": [
+        {
+          "topicSlug": "definitions",
+          "provisionRef": "art-4"
+        },
+        {
+          "topicSlug": "retention",
+          "provisionRef": "art-5"
+        },
+        {
+          "topicSlug": "data-minimization",
+          "provisionRef": "art-5"
+        },
+        {
+          "topicSlug": "consent",
+          "provisionRef": "art-6"
+        },
+        {
+          "topicSlug": "special-categories",
+          "provisionRef": "art-9"
+        },
+        {
+          "topicSlug": "safeguards",
+          "provisionRef": "art-32"
+        }
+      ]
+    }
+  ]
+}
