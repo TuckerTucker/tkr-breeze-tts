@@ -13,6 +13,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type JSX,
   type PointerEvent as ReactPointerEvent,
@@ -104,32 +105,69 @@ function drawWaveform(
  * @returns The complete inline trimming surface.
  */
 export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
+  const { onChange, reference: incoming } = props;
   const canvas = useRef<HTMLCanvasElement>(null);
   const dragging = useRef(false);
   const dragOffsetSeconds = useRef(0);
+  // True between pointerdown and pointerup on either selection control. The
+  // window moves freely while it is set; only the audio element waits.
+  const adjusting = useRef(false);
   const transcriptId = useId();
   const boundedReference = moveReferenceWindow(
-    props.reference,
-    props.reference.start,
+    incoming,
+    incoming.start,
     props.maxSeconds,
   );
   const reference = boundedReference;
   const metrics = referenceSelectionMetrics(reference, props.maxSeconds, props.tokenCeiling);
   const maximumStart = referenceWindowMaxStart(reference, props.maxSeconds);
 
+  /**
+   * The window the audio element is currently pointed at.
+   *
+   * Held separately from the live selection because assigning `src` tears down
+   * and rebuilds the media element: driven from the selection directly, a drag
+   * would reset playback on every pointermove and every 0.01s step of the range
+   * control, so the control that exists to let you hear the window would be the
+   * one thing preventing you from hearing it.
+   */
+  const [previewWindow, setPreviewWindow] = useState<{
+    readonly start: number;
+    readonly end: number;
+  }>(() => ({ start: boundedReference.start, end: boundedReference.end }));
+
+  const settlePreview = (): void => {
+    adjusting.current = false;
+    setPreviewWindow((current) =>
+      current.start === reference.start && current.end === reference.end
+        ? current
+        : { start: reference.start, end: reference.end },
+    );
+  };
+
+  useEffect(() => {
+    if (adjusting.current) return;
+    setPreviewWindow((current) =>
+      current.start === reference.start && current.end === reference.end
+        ? current
+        : { start: reference.start, end: reference.end },
+    );
+  }, [reference.end, reference.start]);
+
   useEffect(() => {
     if (
-      reference.start !== props.reference.start ||
-      reference.end !== props.reference.end ||
-      reference.transcript !== props.reference.transcript
+      reference.start !== incoming.start ||
+      reference.end !== incoming.end ||
+      reference.transcript !== incoming.transcript
     ) {
-      props.onChange(reference);
+      onChange(reference);
     }
   }, [
-    props.onChange,
-    props.reference.end,
-    props.reference.start,
-    props.reference.transcript,
+    incoming.end,
+    incoming.start,
+    incoming.transcript,
+    onChange,
+    reference,
     reference.end,
     reference.start,
     reference.transcript,
@@ -161,7 +199,7 @@ export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
   }, [reference.durationSeconds, reference.end, reference.peaks, reference.start]);
 
   const moveWindow = (startSeconds: number): void => {
-    props.onChange(moveReferenceWindow(reference, startSeconds, props.maxSeconds));
+    onChange(moveReferenceWindow(reference, startSeconds, props.maxSeconds));
   };
 
   const timeAtPointer = (event: ReactPointerEvent<HTMLCanvasElement>): number => {
@@ -178,6 +216,7 @@ export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
       ? seconds - reference.start
       : (reference.end - reference.start) / 2;
     dragging.current = true;
+    adjusting.current = true;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     moveWindow(seconds - dragOffsetSeconds.current);
   };
@@ -191,7 +230,7 @@ export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
           : null;
     if (direction === null) return;
     event.preventDefault();
-    props.onChange(nudgeReferenceWindow(reference, direction, props.maxSeconds));
+    onChange(nudgeReferenceWindow(reference, direction, props.maxSeconds));
   };
 
   return (
@@ -221,9 +260,11 @@ export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
           onPointerUp={(event) => {
             dragging.current = false;
             event.currentTarget.releasePointerCapture?.(event.pointerId);
+            settlePreview();
           }}
           onPointerCancel={() => {
             dragging.current = false;
+            settlePreview();
           }}
         />
         <span
@@ -250,6 +291,12 @@ export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
           value={reference.start}
           disabled={maximumStart <= 0}
           onKeyDown={onSelectionKeyDown}
+          onPointerDown={() => {
+            adjusting.current = true;
+          }}
+          onPointerUp={settlePreview}
+          onPointerCancel={settlePreview}
+          onBlur={settlePreview}
           onChange={(event) => moveWindow(Number(event.target.value))}
         />
       </label>
@@ -259,7 +306,7 @@ export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
         aria-label="Play selected reference window"
         controls
         preload="none"
-        src={props.audioUrl(reference.start, reference.end)}
+        src={props.audioUrl(previewWindow.start, previewWindow.end)}
       />
 
       <div className="reference-trimmer__metrics" aria-label="Reference limits">
@@ -292,7 +339,7 @@ export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
           aria-required="true"
           aria-invalid={!reference.transcript.trim()}
           value={reference.transcript}
-          onChange={(event) => props.onChange(editReferenceTranscript(reference, event.target.value))}
+          onChange={(event) => onChange(editReferenceTranscript(reference, event.target.value))}
         />
       </label>
 
@@ -304,7 +351,7 @@ export function ReferenceTrimmer(props: ReferenceTrimmerProps): JSX.Element {
           <button
             type="button"
             className="chip"
-            onClick={() => props.onChange(restoreReferenceTranscript(reference))}
+            onClick={() => onChange(restoreReferenceTranscript(reference))}
           >
             Undo hand edit
           </button>

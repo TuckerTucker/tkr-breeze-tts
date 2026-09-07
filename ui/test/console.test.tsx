@@ -287,6 +287,40 @@ describe('the seed makes a comparison meaningful', () => {
   });
 });
 
+describe('the field labels are valid markup bound to their controls', () => {
+  it('keeps each visible label bound to the control it names', () => {
+    // A label whose content model is violated can be detached from its control
+    // by parser recovery, leaving the field with no programmatic label at all.
+    render(<Harness />);
+    const text = screen.getByLabelText('Text to speak') as HTMLTextAreaElement;
+    const instruction = screen.getByLabelText('Instruction') as HTMLInputElement;
+
+    const textLabel = text.closest('label');
+    const instructionLabel = instruction.closest('label');
+    expect(textLabel).not.toBeNull();
+    expect(instructionLabel).not.toBeNull();
+    expect((textLabel as HTMLLabelElement).control).toBe(text);
+    expect((instructionLabel as HTMLLabelElement).control).toBe(instruction);
+    expect(textLabel).toHaveTextContent('Text to speak');
+    expect(instructionLabel).toHaveTextContent('Delivery instruction');
+  });
+
+  it('nests only phrasing content inside a label', () => {
+    // <p> is flow content and is not permitted inside <label>. React builds the
+    // DOM through createElement, which never applies the parser's recovery, so
+    // the violation is invisible at runtime here and only shows in a real
+    // browser — the content model itself is what has to be asserted.
+    const { container } = render(<Harness />);
+    const labels = [...container.querySelectorAll('label')];
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(
+        label.querySelector('p, div, section, article, ul, ol, li, table, form, h1, h2, h3'),
+      ).toBeNull();
+    }
+  });
+});
+
 describe('a reload loses nothing', () => {
   it('round-trips draft, language and seed through storage', () => {
     const store = new Map<string, string>();

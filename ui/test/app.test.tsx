@@ -7,7 +7,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react';
 
 import { App } from '../src/App.js';
 import { GatewayClient } from '../src/api/client.js';
@@ -32,8 +32,42 @@ const HEALTH = {
   measured: { warmupMs: 41_234, coldTtfaMs: 45_000, warmTtfaMs: 38, rtf: 0.32 },
 };
 
-const DESCRIBED_SPEAK_SOURCE = { described: true } as const;
-const STAGED_SPEAK_SOURCE = { staged: true } as const;
+/**
+ * The library the shipped configuration speaks from.
+ *
+ * Described and staged sources are dormant, so `stubFetch` serves a kept voice
+ * by default and the app resolves onto it exactly as the operator's build does.
+ * Tests that used to enable the described source to reach an enabled Generate
+ * button now reach it the way the shipped surface does.
+ */
+const SAVED_VOICE = {
+  id: 'voice-kept',
+  name: 'Visible narrator',
+  createdAt: 2,
+  transcript: 'This voice remains ready for Speak.',
+  defaultDirection: 'Warm and clear.',
+  origin: { kind: 'designed', instruction: 'Warm and clear.' },
+  durationSeconds: 4,
+  sampleRate: 24_000,
+  available: true,
+};
+
+const SECOND_VOICE = {
+  ...SAVED_VOICE,
+  id: 'voice-host',
+  name: 'Late-night host',
+  createdAt: 1,
+  transcript: 'You are listening to the small hours.',
+  defaultDirection: 'Close, unhurried, a little amused.',
+};
+
+/**
+ * A gate the operator's build keeps shut.
+ *
+ * Every use of this is a dormant-capability test and says so in its name; a
+ * test that needs an override to pass is not a claim about what ships.
+ */
+const DORMANT_STAGED_SOURCE = { staged: true } as const;
 
 function stubStorage(): Storage {
   const map = new Map<string, string>();
@@ -48,6 +82,70 @@ function stubStorage(): Storage {
     setItem: (key: string, value: string) => void map.set(key, value),
   };
 }
+
+/** A storage stub that records every write, so persistence cadence is visible. */
+function countingStorage(): Storage & { readonly writes: string[] } {
+  const inner = stubStorage();
+  const writes: string[] = [];
+  return {
+    writes,
+    get length() {
+      return inner.length;
+    },
+    clear: () => inner.clear(),
+    getItem: (key: string) => inner.getItem(key),
+    key: (index: number) => inner.key(index),
+    removeItem: (key: string) => inner.removeItem(key),
+    setItem: (key: string, value: string) => {
+      writes.push(value);
+      inner.setItem(key, value);
+    },
+  };
+}
+
+/**
+ * An `Audio` that records what was constructed and what was silenced.
+ *
+ * Both the cached-replay path and the buffered generation path build one, so
+ * this is where "only one source is audible" becomes an assertion.
+ */
+class TrackedAudio {
+  static instances: TrackedAudio[] = [];
+  /** Raise from pause(), to prove a failed stop cannot block the next play. */
+  static pauseThrows = false;
+  paused = false;
+
+  constructor(readonly src: string = '') {
+    TrackedAudio.instances.push(this);
+  }
+
+  play(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  pause(): void {
+    if (TrackedAudio.pauseThrows) throw new Error('this element refuses to stop');
+    this.paused = true;
+  }
+}
+
+/** One cached clip, so History offers a Replay control. */
+const CACHED_CLIP = {
+  id: 'clip-cached',
+  createdAt: Date.now(),
+  bytes: 48_000,
+  sampleRate: 24_000,
+  durationSeconds: 1,
+  ttfaMs: 38,
+  transport: 'streaming',
+  request: {
+    text: 'Replay this cached line.',
+    instruction: 'Naturally.',
+    mode: 'design',
+    cfgScale: 1,
+    seed: 42,
+  },
+};
 
 function stubAudio(): AudioBackend {
   return {
@@ -69,14 +167,16 @@ class FakeWorkletNode {
 }
 
 /** A backend whose worklet loads, so playback takes the streaming path. */
-function streamingAudio(): AudioBackend {
+function streamingAudio(closed: { count: number } = { count: 0 }): AudioBackend {
   return {
     workletUrl: 'about:blank',
     createContext: () =>
       ({
         destination: {},
         audioWorklet: { addModule: async () => {} },
-        close: async () => {},
+        close: async () => {
+          closed.count += 1;
+        },
       }) as unknown as AudioContext,
   };
 }
@@ -119,7 +219,7 @@ function stubFetch(overrides: Record<string, unknown> = {}): typeof fetch {
     '/api/health': HEALTH,
     '/api/findings': { measured: false, cfgControl: { kind: 'presets', values: [1, 4], default: 1 } },
     '/api/clips': { clips: [] },
-    '/api/voices': { voices: [] },
+    '/api/voices': { voices: [SAVED_VOICE] },
     ...overrides,
   };
   return (async (input: RequestInfo | URL) => {
@@ -161,7 +261,6 @@ describe('the app shell', () => {
         client={new GatewayClient(delayedFetch)}
         audio={stubAudio()}
         storage={stubStorage()}
-        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -244,7 +343,7 @@ describe('the app shell', () => {
     );
   });
 
-  it('shows reference preparation as activity while intake and ASR are pending', async () => {
+  it('dormant capability — temporary reference: intake and ASR show as activity', async () => {
     let resolveReference: ((response: Response) => void) | null = null;
     const pendingReference = new Promise<Response>((resolve) => {
       resolveReference = resolve;
@@ -260,7 +359,7 @@ describe('the app shell', () => {
         client={new GatewayClient(delayedFetch)}
         audio={stubAudio()}
         storage={stubStorage()}
-        speakVoiceSourceAvailability={STAGED_SPEAK_SOURCE}
+        speakVoiceSourceAvailability={DORMANT_STAGED_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -315,21 +414,7 @@ describe('the app shell', () => {
 
   it('keeps dormant Scripts UI and background requests out of the active app', async () => {
     const requestedUrls: string[] = [];
-    const base = stubFetch({
-      '/api/voices': {
-        voices: [{
-          id: 'voice-visible',
-          name: 'Visible narrator',
-          createdAt: 1,
-          transcript: 'This voice remains ready for Speak.',
-          defaultDirection: 'Warm and clear.',
-          origin: { kind: 'designed', instruction: 'Warm and clear.' },
-          durationSeconds: 4,
-          sampleRate: 24_000,
-          available: true,
-        }],
-      },
-    });
+    const base = stubFetch();
     const recordingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       requestedUrls.push(String(input));
       return base(input, init);
@@ -355,7 +440,7 @@ describe('the app shell', () => {
       .not.toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'Speak voice source' }))
       .not.toBeInTheDocument();
-    expect(screen.getByLabelText('Saved voice')).toHaveValue('voice-visible');
+    expect(screen.getByLabelText('Saved voice')).toHaveValue(SAVED_VOICE.id);
     expect(screen.queryByLabelText('Seed')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Reroll' })).not.toBeInTheDocument();
     expect(screen.queryByRole('group', { name: 'CFG scale' })).not.toBeInTheDocument();
@@ -396,7 +481,7 @@ describe('the app shell', () => {
     expect(screen.queryByRole('button', { name: 'Close creator' })).not.toBeInTheDocument();
   });
 
-  it('stages, trims, and sends a reference window without re-uploading audio', async () => {
+  it('dormant capability — temporary reference: stages, trims, and sends one window', async () => {
     let speechBody: FormData | null = null;
     const base = stubFetch({
       '/api/findings': {
@@ -436,7 +521,7 @@ describe('the app shell', () => {
         client={new GatewayClient(recordingFetch)}
         audio={stubAudio()}
         storage={stubStorage()}
-        speakVoiceSourceAvailability={STAGED_SPEAK_SOURCE}
+        speakVoiceSourceAvailability={DORMANT_STAGED_SOURCE}
       />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Temporary reference' }));
@@ -479,7 +564,6 @@ describe('the app shell', () => {
         client={new GatewayClient(stubFetch())}
         audio={stubAudio()}
         storage={stubStorage()}
-        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -511,7 +595,6 @@ describe('the app shell', () => {
         client={new GatewayClient(recordingFetch)}
         audio={stubAudio()}
         storage={stubStorage()}
-        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -529,6 +612,91 @@ describe('the app shell', () => {
     expect(speechBody!.has('mode')).toBe(false);
   });
 
+  it('sends the shipped saved-voice request end to end, transcript included', async () => {
+    // The highest-risk path in the application and, until now, the one asserted
+    // nowhere through the App: a kept voice, one line, one delivery. It was
+    // covered only as pure functions because the App tests reached Generate by
+    // enabling the described source, which the operator's build never offers.
+    let speechBody: FormData | null = null;
+    const base = stubFetch({ '/api/voices': { voices: [SAVED_VOICE, SECOND_VOICE] } });
+    const recordingFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === '/api/speech') speechBody = init?.body as FormData;
+      return base(input, init);
+    }) as typeof fetch;
+
+    render(
+      <App
+        client={new GatewayClient(recordingFetch)}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+
+    // Saved voices are the only source this build offers.
+    expect(screen.queryByRole('group', { name: 'Speak voice source' })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByLabelText('Saved voice')).toHaveValue(SAVED_VOICE.id),
+    );
+
+    fireEvent.change(screen.getByLabelText('Saved voice'), {
+      target: { value: SECOND_VOICE.id },
+    });
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'Read this in the kept voice.' },
+    });
+    fireEvent.change(screen.getByLabelText('Instruction'), {
+      target: { value: 'Slower, and a little warmer.' },
+    });
+
+    const generate = screen.getByRole('button', { name: /generate/i });
+    expect(generate).toBeEnabled();
+    fireEvent.click(generate);
+
+    await waitFor(() => expect(speechBody).not.toBeNull());
+    expect(speechBody!.get('voice_id')).toBe(SECOND_VOICE.id);
+    // The gateway needs both halves: the id names the audio, the transcript has
+    // to be the exact text of it or the vendor refuses the reference.
+    expect(speechBody!.get('ref_text')).toBe(SECOND_VOICE.transcript);
+    expect(speechBody!.get('text')).toBe('Read this in the kept voice.');
+    expect(speechBody!.get('instruction')).toBe('Slower, and a little warmer.');
+    expect(speechBody!.get('cfg_scale')).toBe('1');
+    expect(speechBody!.get('seed')).toBe('42');
+    expect(speechBody!.has('mode')).toBe(false);
+    expect(speechBody!.has('reference_id')).toBe(false);
+    expect(speechBody!.has('ref_audio')).toBe(false);
+    expect(speechBody!.has('language')).toBe(false);
+
+    await waitFor(() =>
+      expect(screen.getByLabelText('Measured latency')).toBeInTheDocument(),
+    );
+  });
+
+  it('carries a kept voice from Voices into Speak with its default delivery', async () => {
+    render(
+      <App
+        client={new GatewayClient(stubFetch({
+          '/api/voices': { voices: [SAVED_VOICE, SECOND_VOICE] },
+        }))}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('tab', { name: /voices/i }));
+    const card = screen
+      .getByRole('heading', { name: SECOND_VOICE.name, level: 4 })
+      .closest('article') as HTMLElement;
+    fireEvent.click(within(card).getByRole('button', { name: 'Use in Speak' }));
+
+    // Speak takes over, already holding the voice and the delivery it was kept
+    // with — the operator does not retype what the library already knows.
+    expect(screen.getByLabelText('Saved voice')).toHaveValue(SECOND_VOICE.id);
+    expect(screen.getByLabelText('Instruction')).toHaveValue(SECOND_VOICE.defaultDirection);
+    expect(screen.getByRole('tab', { name: /speak/i })).toHaveAttribute('aria-selected', 'true');
+  });
+
   it('says so when the stream ends early, rather than reporting a short clip as fast', async () => {
     // The failure the gateway cannot describe: upstream answered 200 and then
     // stopped. The response is a 200 carrying too few bytes, so nothing above
@@ -541,7 +709,6 @@ describe('the app shell', () => {
         client={new GatewayClient(truncatedSpeech(1))}
         audio={streamingAudio()}
         storage={stubStorage()}
-        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -571,7 +738,6 @@ describe('the app shell', () => {
         client={new GatewayClient(truncatedSpeech(0))}
         audio={streamingAudio()}
         storage={stubStorage()}
-        speakVoiceSourceAvailability={DESCRIBED_SPEAK_SOURCE}
       />,
     );
     await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
@@ -609,7 +775,7 @@ describe('the app shell', () => {
     expect(screen.getByText(/history is read-only/i)).toBeInTheDocument();
   });
 
-  it('disables microphone capture with the reason when ffmpeg is absent', async () => {
+  it('dormant capability — temporary reference: capture is disabled with its reason without ffmpeg', async () => {
     const client = new GatewayClient(
       stubFetch({
         '/api/health': {
@@ -623,7 +789,7 @@ describe('the app shell', () => {
         client={client}
         audio={stubAudio()}
         storage={stubStorage()}
-        speakVoiceSourceAvailability={STAGED_SPEAK_SOURCE}
+        speakVoiceSourceAvailability={DORMANT_STAGED_SOURCE}
       />,
     );
 
@@ -651,6 +817,243 @@ describe('the app shell', () => {
     );
     expect((screen.getByLabelText('Text to speak') as HTMLTextAreaElement).value).toBe(
       'nothing typed is lost',
+    );
+  });
+
+  it('silences a cached replay when the operator generates over it', async () => {
+    // The overlap this closes: History renders Replay for the selected clip and
+    // generating selects a clip, so Generate during a replay used to leave both
+    // sources sounding and turn a comparison into a muddle.
+    TrackedAudio.instances = [];
+    vi.stubGlobal('Audio', TrackedAudio);
+
+    render(
+      <App
+        client={new GatewayClient(stubFetch({ '/api/clips': { clips: [CACHED_CLIP] } }))}
+        audio={stubAudio()}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /Replay this cached line/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replay' }));
+    await waitFor(() => expect(TrackedAudio.instances).toHaveLength(1));
+    const replayed = TrackedAudio.instances[0]!;
+    expect(replayed.src).toContain('/api/clips/clip-cached');
+    expect(replayed.paused).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'Generate over the top of that replay.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+    await waitFor(() => expect(replayed.paused).toBe(true));
+  });
+
+  it('closes the streaming context when a cached replay takes over', async () => {
+    // The other direction of the same defect: the replay element used to start
+    // while the worklet graph was still connected and still making sound.
+    TrackedAudio.instances = [];
+    vi.stubGlobal('Audio', TrackedAudio);
+    vi.stubGlobal('AudioWorkletNode', FakeWorkletNode);
+    const closed = { count: 0 };
+
+    render(
+      <App
+        client={new GatewayClient(stubFetch({ '/api/clips': { clips: [CACHED_CLIP] } }))}
+        audio={streamingAudio(closed)}
+        storage={stubStorage()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'Stream this, then replay over it.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+    await waitFor(() => expect(screen.getByLabelText('Measured latency')).toBeInTheDocument());
+    expect(closed.count).toBe(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /Replay this cached line/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Replay' }));
+
+    await waitFor(() => expect(closed.count).toBe(1));
+    expect(TrackedAudio.instances.at(-1)!.src).toContain('/api/clips/clip-cached');
+  });
+
+  it('starts the generated clip even when the previous source refuses to stop', async () => {
+    // The operator pressed Generate and is owed audio. A stop that throws is a
+    // problem with the thing being silenced, never a reason to withhold sound.
+    TrackedAudio.instances = [];
+    TrackedAudio.pauseThrows = true;
+    vi.stubGlobal('Audio', TrackedAudio);
+
+    try {
+      render(
+        <App
+          client={new GatewayClient(stubFetch({ '/api/clips': { clips: [CACHED_CLIP] } }))}
+          audio={stubAudio()}
+          storage={stubStorage()}
+        />,
+      );
+      await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+
+      fireEvent.click(screen.getByRole('button', { name: /Replay this cached line/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Replay' }));
+      await waitFor(() => expect(TrackedAudio.instances).toHaveLength(1));
+
+      fireEvent.change(screen.getByLabelText('Text to speak'), {
+        target: { value: 'This must still be heard.' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: /generate/i }));
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Measured latency')).toBeInTheDocument(),
+      );
+      expect(TrackedAudio.instances).toHaveLength(2);
+    } finally {
+      TrackedAudio.pauseThrows = false;
+    }
+  });
+
+  it('keeps an unfinished voice-creation draft across a remount', async () => {
+    // The most expensive draft in the application: a name, a description and an
+    // audition line the operator wrote before they had anything to keep.
+    const storage = stubStorage();
+    const { unmount } = render(
+      <App client={new GatewayClient(stubFetch())} audio={stubAudio()} storage={storage} />,
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /voices/i }));
+    fireEvent.change(screen.getByLabelText('New voice name'), {
+      target: { value: 'Late-night host' },
+    });
+    fireEvent.change(screen.getByLabelText('Voice description'), {
+      target: { value: 'Close, unhurried, a little amused.' },
+    });
+    fireEvent.change(screen.getByLabelText('Voice audition line'), {
+      target: { value: 'You are listening to the small hours.' },
+    });
+
+    await waitFor(() =>
+      expect(storage.getItem('breeze.workspace.v2')).toContain('Late-night host'),
+    );
+    unmount();
+
+    render(
+      <App client={new GatewayClient(stubFetch())} audio={stubAudio()} storage={storage} />,
+    );
+    expect((screen.getByLabelText('New voice name') as HTMLInputElement).value).toBe(
+      'Late-night host',
+    );
+    expect((screen.getByLabelText('Voice description') as HTMLTextAreaElement).value).toBe(
+      'Close, unhurried, a little amused.',
+    );
+    expect((screen.getByLabelText('Voice audition line') as HTMLInputElement).value).toBe(
+      'You are listening to the small hours.',
+    );
+  });
+
+  it('coalesces persistence rather than writing the whole workspace per keystroke', async () => {
+    const storage = countingStorage();
+    render(
+      <App client={new GatewayClient(stubFetch())} audio={stubAudio()} storage={storage} />,
+    );
+    const field = screen.getByLabelText('Text to speak');
+    const typed = 'A staged reference makes this payload expensive.';
+    for (let length = 1; length <= typed.length; length += 1) {
+      fireEvent.change(field, { target: { value: typed.slice(0, length) } });
+    }
+
+    await waitFor(() => expect(storage.getItem('breeze.workspace.v2')).toContain(typed));
+    // Every keystroke changed the workspace; the write happened once.
+    expect(storage.writes.length).toBeLessThan(typed.length);
+    expect(storage.writes.at(-1)).toContain(typed);
+  });
+
+  it('flushes a coalesced write rather than letting the delay lose the edit', () => {
+    // Coalescing is only acceptable because the pending write survives the page
+    // going away. Nothing here waits for the delay before tearing the app down.
+    const storage = stubStorage();
+    const { unmount } = render(
+      <App client={new GatewayClient(stubFetch())} audio={stubAudio()} storage={storage} />,
+    );
+    fireEvent.change(screen.getByLabelText('Text to speak'), {
+      target: { value: 'typed a moment before the tab closed' },
+    });
+    unmount();
+
+    expect(storage.getItem('breeze.workspace.v2')).toContain(
+      'typed a moment before the tab closed',
+    );
+  });
+
+  it('reports a staged reference the gateway has forgotten without discarding the draft', async () => {
+    const storage = stubStorage();
+    storage.setItem('breeze.workspace.v2', JSON.stringify({
+      version: 2,
+      active: 'voices',
+      selectedVoiceId: null,
+      lastScriptId: null,
+      creationDraft: {
+        method: 'clone-audio',
+        name: 'Late-night host',
+        description: 'Close, unhurried, a little amused.',
+        sampleText: 'You are listening to the small hours.',
+        cfgScale: 1,
+        seed: 42,
+        reference: {
+          referenceId: 'reference-expired',
+          name: 'speaker.wav',
+          durationSeconds: 2,
+          sampleRate: 24_000,
+          peaks: [0.2, 0.8],
+          words: [
+            { word: 'One', start: 0, end: 1 },
+            { word: 'two', start: 1, end: 2 },
+          ],
+          language: 'en',
+          start: 0,
+          end: 2,
+          transcript: 'One two',
+          transcriptEdited: true,
+        },
+        sourceClipId: null,
+        auditionClipId: null,
+      },
+    }));
+    const base = stubFetch();
+    const expiredReference = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) !== '/api/speech') return base(input, init);
+      return new Response(JSON.stringify({
+        error: {
+          type: 'reference',
+          message: 'That staged reference has expired.',
+          remedy: 'Record or upload the audio again.',
+        },
+      }), { status: 404, headers: { 'content-type': 'application/json' } });
+    }) as typeof fetch;
+
+    render(
+      <App client={new GatewayClient(expiredReference)} audio={stubAudio()} storage={storage} />,
+    );
+    await waitFor(() => expect(screen.getByText(/Warm —/)).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Audition voice' }));
+
+    await waitFor(() =>
+      expect(screen.getByText(/That staged reference has expired/)).toBeInTheDocument(),
+    );
+    expect((screen.getByLabelText('New voice name') as HTMLInputElement).value).toBe(
+      'Late-night host',
+    );
+    expect(
+      (screen.getByLabelText('Cloned voice default delivery') as HTMLInputElement).value,
+    ).toBe('Close, unhurried, a little amused.');
+    expect((screen.getByLabelText('Voice audition line') as HTMLInputElement).value).toBe(
+      'You are listening to the small hours.',
+    );
+    expect((screen.getByLabelText('Reference transcript') as HTMLTextAreaElement).value).toBe(
+      'One two',
     );
   });
 

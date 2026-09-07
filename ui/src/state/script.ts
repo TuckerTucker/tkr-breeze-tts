@@ -8,8 +8,6 @@
  * @module
  */
 
-import { estimateTokens, tokenCeilingFor } from './draft.js';
-
 /** Where a cue stands, shown in place on its row. */
 export type CueState = 'queued' | 'generating' | 'done' | 'stale' | 'failed' | 'unrunnable';
 
@@ -286,36 +284,6 @@ export function driftLabel(cue: Cue): string {
   return `${sign}${cue.driftSeconds.toFixed(1)}s`;
 }
 
-/** The three responses to drift the system actually offers. */
-export const DRIFT_RESPONSES = ['Reroll the seed', 'Shorten the line', 'Accept'] as const;
-
-/**
- * Whether a row can be run, and why not when it cannot.
- *
- * @param cue - The cue.
- * @param availableVoiceIds - Voices still in the library.
- * @returns A reason, or null when the row is runnable.
- */
-export function cueBlocker(
-  cue: Cue,
-  availableVoiceIds: ReadonlySet<string>,
-): string | null {
-  if (cue.voiceId && !availableVoiceIds.has(cue.voiceId)) {
-    return `The voice “${cue.voiceName ?? cue.voiceId}” is no longer in the library.`;
-  }
-  // A cue carrying a library voice is a Clone request and so reaches batch 2
-  // even at cfg 1.0; one without is Design and caps at 256 there. The gateway
-  // is still authoritative — it can also see the reference transcript, which
-  // this row cannot — but a row that will certainly fail says so here first.
-  const tokens = estimateTokens(cue.text);
-  const ceiling = tokenCeilingFor(cue.voiceId ? 'clone' : 'design', cue.cfgScale);
-  if (tokens > ceiling) {
-    return `About ${tokens} tokens, past the ${ceiling}-token ceiling.`;
-  }
-  if (!cue.text.trim()) return 'This row has no text.';
-  return null;
-}
-
 /** A run's progress, aggregated for the header. */
 export interface ScriptProgress {
   readonly total: number;
@@ -340,29 +308,6 @@ export function progressOf(script: Script): ScriptProgress {
     stale: count('stale') + count('queued'),
     cached: count('done'),
     failed: count('failed') + count('unrunnable'),
-  };
-}
-
-/**
- * Apply an edit to one row, leaving every other row untouched.
- *
- * @param script - The script.
- * @param cueId - The row being edited.
- * @param patch - What changed.
- * @returns A new script with only that row replaced and marked stale.
- */
-export function editCue(
-  script: Script,
-  cueId: string,
-  patch: Partial<Pick<Cue, 'text' | 'voiceId' | 'voiceName' | 'cfgScale' | 'seed'>>,
-): Script {
-  return {
-    ...script,
-    cues: script.cues.map((cue) =>
-      cue.id === cueId
-        ? { ...cue, ...patch, state: 'stale', actualSeconds: null, driftSeconds: null }
-        : cue,
-    ),
   };
 }
 

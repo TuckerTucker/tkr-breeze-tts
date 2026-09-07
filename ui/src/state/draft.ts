@@ -25,7 +25,7 @@ import type { VoiceMode } from './mode.js';
  * Mirrors the gateway's `SEGMENTS_BY_MODE`. Design uses `tts_instruction`, one
  * segment; Clone and Direction use `ref_edit_tata`, two.
  */
-export const SEGMENTS_BY_MODE = { design: 1, clone: 2, direction: 2 } as const;
+const SEGMENTS_BY_MODE = { design: 1, clone: 2, direction: 2 } as const;
 
 /**
  * The declared text-encoder ceiling at each batch size.
@@ -37,10 +37,10 @@ export const SEGMENTS_BY_MODE = { design: 1, clone: 2, direction: 2 } as const;
 export const CEILING_BY_BATCH = { 1: 256, 2: 512, 4: 512 } as const;
 
 /** Mirrors the gateway's separately keyed backbone-prefill graph family. */
-export const BACKBONE_CEILING_BY_BATCH = { 1: 256, 2: 512 } as const;
+const BACKBONE_CEILING_BY_BATCH = { 1: 256, 2: 512 } as const;
 
 /** Exact frame rate declared by the bundled Qwen audio tokenizer. */
-export const AUDIO_TOKENS_PER_SECOND = 12.5;
+const AUDIO_TOKENS_PER_SECOND = 12.5;
 
 const TEXT_SEGMENT_TOKEN_RESERVE = 8;
 const AUDIO_SEGMENT_TOKEN_RESERVE = 1;
@@ -55,12 +55,12 @@ export const MAX_TOKENS = 512;
  * @param cfgScale - The current guidance scale.
  * @returns The batch the graph will be keyed on.
  */
-export function textEncoderBatch(mode: VoiceMode, cfgScale: number): 1 | 2 | 4 {
+function textEncoderBatch(mode: VoiceMode, cfgScale: number): 1 | 2 | 4 {
   return (SEGMENTS_BY_MODE[mode] * (cfgScale === 1.0 ? 1 : 2)) as 1 | 2 | 4;
 }
 
 /** The branch batch used by the assembled-prompt backbone graph. */
-export function backbonePrefillBatch(cfgScale: number): 1 | 2 {
+function backbonePrefillBatch(cfgScale: number): 1 | 2 {
   return cfgScale === 1.0 ? 1 : 2;
 }
 
@@ -84,7 +84,7 @@ export function tokenCeilingFor(mode: VoiceMode, cfgScale: number): number {
 }
 
 /** What the instruction field starts as, and falls back to when cleared. */
-export const DEFAULT_INSTRUCTION = 'Speak clearly and naturally.';
+const DEFAULT_INSTRUCTION = 'Speak clearly and naturally.';
 
 /** Vocal events the model recognises, per language. */
 export const VOCAL_EVENTS: Record<EventLanguage, readonly { label: string; marker: string }[]> = {

@@ -9,35 +9,21 @@ import type { Clip } from '../state/history.js';
 import type { CfgControl as CfgControlShape } from '../state/mode.js';
 import type { StagedReferenceSelection } from '../state/reference.js';
 import { suggestName } from '../state/name.js';
+import {
+  INITIAL_CREATION_DRAFT,
+  type VoiceCreationDraft,
+} from '../state/workspace.js';
 
-/** Local creation language inside Voices, never an application mode. */
-export type VoiceCreationMethod = 'describe' | 'clone-audio' | 'from-clip';
-
-/** Draft retained while the operator navigates to another tool. */
-export interface VoiceCreationDraft {
-  readonly method: VoiceCreationMethod;
-  readonly name: string;
-  readonly description: string;
-  readonly sampleText: string;
-  readonly cfgScale: number;
-  readonly seed: number;
-  readonly reference: StagedReferenceSelection | null;
-  readonly sourceClipId: string | null;
-  readonly auditionClipId: string | null;
-}
-
-/** Starting voice-creation values. */
-export const INITIAL_VOICE_CREATION_DRAFT: VoiceCreationDraft = {
-  method: 'describe',
-  name: 'Untitled voice',
-  description: 'A warm, clear narrator with an unhurried pace.',
-  sampleText: 'This is how this voice will sound when you use it.',
-  cfgScale: 4,
-  seed: 42,
-  reference: null,
-  sourceClipId: null,
-  auditionClipId: null,
-};
+/**
+ * The creation defaults, under the name this view has always published them by.
+ *
+ * The declarations moved to `state/workspace.ts`, which is where a persisted,
+ * validated, reload-surviving draft belongs — state importing its own shape
+ * from the component that renders it was the arrow pointing the wrong way. This
+ * alias keeps the existing importers compiling until each is pointed at the
+ * state module directly. It is one binding re-exported, not a second copy, so
+ * the pinned equality it used to need a test for is now a tautology.
+ */
 
 /** Props composing creation and durable library management. */
 export interface VoiceWorkspaceProps {
@@ -57,6 +43,18 @@ export interface VoiceWorkspaceProps {
   readonly onUndo: (undo: PendingUndo) => void;
   readonly onUseInSpeak: (voice: Voice) => void;
   readonly onUseInScript: (voice: Voice) => void;
+  /**
+   * Something true about the library that is not a failure — a voice another
+   * viewer had already deleted, say. Optional, and rendered beside the list
+   * rather than beside the creation form, because it is about what is there.
+   */
+  readonly libraryNotice?: string | null;
+  /**
+   * Hand back staged reference audio the draft no longer holds. Optional: a
+   * caller without a gateway client still renders the surface, and the
+   * recording then simply waits out its expiry.
+   */
+  readonly onReleaseReference?: (referenceId: string) => void | Promise<unknown>;
   readonly scriptsAvailable: boolean;
   readonly voiceAudioUrl: (id: string) => string;
   readonly onStage: (
@@ -100,6 +98,21 @@ export function VoiceWorkspace(props: VoiceWorkspaceProps): JSX.Element {
           <p className="eyebrow">Create · Keep · Reuse</p>
           <h2>Voices</h2>
           <p>Build a reusable voice once, then carry it into speech whenever you need it.</p>
+          {/*
+            Stated once, above everything that creates: this is where a
+            first-time visitor reads it before uploading a recording, not after
+            discovering who else could hear it. It is unconditional rather than
+            shown only when a password gate is in use, because the browser
+            cannot tell an exposed listener from a loopback one and the wrong
+            half of that guess is the half that withholds a disclosure. Recorded
+            as a requirement in .claude/rules/compliance-triage.md
+            (reference.audio, consent to disclosure), not as a courtesy.
+          */}
+          <p className="section-copy">
+            This library is shared. Everyone holding the link to this demo sees every
+            kept voice, and a recording you upload or record here is audible to all of
+            them.
+          </p>
         </div>
       </div>
 
@@ -160,6 +173,7 @@ export function VoiceWorkspace(props: VoiceWorkspaceProps): JSX.Element {
               selection={props.draft.reference}
               onSelectionChange={(reference) => setDraft({ reference, auditionClipId: null })}
               onStage={props.onStage}
+              onReleaseReference={props.onReleaseReference}
               disabled={props.busy}
               canRecord={props.canRecord}
               recordDisabledReason={props.recordDisabledReason}
@@ -204,7 +218,7 @@ export function VoiceWorkspace(props: VoiceWorkspaceProps): JSX.Element {
                 setDraft({
                   sourceClipId,
                   ...(
-                    sourceClip && props.draft.name === INITIAL_VOICE_CREATION_DRAFT.name
+                    sourceClip && props.draft.name === INITIAL_CREATION_DRAFT.name
                       ? { name: suggestName(sourceClip.request.instruction) }
                       : {}
                   ),
@@ -295,11 +309,22 @@ export function VoiceWorkspace(props: VoiceWorkspaceProps): JSX.Element {
           <p>Stored locally with their audio, transcript, provenance, and delivery default.</p>
         </div>
 
+        {/*
+          Only ever this client's own delete. The 30-second window in
+          voices-index.ts is real, but the record that can spend it lives in the
+          deleter's browser — a voice that vanished from a refresh is simply
+          absent, and offering the button to anyone else would be offering a
+          button that cannot work.
+        */}
         {props.pendingUndo && (
           <div className="undo-strip" role="status">
             <span>Deleted “{props.pendingUndo.voice.name}”.</span>
             <button type="button" onClick={() => props.onUndo(props.pendingUndo!)}>Undo</button>
           </div>
+        )}
+
+        {props.libraryNotice && (
+          <p className="caption" role="status">{props.libraryNotice}</p>
         )}
 
         {props.voices.length === 0 ? (

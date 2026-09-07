@@ -14,6 +14,23 @@ import type {
   SpeakVoiceSourceAvailability,
 } from '../state/workspace.js';
 
+/**
+ * What this viewer is waiting on when the demo is busy with someone else.
+ *
+ * The vendor holds a process-wide lock and answers every contended request with
+ * the same 409, so nothing in the error says whose generation is in the way.
+ * The shell draws that distinction from whether it has a request in flight —
+ * the only place that knows — and hands the answer down as this.
+ */
+export interface SharedGenerationWait {
+  /** Which retry of the held request is pending, counting from one. */
+  readonly attempt: number;
+  /** How many retries there will ever be. Finite, and stated. */
+  readonly attempts: number;
+  /** True once they ran out. The composed request is still on screen. */
+  readonly exhausted: boolean;
+}
+
 /** Props for the one-off speech tool. */
 export interface SpeakWorkspaceProps {
   readonly draft: SpeakDraft;
@@ -23,6 +40,16 @@ export interface SpeakWorkspaceProps {
   readonly statusLine: string;
   readonly onGenerate: () => void;
   readonly generating: boolean;
+  /** Set only while someone else's generation is holding this one up. */
+  readonly sharedWait?: SharedGenerationWait | null;
+  /** Drop the held request and stop retrying. Nothing composed is discarded. */
+  readonly onCancelSharedWait?: () => void;
+  /**
+   * Hand back staged reference audio the draft no longer holds. Optional for
+   * the same reason it is on ReferenceCapture: a caller without a gateway
+   * client still renders the surface.
+   */
+  readonly onReleaseReference?: (referenceId: string) => void | Promise<unknown>;
   readonly clips: readonly Clip[];
   readonly selectedClipId: string | null;
   readonly onSelectClip: (clip: Clip) => void;
@@ -157,6 +184,7 @@ export function SpeakWorkspace(props: SpeakWorkspaceProps): JSX.Element {
                 selection={props.draft.voice.reference}
                 onSelectionChange={(reference) => updateVoice({ kind: 'staged', reference })}
                 onStage={props.onStage}
+                onReleaseReference={props.onReleaseReference}
                 disabled={props.generating}
                 canRecord={props.canRecord}
                 recordDisabledReason={props.recordDisabledReason}
@@ -185,6 +213,35 @@ export function SpeakWorkspace(props: SpeakWorkspaceProps): JSX.Element {
             cfgScale={props.draft.cfgScale}
             mode={legacyMode}
           />
+          {/*
+            Not an error and not a spinner: a disabled control with its reason
+            beside it, which is what a busy state already is here. While the
+            wait is live the reason sits on the Console's own status line and
+            this strip carries only the way out, so the same sentence is never
+            said twice. Once the attempts are spent the Console goes back to
+            normal — Generate works again — and the strip is the only thing that
+            still has something to say.
+          */}
+          {props.sharedWait && (
+            <div className="undo-strip" role="status">
+              {props.sharedWait.exhausted ? (
+                <span>
+                  The demo stayed busy through {props.sharedWait.attempts} attempts. Your
+                  line and settings are exactly as you left them — press Generate to try
+                  again.
+                </span>
+              ) : (
+                <>
+                  <span>Nothing is lost while this waits.</span>
+                  {props.onCancelSharedWait && (
+                    <button type="button" onClick={props.onCancelSharedWait}>
+                      Stop waiting
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
           {props.playbackReadout}
         </div>
 

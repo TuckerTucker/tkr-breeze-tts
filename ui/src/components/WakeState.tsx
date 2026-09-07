@@ -14,7 +14,6 @@ import type { JSX } from 'react';
 
 import {
   WAKE_EXPLANATION,
-  formatSeconds,
   readinessSummary,
   wakeCopy,
   type MeasuredLatency,
@@ -118,6 +117,3 @@ export function FirstAudioReadout(props: {
     </section>
   );
 }
-
-/** Format a measured figure for prose. Re-exported so callers stay consistent. */
-export { formatSeconds };

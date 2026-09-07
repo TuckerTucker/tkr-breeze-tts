@@ -234,3 +234,132 @@ describe('preflight limits and recognition failures', () => {
     expect(container.querySelector('.toast, [data-toast]')).toBeNull();
   });
 });
+
+describe('the preview settles at the end of a gesture', () => {
+  const AUDIO = 'Play selected reference window';
+  const WINDOW_A = '/api/reference/reference-1/audio?start=0&end=2';
+  const WINDOW_B = '/api/reference/reference-1/audio?start=1.2&end=3.2';
+
+  function sourceRecorder(audio: HTMLElement): {
+    record: () => void;
+    sources: string[];
+  } {
+    const sources: string[] = [];
+    return {
+      sources,
+      record: (): void => {
+        const src = audio.getAttribute('src') ?? '';
+        if (sources.at(-1) !== src) sources.push(src);
+      },
+    };
+  }
+
+  it('does not rebuild the preview element while the waveform is dragged', () => {
+    // Assigning src tears down and rebuilds the media element. Driven straight
+    // from the selection, a drag reset playback on every pointermove, so the
+    // one control that exists to let you hear the window was also the one thing
+    // preventing you from hearing it.
+    render(<Harness />);
+    const audio = screen.getByLabelText(AUDIO);
+    const waveform = screen.getByRole('img', { name: /Reference waveform/i });
+    const times = (): string =>
+      screen.getByLabelText('Selected reference times').textContent ?? '';
+    const { record, sources } = sourceRecorder(audio);
+
+    record();
+    fireEvent.pointerDown(waveform, { clientX: 235, pointerId: 1 });
+    expect(times()).toBe('1.20s–3.20s');
+    record();
+    fireEvent.pointerMove(waveform, { clientX: 100, pointerId: 1 });
+    expect(times()).toBe('0.00s–2.00s');
+    record();
+    fireEvent.pointerMove(waveform, { clientX: 240, pointerId: 1 });
+    expect(times()).toBe('1.20s–3.20s');
+    record();
+    fireEvent.pointerUp(waveform, { clientX: 240, pointerId: 1 });
+    record();
+
+    // The window visibly moved three times; the source changed exactly once,
+    // at the end of the gesture.
+    expect(sources).toEqual([WINDOW_A, WINDOW_B]);
+  });
+
+  it('does not rebuild the preview element while the range control is dragged', () => {
+    // The range control steps at 0.01s, so a pointer drag along it produced a
+    // change event — and a fresh element — many times per second.
+    render(<Harness />);
+    const audio = screen.getByLabelText(AUDIO);
+    const selection = screen.getByRole('slider', { name: 'Reference selection position' });
+
+    expect(audio).toHaveAttribute('src', WINDOW_A);
+    fireEvent.pointerDown(selection, { pointerId: 1 });
+    fireEvent.change(selection, { target: { value: '1.35' } });
+    expect(selection).toHaveValue('1.2');
+    expect(audio).toHaveAttribute('src', WINDOW_A);
+
+    fireEvent.pointerUp(selection, { pointerId: 1 });
+    expect(audio).toHaveAttribute('src', WINDOW_B);
+  });
+
+  it('settles an abandoned gesture rather than stranding the preview', () => {
+    // A cancelled pointer and a blurred control both end a gesture without a
+    // pointerup; neither may leave the preview pointing at a stale window.
+    render(<Harness />);
+    const audio = screen.getByLabelText(AUDIO);
+    const waveform = screen.getByRole('img', { name: /Reference waveform/i });
+
+    fireEvent.pointerDown(waveform, { clientX: 235, pointerId: 1 });
+    expect(audio).toHaveAttribute('src', WINDOW_A);
+    fireEvent.pointerCancel(waveform, { pointerId: 1 });
+    expect(audio).toHaveAttribute('src', WINDOW_B);
+
+    const selection = screen.getByRole('slider', { name: 'Reference selection position' });
+    fireEvent.pointerDown(selection, { pointerId: 2 });
+    fireEvent.change(selection, { target: { value: '0' } });
+    expect(audio).toHaveAttribute('src', WINDOW_B);
+    fireEvent.blur(selection);
+    expect(audio).toHaveAttribute('src', WINDOW_A);
+  });
+
+  it('settles immediately for a keyboard nudge, which has no pointerup to wait for', () => {
+    render(<Harness />);
+    const audio = screen.getByLabelText(AUDIO);
+    expect(audio).toHaveAttribute('src', WINDOW_A);
+
+    fireEvent.keyDown(screen.getByRole('slider', { name: 'Reference selection position' }), {
+      key: 'ArrowRight',
+    });
+    expect(audio).toHaveAttribute('src', WINDOW_B);
+  });
+
+  it('settles immediately when the window is moved programmatically', () => {
+    // A selection replaced from outside the component — a re-staged reference,
+    // a restored draft — never produces a pointer event at all.
+    const Controlled = (props: { reference: StagedReferenceSelection }): JSX.Element => (
+      <ReferenceTrimmer
+        reference={props.reference}
+        maxSeconds={2}
+        maxMeasured
+        cfgScale={1}
+        branchLimits={{ noCfg: 2, singleCfg: 4 }}
+        tokenCeiling={512}
+        audioUrl={(start, end) =>
+          `/api/reference/${props.reference.referenceId}/audio?start=${start}&end=${end}`
+        }
+        onChange={() => {}}
+      />
+    );
+
+    const { rerender } = render(
+      <Controlled reference={{ ...REFERENCE, start: 0, end: 2, transcript: 'One two' }} />,
+    );
+    expect(screen.getByLabelText(AUDIO)).toHaveAttribute('src', WINDOW_A);
+
+    rerender(
+      <Controlled
+        reference={{ ...REFERENCE, start: 1.2, end: 3.2, transcript: 'two three.' }}
+      />,
+    );
+    expect(screen.getByLabelText(AUDIO)).toHaveAttribute('src', WINDOW_B);
+  });
+});

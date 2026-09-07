@@ -100,8 +100,10 @@ export function Console(props: ConsoleProps): JSX.Element {
         </p>
       </div>
 
+      {/* Phrasing content only: a <p> is flow content and is not valid inside a
+          <label>, which browsers and assistive tooling recover from differently. */}
       <label className="field">
-        <p className="caption caption--ink">Text to speak</p>
+        <span className="caption caption--ink">Text to speak</span>
         <textarea
           ref={textRef}
           aria-label="Text to speak"
@@ -122,7 +124,7 @@ export function Console(props: ConsoleProps): JSX.Element {
       </div>
 
       <label className="field">
-        <p className="caption caption--ink">Delivery instruction</p>
+        <span className="caption caption--ink">Delivery instruction</span>
         <input
           type="text"
           aria-label="Instruction"

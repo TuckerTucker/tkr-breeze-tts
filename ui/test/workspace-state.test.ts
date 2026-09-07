@@ -3,6 +3,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  INITIAL_CREATION_DRAFT,
   INITIAL_WORKSPACE_STATE,
   legacyModeFor,
   loadWorkspaceState,
@@ -15,6 +16,7 @@ import {
   type VoiceSpec,
   type WorkspaceState,
 } from '../src/state/workspace.js';
+import type { StagedReferenceSelection } from '../src/state/reference.js';
 import type { Voice } from '../src/state/voices.js';
 
 function storage(entries: Record<string, string> = {}): Storage {
@@ -49,6 +51,23 @@ function draft(overrides: Partial<SpeakDraft> = {}): SpeakDraft {
     ...overrides,
   };
 }
+
+const CORRECTED_REFERENCE: StagedReferenceSelection = {
+  referenceId: 'ref-staged',
+  name: 'speaker.wav',
+  durationSeconds: 4,
+  sampleRate: 24_000,
+  peaks: [0.1, 0.9, 0.4],
+  words: [
+    { word: 'One', start: 0, end: 1 },
+    { word: 'two', start: 1, end: 2 },
+  ],
+  language: 'en',
+  start: 0,
+  end: 2,
+  transcript: 'One, too',
+  transcriptEdited: true,
+};
 
 describe('voice-spec resolution and projection', () => {
   it('moves dormant Speak sources to the preferred saved voice', () => {
@@ -169,6 +188,17 @@ describe('workspace persistence and migration', () => {
         seed: 99,
         voice: { kind: 'saved', voiceId: 'voice-1', voiceName: 'Kept narrator' },
       }),
+      creationDraft: {
+        method: 'clone-audio',
+        name: 'Late-night host',
+        description: 'Close, unhurried, a little amused.',
+        sampleText: 'You are listening to the small hours.',
+        cfgScale: 2.5,
+        seed: 7,
+        reference: CORRECTED_REFERENCE,
+        sourceClipId: 'clip-source',
+        auditionClipId: 'clip-audition',
+      },
       lastScriptId: 'script-1',
     };
 
@@ -240,6 +270,82 @@ describe('workspace persistence and migration', () => {
         cfgScale: 1,
         voice: { kind: 'described' },
       },
+    });
+  });
+
+  it('keeps a hand-edited reference transcript operator-owned across a restore', () => {
+    const store = storage();
+    saveWorkspaceState(store, {
+      ...INITIAL_WORKSPACE_STATE,
+      creationDraft: { ...INITIAL_CREATION_DRAFT, reference: CORRECTED_REFERENCE },
+    });
+
+    expect(loadWorkspaceState(store).creationDraft.reference).toMatchObject({
+      transcript: 'One, too',
+      transcriptEdited: true,
+    });
+  });
+
+  it('resets one corrupt creation field without discarding the rest of the draft', () => {
+    const store = storage({
+      'breeze.workspace.v2': JSON.stringify({
+        ...INITIAL_WORKSPACE_STATE,
+        creationDraft: {
+          method: 'clone-audio',
+          name: 'Kept while the seed is unreadable',
+          description: 'Close and unhurried.',
+          sampleText: 'This audition line survives.',
+          cfgScale: 2.5,
+          seed: 'not a seed',
+          reference: CORRECTED_REFERENCE,
+          sourceClipId: null,
+          auditionClipId: null,
+        },
+      }),
+    });
+
+    expect(loadWorkspaceState(store).creationDraft).toMatchObject({
+      method: 'clone-audio',
+      name: 'Kept while the seed is unreadable',
+      description: 'Close and unhurried.',
+      sampleText: 'This audition line survives.',
+      cfgScale: 2.5,
+      seed: INITIAL_CREATION_DRAFT.seed,
+      reference: CORRECTED_REFERENCE,
+    });
+  });
+
+  it('drops an incomplete staged reference without taking the draft with it', () => {
+    const store = storage({
+      'breeze.workspace.v2': JSON.stringify({
+        ...INITIAL_WORKSPACE_STATE,
+        creationDraft: {
+          ...INITIAL_CREATION_DRAFT,
+          method: 'clone-audio',
+          name: 'Named before the waveform went missing',
+          reference: { referenceId: 'ref-staged', name: 'speaker.wav' },
+        },
+      }),
+    });
+
+    expect(loadWorkspaceState(store).creationDraft).toMatchObject({
+      method: 'clone-audio',
+      name: 'Named before the waveform went missing',
+      reference: null,
+    });
+  });
+
+  it('restores an unusable staged Speak reference as staged-and-empty, not described', () => {
+    const store = storage({
+      'breeze.workspace.v2': JSON.stringify({
+        ...INITIAL_WORKSPACE_STATE,
+        speakDraft: { ...INITIAL_WORKSPACE_STATE.speakDraft, voice: { kind: 'staged', reference: { referenceId: 7 } } },
+      }),
+    });
+
+    expect(loadWorkspaceState(store).speakDraft.voice).toEqual({
+      kind: 'staged',
+      reference: null,
     });
   });
 

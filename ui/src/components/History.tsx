@@ -9,7 +9,7 @@
  * @module
  */
 
-import type { JSX } from 'react';
+import { useId, type JSX } from 'react';
 
 import {
   formatDuration,
@@ -39,6 +39,7 @@ export interface HistoryProps {
  * @returns The history element.
  */
 export function History(props: HistoryProps): JSX.Element {
+  const actionsId = useId();
   return (
     <section aria-label="Clips this session">
       <div className="row row--between">
@@ -57,62 +58,78 @@ export function History(props: HistoryProps): JSX.Element {
         </p>
       ) : (
         <ul className="list">
-          {props.clips.map((clip, index) => (
-            <li
-              key={clip.id}
-              className="list__item"
-              aria-selected={props.selectedId === clip.id}
-            >
-              <button
-                type="button"
-                className="chip"
-                style={{ border: 'none', padding: 0, textAlign: 'left', width: '100%' }}
-                onClick={() => props.onSelect(clip)}
+          {props.clips.map((clip, index) => {
+            const selected = props.selectedId === clip.id;
+            const clipActionsId = `${actionsId}-${clip.id}`;
+            return (
+              <li
+                key={clip.id}
+                className={`list__item${selected ? ' list__item--selected' : ''}`}
               >
-                <span className="list__index">
-                  {String(props.clips.length - index).padStart(2, '0')}
-                </span>
-                {clip.request.text.slice(0, 48)}
-                {clip.request.text.length > 48 ? '…' : ''}
-              </button>
-              <p className="caption" style={{ margin: '2px 0 0' }}>
-                {settingsLine(clip)} / {formatDuration(clip.durationSeconds)}
-              </p>
+                {/* Selection lives on the button, not the <li>: role listitem does
+                    not support aria-selected, so a screen reader announced the
+                    chosen clip as unselected. aria-current is supported here and
+                    aria-expanded says what selecting it revealed. */}
+                <button
+                  type="button"
+                  className="chip"
+                  style={{ border: 'none', padding: 0, textAlign: 'left', width: '100%' }}
+                  aria-current={selected ? 'true' : undefined}
+                  aria-expanded={selected}
+                  aria-controls={clipActionsId}
+                  onClick={() => props.onSelect(clip)}
+                >
+                  <span className="list__index">
+                    {String(props.clips.length - index).padStart(2, '0')}
+                  </span>
+                  {clip.request.text.slice(0, 48)}
+                  {clip.request.text.length > 48 ? '…' : ''}
+                </button>
+                <p className="caption" style={{ margin: '2px 0 0' }}>
+                  {settingsLine(clip)} / {formatDuration(clip.durationSeconds)}
+                </p>
 
-              {props.selectedId === clip.id && (
-                <div className="row" style={{ marginTop: 8 }}>
-                  {/* None of these reach the GPU. */}
-                  <button type="button" className="chip" onClick={() => props.onReplay(clip)}>
-                    Replay
-                  </button>
-                  <a className="chip" href={props.clipUrl(clip.id)} download>
-                    Save WAV
-                  </a>
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => props.onLoadIntoConsole(clip)}
+                {selected && (
+                  <div
+                    id={clipActionsId}
+                    className="row"
+                    style={{ marginTop: 8 }}
+                    role="group"
+                    aria-label="Actions for the selected clip"
                   >
-                    Load into console
-                  </button>
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => props.onPromoteToReference(clip)}
-                  >
-                    Use as voice →
-                  </button>
-                  <button
-                    type="button"
-                    className="chip"
-                    onClick={() => props.onSaveAsVoice(clip)}
-                  >
-                    Save to library
-                  </button>
-                </div>
-              )}
-            </li>
-          ))}
+                    {/* None of these reach the GPU. */}
+                    <button type="button" className="chip" onClick={() => props.onReplay(clip)}>
+                      Replay
+                    </button>
+                    <a className="chip" href={props.clipUrl(clip.id)} download>
+                      Save WAV
+                    </a>
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => props.onLoadIntoConsole(clip)}
+                    >
+                      Load into console
+                    </button>
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => props.onPromoteToReference(clip)}
+                    >
+                      Use as voice →
+                    </button>
+                    <button
+                      type="button"
+                      className="chip"
+                      onClick={() => props.onSaveAsVoice(clip)}
+                    >
+                      Save to library
+                    </button>
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       <p className="caption" style={{ marginTop: 8 }}>

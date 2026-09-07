@@ -47,35 +47,6 @@ export function originLine(voice: Voice): string {
   return `CLONED / FROM ${from.toUpperCase()}`;
 }
 
-/**
- * What the empty library should say.
- *
- * The option is present and explains itself rather than being hidden — a
- * missing affordance teaches nothing, and the operator needs to learn that
- * saving a clip is how voices get here.
- */
-export const EMPTY_LIBRARY_COPY = 'No saved voices yet — saving a clip is how voices get here.';
-
-/**
- * Whether a voice can be selected into a request.
- *
- * @param voice - The voice.
- * @returns True when its audio is present.
- */
-export function isSelectable(voice: Voice): boolean {
-  return voice.available;
-}
-
-/**
- * Both halves of the vendor's required pair, from one selection.
- *
- * @param voice - The selected voice.
- * @returns The reference id and the exact transcript, together.
- */
-export function referenceFromVoice(voice: Voice): { voiceId: string; refText: string } {
-  return { voiceId: voice.id, refText: voice.transcript };
-}
-
 /** A delete that has happened and can still be undone. */
 export interface PendingUndo {
   readonly voice: Voice;

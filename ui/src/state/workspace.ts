@@ -9,13 +9,12 @@
  */
 
 import {
-  DEFAULT_INSTRUCTION,
   INITIAL_DRAFT,
   loadDraft,
   type Draft,
   type DraftStorage,
 } from './draft.js';
-import type { StagedReferenceSelection } from './reference.js';
+import type { StagedReferenceSelection, TimedWord } from './reference.js';
 import type { Voice } from './voices.js';
 
 /** All functional destinations implemented by the application. */
@@ -82,12 +81,62 @@ export interface SpeakDraft extends Draft {
   readonly voice: SpeakVoiceSource;
 }
 
-/** Durable shell state restored across navigation and reload. */
+/** Local creation language inside Voices, never an application mode. */
+export type VoiceCreationMethod = 'describe' | 'clone-audio' | 'from-clip';
+
+/**
+ * Draft retained while the operator navigates to another tool.
+ *
+ * Declared here rather than in the view that renders it: it is persisted,
+ * restored field by field, and survives a reload and a session expiry, none of
+ * which a component owns. State importing its own shape from a component was
+ * the arrow pointing the wrong way, and it is now gone.
+ */
+export interface VoiceCreationDraft {
+  readonly method: VoiceCreationMethod;
+  readonly name: string;
+  readonly description: string;
+  readonly sampleText: string;
+  readonly cfgScale: number;
+  readonly seed: number;
+  readonly reference: StagedReferenceSelection | null;
+  readonly sourceClipId: string | null;
+  readonly auditionClipId: string | null;
+}
+
+/**
+ * Starting voice-creation values.
+ *
+ * The single copy. The Voices workspace re-exports this under its historic name
+ * rather than restating the values, so the persisted draft and the one the view
+ * renders cannot drift apart.
+ */
+export const INITIAL_CREATION_DRAFT: VoiceCreationDraft = {
+  method: 'describe',
+  name: 'Untitled voice',
+  description: 'A warm, clear narrator with an unhurried pace.',
+  sampleText: 'This is how this voice will sound when you use it.',
+  cfgScale: 4,
+  seed: 42,
+  reference: null,
+  sourceClipId: null,
+  auditionClipId: null,
+};
+
+/**
+ * Durable shell state restored across navigation and reload.
+ *
+ * The creation draft lives here rather than in component state because it is
+ * the most expensive thing the operator can be holding — a staged reference, a
+ * corrected transcript, and a name they chose — and losing it to a reload is
+ * the one outcome this application is not allowed to produce.
+ */
 export interface WorkspaceState {
   readonly version: 2;
   readonly active: Workspace;
   readonly selectedVoiceId: string | null;
   readonly speakDraft: SpeakDraft;
+  readonly creationDraft: VoiceCreationDraft;
   readonly lastScriptId: string | null;
 }
 
@@ -101,6 +150,7 @@ export const INITIAL_WORKSPACE_STATE: WorkspaceState = {
     cfgScale: 1,
     voice: { kind: 'described' },
   },
+  creationDraft: INITIAL_CREATION_DRAFT,
   lastScriptId: null,
 };
 
@@ -115,6 +165,58 @@ function activeWorkspace(value: unknown): Workspace {
   return WORKSPACE_AVAILABILITY[value] ? value : 'speak';
 }
 
+/**
+ * Rebuild a staged selection from storage, or refuse it whole.
+ *
+ * A selection only means anything with its window, its transcript and the
+ * waveform the trimmer draws against, so a partial one is dropped rather than
+ * repaired into something the operator would have to notice and correct.
+ */
+function safeStagedReference(value: unknown): StagedReferenceSelection | null {
+  if (!isRecord(value)) return null;
+  const {
+    referenceId,
+    name,
+    durationSeconds,
+    sampleRate,
+    peaks,
+    words,
+    language,
+    start,
+    end,
+    transcript,
+    transcriptEdited,
+  } = value;
+  if (
+    typeof referenceId !== 'string' ||
+    typeof name !== 'string' ||
+    typeof transcript !== 'string' ||
+    typeof durationSeconds !== 'number' ||
+    typeof sampleRate !== 'number' ||
+    typeof start !== 'number' ||
+    typeof end !== 'number' ||
+    !Array.isArray(peaks) ||
+    !Array.isArray(words)
+  ) {
+    return null;
+  }
+  return {
+    referenceId,
+    name,
+    durationSeconds,
+    sampleRate,
+    peaks: peaks as readonly number[],
+    words: words as readonly TimedWord[],
+    language: typeof language === 'string' ? language : null,
+    start,
+    end,
+    transcript,
+    // An operator's correction outranks the recognised text it replaced.
+    // Dropping the flag would quietly re-offer the transcript they just fixed.
+    transcriptEdited: transcriptEdited === true,
+  };
+}
+
 function safeSource(value: unknown): SpeakVoiceSource {
   if (!isRecord(value)) return { kind: 'described' };
   if (
@@ -124,25 +226,52 @@ function safeSource(value: unknown): SpeakVoiceSource {
   ) {
     return { kind: 'saved', voiceId: value.voiceId, voiceName: value.voiceName };
   }
-  if (value.kind === 'staged' && value.reference === null) {
-    return { kind: 'staged', reference: null };
-  }
-  if (value.kind === 'staged' && isRecord(value.reference)) {
-    const reference = value.reference as unknown as StagedReferenceSelection;
-    if (
-      typeof reference.referenceId === 'string' &&
-      typeof reference.name === 'string' &&
-      typeof reference.transcript === 'string' &&
-      typeof reference.start === 'number' &&
-      typeof reference.end === 'number' &&
-      typeof reference.durationSeconds === 'number' &&
-      Array.isArray(reference.peaks) &&
-      Array.isArray(reference.words)
-    ) {
-      return { kind: 'staged', reference };
-    }
+  if (value.kind === 'staged') {
+    return { kind: 'staged', reference: safeStagedReference(value.reference) };
   }
   return { kind: 'described' };
+}
+
+const CREATION_METHODS: readonly VoiceCreationMethod[] = [
+  'describe',
+  'clone-audio',
+  'from-clip',
+];
+
+/**
+ * Restore the creation draft field by field, matching the Speak draft's rule.
+ *
+ * One unreadable value resets only itself: a corrupt seed must not be able to
+ * take a staged reference and a typed name down with it.
+ */
+function safeCreationDraft(value: unknown): VoiceCreationDraft {
+  const candidate = isRecord(value) ? value : {};
+  const initial = INITIAL_CREATION_DRAFT;
+  return {
+    method: CREATION_METHODS.includes(candidate.method as VoiceCreationMethod)
+      ? (candidate.method as VoiceCreationMethod)
+      : initial.method,
+    name: typeof candidate.name === 'string' ? candidate.name : initial.name,
+    description:
+      typeof candidate.description === 'string' ? candidate.description : initial.description,
+    sampleText:
+      typeof candidate.sampleText === 'string' ? candidate.sampleText : initial.sampleText,
+    cfgScale:
+      typeof candidate.cfgScale === 'number' &&
+      Number.isFinite(candidate.cfgScale) &&
+      candidate.cfgScale > 0
+        ? candidate.cfgScale
+        : initial.cfgScale,
+    seed:
+      typeof candidate.seed === 'number' && Number.isInteger(candidate.seed)
+        ? candidate.seed
+        : initial.seed,
+    reference: safeStagedReference(candidate.reference),
+    sourceClipId:
+      typeof candidate.sourceClipId === 'string' ? candidate.sourceClipId : null,
+    auditionClipId:
+      typeof candidate.auditionClipId === 'string' ? candidate.auditionClipId : null,
+  };
 }
 
 /**
@@ -227,6 +356,7 @@ export function loadWorkspaceState(storage: DraftStorage): WorkspaceState {
       selectedVoiceId:
         typeof candidate.selectedVoiceId === 'string' ? candidate.selectedVoiceId : null,
       speakDraft: safeSpeakDraft(candidate.speakDraft, legacy),
+      creationDraft: safeCreationDraft(candidate.creationDraft),
       lastScriptId:
         typeof candidate.lastScriptId === 'string' ? candidate.lastScriptId : null,
     };
@@ -394,9 +524,4 @@ export function projectSpeechRequest(
  */
 export function legacyModeFor(spec: VoiceSpec): 'design' | 'clone' {
   return spec.kind === 'described' ? 'design' : 'clone';
-}
-
-/** Ensure an empty migrated instruction receives the neutral initial value only on first creation. */
-export function initialInstruction(value: string | undefined): string {
-  return value === undefined ? DEFAULT_INSTRUCTION : value;
 }

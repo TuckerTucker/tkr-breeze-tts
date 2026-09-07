@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 
 import { History } from '../src/components/History.js';
 import {
@@ -174,6 +174,58 @@ describe('promote to reference', () => {
     const handlers = renderHistory();
     fireEvent.click(screen.getByRole('button', { name: 'Save to library' }));
     expect(handlers.onSaveAsVoice).toHaveBeenCalledWith(CLIPS[0]);
+  });
+});
+
+describe('the selected clip is announced as selected', () => {
+  it('carries the selection on the control that performs it, not on the listitem', () => {
+    // role=listitem does not support aria-selected, so the accessibility tree
+    // dropped it and a screen reader announced the chosen clip with no state
+    // at all. The state has to live on a role that supports it.
+    renderHistory();
+    const chosen = screen.getByRole('button', { name: /Welcome aboard, traveller\./ });
+    const other = screen.getByRole('button', { name: /It is good to hear your voice again\./ });
+
+    expect(chosen).toHaveAttribute('aria-current', 'true');
+    expect(other).not.toHaveAttribute('aria-current');
+    for (const item of screen.getAllByRole('listitem')) {
+      expect(item).not.toHaveAttribute('aria-selected');
+    }
+  });
+
+  it('moves the announced state with the selection', () => {
+    renderHistory({ selectedId: 'c1' });
+    expect(
+      screen.getByRole('button', { name: /It is good to hear your voice again\./ }),
+    ).toHaveAttribute('aria-current', 'true');
+    expect(
+      screen.getByRole('button', { name: /Welcome aboard, traveller\./ }),
+    ).not.toHaveAttribute('aria-current');
+  });
+
+  it('associates the revealed actions with the control that reveals them', () => {
+    // Pressing a row expands a set of actions. Without the expanded/controls
+    // pair a screen reader gets no notice that anything appeared, and no way
+    // to reach it from the control that produced it.
+    renderHistory();
+    const chosen = screen.getByRole('button', { name: /Welcome aboard, traveller\./ });
+    const actions = screen.getByRole('group', { name: 'Actions for the selected clip' });
+
+    expect(chosen).toHaveAttribute('aria-expanded', 'true');
+    expect(actions.id).toBeTruthy();
+    expect(chosen).toHaveAttribute('aria-controls', actions.id);
+    expect(within(actions).getByRole('button', { name: 'Replay' })).toBeInTheDocument();
+    expect(within(actions).getByRole('link', { name: 'Save WAV' })).toBeInTheDocument();
+  });
+
+  it('reports every other row as collapsed and reveals exactly one action group', () => {
+    renderHistory();
+    expect(
+      screen.getByRole('button', { name: /It is good to hear your voice again\./ }),
+    ).toHaveAttribute('aria-expanded', 'false');
+    expect(
+      screen.getAllByRole('group', { name: 'Actions for the selected clip' }),
+    ).toHaveLength(1);
   });
 });
 
