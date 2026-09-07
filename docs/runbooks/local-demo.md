@@ -78,14 +78,27 @@ Open `http://127.0.0.1:8787`.
 enforced without waking the GPU, and serves the built UI. Voices and Speak appear in primary
 navigation; Scripts remains capability-gated.
 
+The startup line now also names `mode` and `stateRoot`. Locally that reads `mode: local` with
+the resolved `.cache` directory — the same information the hosted container uses to make a
+Volume that failed to mount visible immediately rather than as a library that forgot every
+voice.
+
+Hosting added two optional variables and changed nothing here. `GATEWAY_HOST` defaults to
+`127.0.0.1`, so the local gateway stays loopback-only exactly as before, and it refuses any
+value that is not a literal address. `GATEWAY_PASSWORD_HASH` unset means no gate is registered
+at all — not an open gate, no gate — which is what keeps this procedure byte-for-byte true.
+`docs/runbooks/hosted-demo.md` is where those are set deliberately.
+
 ## 6. Verify before changing deployment posture
 
 ```bash
-npm test
-npm run test:python
-npm run typecheck
+npm run check
 npm run build
 ```
 
-**Expected observable:** 134 Python, 220 gateway, and 194 UI tests pass; both TypeScript projects
-typecheck; Vite emits a production bundle.
+`npm run check` is typecheck, lint, both TypeScript suites and the Python suite in one command.
+It exists because a gate nobody runs is not a gate; the individual scripts (`npm test`,
+`npm run test:python`, `npm run typecheck`, `npm run lint`) still work on their own.
+
+**Expected observable:** every suite passes, the UI lint gate reports no errors and no unused
+exports, both TypeScript projects typecheck, and Vite emits a production bundle.

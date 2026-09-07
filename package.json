@@ -8,10 +8,14 @@
     "setup": "npm --prefix gateway install && npm --prefix gateway run setup --",
     "build": "npm --prefix ui run build",
     "start": "npm --prefix ui run build && npm --prefix gateway start",
+    "deploy:hosted": "npm run build && modal deploy infra/hosting.py",
+    "check:hosted": "PYTHONPATH=. .venv/bin/python -m infra.hosting_deploy_check",
     "dev:gateway": "npm --prefix gateway run dev",
     "dev:ui": "npm --prefix ui run dev",
     "test": "npm --prefix gateway test && npm --prefix ui test",
     "test:python": "PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests -q",
+    "lint": "npm --prefix ui run lint",
+    "check": "npm run typecheck && npm run lint && npm test && npm run test:python",
     "typecheck": "npm --prefix gateway run typecheck && npm --prefix ui run typecheck"
   }
 }

@@ -151,12 +151,44 @@ The gateway serves the built UI from its own origin. For UI development,
 
 ![The Speak workspace: a kept voice selected, a line and delivery instruction to write, and the session's clip history alongside](docs/images/speak-console.png)
 
+### 5. Optionally, host it
+
+The gateway can run on Modal itself, so the demo is a link rather than a checkout
+and a Mac. `docs/runbooks/hosted-demo.md` is the procedure; the short version is
+a password hash into a `modal.Secret`, then `npm run deploy:hosted`.
+
+Three things are worth knowing before you hand the link to anyone.
+
+**It is one shared password over one shared workspace.** Everyone with the link
+sees the same voices, clips and history. Anything anyone uploads is audible to
+everyone else who has the link — and cloning a voice from exactly such a
+recording is what this product does. There are no accounts and no per-person
+scoping; that is a deliberate boundary rather than an omission.
+
+**Nothing bounds the voice or script stores.** Clips evict oldest-first at 2 GiB
+and staged references expire after 24 hours, but a saved voice or a script
+accumulates until someone clears it by hand. On your own Mac that was your disk
+and your restraint. Behind a password that gets passed around, it is neither.
+
+**The hosting app does not scale to zero.** It keeps one CPU container resident
+so the first visitor does not wait for a cold start, which means it bills
+continuously rather than per request — unlike the GPU apps, which do scale to
+zero and are where the real money is. `modal app stop breeze-tts-gateway` when
+you are done.
+
 ## Tests
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests   # 134
-npm --prefix gateway test                                          # 220
-npm --prefix ui test                                               # 194
+npm run check   # typecheck + lint + every suite, in one command
+```
+
+Or individually:
+
+```bash
+PYTHONPATH=. .venv/bin/python -m pytest infra/tests bench/tests   # 180
+npm --prefix gateway test                                          # 295
+npm --prefix ui test                                               # 240
+npm --prefix ui run lint                                           # eslint + unused exports
 ```
 
 None of them need a GPU, an external network, or a deployed service: the Modal
