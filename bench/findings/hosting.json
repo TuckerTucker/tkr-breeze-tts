@@ -1,0 +1,19 @@
+{
+  "measured_at": "2026-09-07T00:35:02Z",
+  "endpoint": "hosted gateway (URL withheld: it is the upstream this project never publishes)",
+  "streaming": {
+    "first_byte_ms": 592.1,
+    "total_ms": 3768.5,
+    "bytes_received": 437760,
+    "streams": true,
+    "warm": true,
+    "note": "first byte at 592ms of a 3768ms response (ratio 0.16, warm). The proxy streams; the hosted demo delivers the latency the local one does."
+  },
+  "upload": {
+    "attempted_bytes": 536870912,
+    "accepted": true,
+    "failure_mode": "accepted",
+    "status": 200,
+    "note": "the proxy passed a body of this size intact."
+  }
+}
